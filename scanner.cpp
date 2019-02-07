@@ -3,6 +3,79 @@
 scanner::scanner(){
     
 }
+
+void scanner::Build_Reserved_Words_Table(){
+    Reserved_Words.push_back("program");
+    Reserved_Words.push_back("is");
+    Reserved_Words.push_back("begin");
+    Reserved_Words.push_back("end");
+    Reserved_Words.push_back("global");
+    Reserved_Words.push_back("procedure");
+    Reserved_Words.push_back("variable");
+    Reserved_Words.push_back("type");
+    Reserved_Words.push_back("integer");
+    Reserved_Words.push_back("float");
+    Reserved_Words.push_back("string");
+    Reserved_Words.push_back("bool");
+    Reserved_Words.push_back("enum");
+    Reserved_Words.push_back("if");
+    Reserved_Words.push_back("then");
+    Reserved_Words.push_back("else");
+    Reserved_Words.push_back("for");
+    Reserved_Words.push_back("return");
+    Reserved_Words.push_back("not");
+    Reserved_Words.push_back("true");
+    Reserved_Words.push_back("false");
+
+}
+
+void scanner::Build_Reserved_Char_Table(){
+    Reserved_Chars.push_back('(');
+    Reserved_Chars.push_back(')');
+    Reserved_Chars.push_back('[');
+    Reserved_Chars.push_back(']');
+    Reserved_Chars.push_back(',');
+    Reserved_Chars.push_back('/');
+    Reserved_Chars.push_back(';');
+    Reserved_Chars.push_back('{');
+    Reserved_Chars.push_back('}');
+    Reserved_Chars.push_back('=');
+    Reserved_Chars.push_back('+');
+    Reserved_Chars.push_back('_');
+    Reserved_Chars.push_back('.');
+    Reserved_Chars.push_back('>');
+    Reserved_Chars.push_back('<');
+    Reserved_Chars.push_back('*');
+    Reserved_Chars.push_back('"');
+}
+
+bool scanner::Is_Reserved_Char(char test_char){
+    for(int i = 0; i<Reserved_Chars.size(); i++){
+        if(Reserved_Chars[i] == test_char){
+            return true;
+        }
+    }
+    return false;
+
+}
+
+bool scanner::Is_Reserved_Word(std::string test_word){
+    for(int i = 0; i<Reserved_Words.size(); i++){
+        if(Reserved_Words[i] == test_word){
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string scanner::Tolower_string(std::string data){
+    std::string return_value;
+    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
+    return data;
+
+}
+
+
 scanner::scanner(std::string file){
     //Things done here to prepare the scanner
     InitScanner(file);
@@ -11,6 +84,12 @@ scanner::scanner(std::string file){
 void scanner::InitScanner(std::string file){
     //sets the name of the Filename in the object to the value passed into the program
     FileName = file;
+    //Builds vector of reserved words
+    Build_Reserved_Words_Table();
+    //Builds vector of special characters
+    Build_Reserved_Char_Table();
+    //sets the current line tracker
+    current_line = 1;
     //Starts reading the actual file
     ReadFile();
 }
@@ -88,9 +167,6 @@ void scanner::ReadFile(){
 
 //usefuly for quick tests; pass in an empty file
 void scanner::test(){
-    char test_char = 'a';
-    char output;
-    output = tolower(test_char);
-    std::cout<<output<<std::endl;
+    std::cout<<Is_Reserved_Word(Tolower_string("If"));
 }
 
