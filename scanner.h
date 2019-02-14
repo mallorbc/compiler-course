@@ -30,6 +30,7 @@ class scanner{
     std::string FileName;
     std::vector<std::string> Reserved_Words;
     std::vector<char> Reserved_Chars;
+    token Current_token;
     //Line_struct Line_data;
 
 

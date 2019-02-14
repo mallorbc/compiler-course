@@ -5,6 +5,7 @@ scanner::scanner(){
 }
 
 void scanner::Build_Reserved_Words_Table(){
+    //builds vector of reserved words
     Reserved_Words.push_back("program");
     Reserved_Words.push_back("is");
     Reserved_Words.push_back("begin");
@@ -30,6 +31,7 @@ void scanner::Build_Reserved_Words_Table(){
 }
 
 void scanner::Build_Reserved_Char_Table(){
+    //builds vector of reserved characters
     Reserved_Chars.push_back('(');
     Reserved_Chars.push_back(')');
     Reserved_Chars.push_back('[');
@@ -47,9 +49,11 @@ void scanner::Build_Reserved_Char_Table(){
     Reserved_Chars.push_back('<');
     Reserved_Chars.push_back('*');
     Reserved_Chars.push_back('"');
+    Reserved_Chars.push_back('!');
 }
 
 bool scanner::Is_Reserved_Char(char test_char){
+    //checks all alues in the vector to see if is a reserved char; if it is return true
     for(int i = 0; i<Reserved_Chars.size(); i++){
         if(Reserved_Chars[i] == test_char){
             return true;
@@ -60,6 +64,7 @@ bool scanner::Is_Reserved_Char(char test_char){
 }
 
 bool scanner::Is_Reserved_Word(std::string test_word){
+    //checks all values in the vector to see if is a reserved word; if it is return true
     for(int i = 0; i<Reserved_Words.size(); i++){
         if(Reserved_Words[i] == test_word){
             return true;
@@ -69,7 +74,7 @@ bool scanner::Is_Reserved_Word(std::string test_word){
 }
 
 std::string scanner::Tolower_string(std::string data){
-    std::string return_value;
+    //converts the string to all lowercase
     std::transform(data.begin(), data.end(), data.begin(), ::tolower);
     return data;
 
@@ -150,13 +155,13 @@ void scanner::ReadFile(){
             }
 
         }
-        else{
+        //if not a reserved character, then the character is invalid
+        else if(Is_Reserved_Char(current_char)){
             //the character is neither a number or letter, making it a special character or illegal
-            switch(current_char){
-                case '(':
-                break;
-
-            }
+            
+        }
+        else{
+            //make an error
         }
         }
  
