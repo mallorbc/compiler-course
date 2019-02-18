@@ -38,16 +38,25 @@ bool SymbolTable::insert_stringValue(std::string stringValue,token_type type_of_
     new_token = new token;
     new_token->type = type_of_token;
     new_token->stringValue = stringValue;
-    insert_token(*new_token);
+    insert_string_token(*new_token);
 
     return 1;
     
 
 }
 
-bool SymbolTable::insert_token(token new_token){
-    int key_value = new_token.type;
+bool SymbolTable::insert_string_token(token new_token){
+    std::string key_value = new_token.stringValue;
     map[key_value] = new_token;
   
     return 1;
+}
+
+bool SymbolTable::is_in_table(std::string test_string){
+    if(map.find(test_string) == map.end()){
+        return 0;
+    }
+    else{
+        return 1;
+    }
 }

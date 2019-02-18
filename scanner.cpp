@@ -4,31 +4,6 @@ scanner::scanner(){
     
 }
 
-// void scanner::Build_Reserved_Words_Table(){
-//     //builds vector of reserved words
-//     Reserved_Words.push_back("program");
-//     Reserved_Words.push_back("is");
-//     Reserved_Words.push_back("begin");
-//     Reserved_Words.push_back("end");
-//     Reserved_Words.push_back("global");
-//     Reserved_Words.push_back("procedure");
-//     Reserved_Words.push_back("variable");
-//     Reserved_Words.push_back("type");
-//     Reserved_Words.push_back("integer");
-//     Reserved_Words.push_back("float");
-//     Reserved_Words.push_back("string");
-//     Reserved_Words.push_back("bool");
-//     Reserved_Words.push_back("enum");
-//     Reserved_Words.push_back("if");
-//     Reserved_Words.push_back("then");
-//     Reserved_Words.push_back("else");
-//     Reserved_Words.push_back("for");
-//     Reserved_Words.push_back("return");
-//     Reserved_Words.push_back("not");
-//     Reserved_Words.push_back("true");
-//     Reserved_Words.push_back("false");
-
-// }
 
 // void scanner::Build_Reserved_Char_Table(){
 //     //builds vector of reserved characters
@@ -63,22 +38,18 @@ scanner::scanner(){
 
 // }
 
-// bool scanner::Is_Reserved_Word(std::string test_word){
-//     //checks all values in the vector to see if is a reserved word; if it is return true
-//     for(int i = 0; i<Reserved_Words.size(); i++){
-//         if(Reserved_Words[i] == test_word){
-//             return true;
-//         }
-//     }
-//     return false;
-// }
-
-std::string scanner::Tolower_string(std::string data){
-    //converts the string to all lowercase
-    std::transform(data.begin(), data.end(), data.begin(), ::tolower);
-    return data;
+bool scanner::Is_Reserved_Word(std::string test_word){
+    //checks to see if the string is already in the symbol table
+    if(symbol_table.is_in_table(Tolower_string(test_word))){
+        return 1;
+    }
+    else{
+        return 0;
+    }
 
 }
+
+
 
 
 scanner::scanner(std::string file){
@@ -89,8 +60,6 @@ scanner::scanner(std::string file){
 void scanner::InitScanner(std::string file){
     //sets the name of the Filename in the object to the value passed into the program
     FileName = file;
-    //Builds vector of reserved words
-    //Build_Reserved_Words_Table();
     //Builds vector of special characters
     //Build_Reserved_Char_Table();
     //sets the current line tracker
@@ -100,18 +69,7 @@ void scanner::InitScanner(std::string file){
 }
 
 void scanner::ReadFile(){
-    //Creates an text input stream
-    std::ifstream source;
-    //used to track whether or not the character is the first character in the token
-    bool first_char;
-    //checks whether or not the first char is a number; if so, can't be an identifier
-    bool first_char_is_num;
-    //used to check the next variable; so to make sure that it isn't the end of the line, a space, of the EOF
-    char next_char;
-    //used to store the current character
-    char current_char;
-    //used to build a string from the characters after checking them.  Ease of use
-    std::string build_string;
+
     //opens the file name to begin reading the file
     source.open(FileName);
     //keeps running while not at the end of the file
@@ -172,6 +130,10 @@ void scanner::ReadFile(){
 
 //usefuly for quick tests; pass in an empty file
 void scanner::test(){
-    //std::cout<<Is_Reserved_Word(Tolower_string("If"));
+    std::cout<<Is_Reserved_Word("fOr");
 }
+
+// token scanner::Get_token(){
+
+// }
 
