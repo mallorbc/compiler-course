@@ -60,18 +60,25 @@ enum  token_type
 
 class token{
     public:
-   // token(){};
+    //token(){};
+    //~token(){};
     int type;
     int line_found;
     int column_found;
     bool global_scope;
-    union value{
-        int intValue;
-        std::string stringValue;
-        bool boolValue;
-        float floatValue;
-        char charValue;  
-    };
+
+    int intValue;
+    std::string stringValue;
+    bool boolValue;
+    float floatValue;
+    char charValue; 
+    // union value{
+    //     int intValue;
+    //     std::string stringValue;
+    //     bool boolValue;
+    //     float floatValue;
+    //     char charValue;  
+    // };
 
 
 

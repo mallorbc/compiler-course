@@ -24,15 +24,19 @@ int main(int argc, char *argv[])
         //first_scan = new scanner(string_arg);
         //first_scan->test();
 
-         token *test_token;
-         test_token = new token;
+         //token *test_token;
+         //test_token = new token;
         // std::cout<<test_token->type;
 
         SymbolTable *table;
         table = new SymbolTable;
-        table->map[T_FOR] = *test_token;
-        auto it = table->map.find(T_FOR);
-        std::cout<<it->second.type;
+        auto it = table->map.find(T_PROGRAM);
+        std::cout<<it->second.stringValue;
+        it = table->map.find(T_FOR);
+        std::cout<<it->second.stringValue;
+        //table->map[T_FOR] = *test_token;
+        //auto it = table->map.find(T_FOR);
+        //std::cout<<it->second.type;
         //int key = T_FOR;
         //table->map.find(key);
         //std::cout<<table->map(key);
