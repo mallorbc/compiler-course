@@ -9,7 +9,7 @@ enum  token_type
  T_LPARAM = '(',
  T_RPARAM = ')',
  T_ASSIGN = '=',
- T_DIVIDE = '/',
+ T_SLASH = '/',
  T_LBRACE = '{',
  T_RBRACE = '}',
  T_LBRACKET = '[',
@@ -24,6 +24,7 @@ enum  token_type
  T_MULT = '*',
  T_QUOTE = '"',
  T_EXCLAM = '!',
+ T_COLON = ':',
 
 //finish adding reserved words
  T_FOR = 257,

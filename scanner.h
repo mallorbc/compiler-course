@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "SymbolTable.h"
 #include "CustomFunctions.h"
+#include <cstdio>
 
 // struct Line_struct{
 //     std::string line_string;
@@ -25,9 +26,8 @@ class scanner{
     void InitScanner(std::string file);
     //void Build_Reserved_Char_Table();
     bool Is_Reserved_Word(std::string test_word);
-    token Get_token();
+    void Get_token();
     //bool Is_Reserved_Char(char test_char);
-    // std::string Tolower_string(std::string word_to_convert);
     void test();
     int current_line;
 
@@ -38,13 +38,15 @@ class scanner{
     bool first_char;
     //checks whether or not the first char is a number; if so, can't be an identifier
     bool first_char_is_num;
+    //used to track whtether the first character is an alpha
+    bool first_char_is_alpha;
     //used to check the next variable; so to make sure that it isn't the end of the line, a space, of the EOF
     char next_char;
     //used to store the current character
     char current_char;
     //used to build a string from the characters after checking them.  Ease of use
     std::string build_string;
-    //token Current_token;
+    token Current_token;
     //Line_struct Line_data;
 
 

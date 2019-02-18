@@ -22,7 +22,10 @@ int main(int argc, char *argv[])
         scanner *first_scan;
         //Creates a new object scanner and passes in the file, the file is then read
         first_scan = new scanner(string_arg);
-        first_scan->test();
+        first_scan->ReadFile();
+        //first_scan->test();
+        //first_scan->ReadFile();
+        //first_scan->test();
 
          //token *test_token;
          //test_token = new token;

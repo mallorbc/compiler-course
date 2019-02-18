@@ -60,3 +60,40 @@ bool SymbolTable::is_in_table(std::string test_string){
         return 1;
     }
 }
+
+bool SymbolTable::init_reserved_chars(){
+    insert_char_table('(',T_LPARAM);
+    insert_char_table(')',T_RPARAM);
+    insert_char_table('[',T_LBRACKET);
+    insert_char_table(']',T_RBRACKET);
+    insert_char_table(',',T_COMMA);
+    insert_char_table('/',T_SLASH);
+    insert_char_table('{',T_LBRACE);
+    insert_char_table('}',T_RBRACE);
+    insert_char_table('=',T_ASSIGN);
+    insert_char_table('+',T_PLUS);
+    insert_char_table('_',T_LBRACE);
+    insert_char_table('.',T_LBRACE);
+    insert_char_table('>',T_LBRACE);
+    insert_char_table('<',T_LBRACE);
+    insert_char_table('*',T_LBRACE);
+    insert_char_table('"',T_LBRACE);
+    insert_char_table('!',T_LBRACE);
+    insert_char_table(';',T_SEMICOLON);
+    insert_char_table(':',T_COLON);
+
+    return 1;
+}
+
+bool SymbolTable::insert_char_table(char reserved_char,token_type type_of_token){
+    reserved_chars[reserved_char] = type_of_token;
+    return 1;
+}
+
+bool SymbolTable::is_reserved_char(char test_char){
+    if(reserved_chars.find(test_char) == reserved_chars.end()){
+        return 0;
+    }
+    else return 1;
+
+}
