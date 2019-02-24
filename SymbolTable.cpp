@@ -2,6 +2,7 @@
 
 SymbolTable::SymbolTable(){
     init_reserved_words();
+    init_reserved_chars();
 }
 
 bool SymbolTable::init_reserved_words(){
@@ -14,10 +15,10 @@ bool SymbolTable::init_reserved_words(){
     insert_stringValue("procedure",T_PROCEDUIRE);
     insert_stringValue("variable",T_VARIABLE);
     insert_stringValue("type",T_TYPE);
-    insert_stringValue("integer",T_INTEGER);
-    insert_stringValue("float",T_FLOAT);
-    insert_stringValue("string",T_STRING);
-    insert_stringValue("bool",T_BOOL);
+    insert_stringValue("integer",T_INTEGER_TYPE);
+    insert_stringValue("float",T_FLOAT_TYPE);
+    insert_stringValue("string",T_STRING_TYPE);
+    insert_stringValue("bool",T_BOOL_TYPE);
     insert_stringValue("enum",T_ENUM);
     insert_stringValue("if",T_IF);
     insert_stringValue("then",T_THEN);
