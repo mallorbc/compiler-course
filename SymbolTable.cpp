@@ -73,13 +73,13 @@ bool SymbolTable::init_reserved_chars(){
     insert_char_table('}',T_RBRACE);
     insert_char_table('=',T_ASSIGN);
     insert_char_table('+',T_PLUS);
-    insert_char_table('_',T_LBRACE);
-    insert_char_table('.',T_LBRACE);
-    insert_char_table('>',T_LBRACE);
-    insert_char_table('<',T_LBRACE);
-    insert_char_table('*',T_LBRACE);
-    insert_char_table('"',T_LBRACE);
-    insert_char_table('!',T_LBRACE);
+    insert_char_table('_',T_UNDERSCORE);
+    insert_char_table('.',T_PERIOD);
+    insert_char_table('>',T_GREATER);
+    insert_char_table('<',T_LESS);
+    insert_char_table('*',T_MULT);
+    insert_char_table('"',T_QUOTE);
+    insert_char_table('!',T_EXCLAM);
     insert_char_table(';',T_SEMICOLON);
     insert_char_table(':',T_COLON);
 

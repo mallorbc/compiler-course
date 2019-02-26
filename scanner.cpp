@@ -4,6 +4,16 @@ scanner::scanner(){
     
 }
 
+
+//usefuly for quick tests; pass in an empty file
+void scanner::test(){
+    token *test_tok;
+    test_tok = new token;
+    *test_tok = symbol_table.map["if"];
+    std::cout<<"Token is: "<<test_tok->stringValue<<" of type: "<<test_tok->type<<std::endl;
+}
+
+
 int scanner::what_is_char(char test_char){
     if(isalpha(test_char)){
         return alpha_char;
@@ -21,6 +31,7 @@ int scanner::what_is_char(char test_char){
 
 }
 
+
 bool scanner::is_first_char(){
     if(build_string.length() == 0){
         return 1;
@@ -29,7 +40,6 @@ bool scanner::is_first_char(){
         return 0;
     }
 }
-
 
 
 bool scanner::Is_Reserved_Char(char test_char){
@@ -41,6 +51,7 @@ bool scanner::Is_Reserved_Char(char test_char){
         return 0;
     }
 }
+
 
 bool scanner::Is_Reserved_Word(std::string test_word){
     //checks to see if the string is already in the symbol table
@@ -54,14 +65,13 @@ bool scanner::Is_Reserved_Word(std::string test_word){
 }
 
 
-
-
 scanner::scanner(std::string file){
     //Things done here to prepare the scanner
     InitScanner(file);
     //opens the file name to begin reading the file
     source.open(FileName);
 }
+
 
 void scanner::InitScanner(std::string file){
     //sets the name of the Filename in the object to the value passed into the program
@@ -72,44 +82,38 @@ void scanner::InitScanner(std::string file){
     ReadFile();
 }
 
+
 void scanner::ReadFile(){
     //keeps running while not at the end of the file
-    // while(source.get(next_char)){
     while(true){
         //breaks loop if end of file is reached
         if(source.eof()){
             break;
         }
         //Gets a token and places it in the Current_token variable
-        //Current_token = new token;
+        Current_token = new token;
         Get_token();
         //build token vector here?
-        if(Current_token.type == 279){
-            std::cout<<"Token is an integer with a value of: "<<Current_token.intValue<<" with a type of "<<Current_token.type<<std::endl;
+        if(Current_token->type == 279){
+            std::cout<<"Token is an integer with a value of: "<<Current_token->intValue<<" with a type of "<<Current_token->type<<std::endl;
 
         }
-        else if(Current_token.type == 280){
-            std::cout<<"Token a float with a value of: "<<Current_token.floatValue<<" with a type of "<<Current_token.type<<std::endl;
+        else if(Current_token->type == 280){
+            std::cout<<"Token a float with a value of: "<<Current_token->floatValue<<" with a type of "<<Current_token->type<<std::endl;
         }
-        else if(Current_token.charValue!=NULL){
-            std::cout<<"Token is a char with a value of: "<<Current_token.charValue<<" with a type of "<<Current_token.type<<std::endl;
+        else if(Current_token->charValue!='\0'){
+            std::cout<<"Token is a char with a value of: "<<Current_token->charValue<<" with a type of "<<Current_token->type<<std::endl;
 
         }
-        else{
-        std::cout<<"Token is a reserved word or ID with a value of: "<<Current_token.stringValue<<" with a type of "<<Current_token.type<<std::endl;
+        else if(Current_token->stringValue!=""){
+        std::cout<<"Token is a reserved word or ID with a value of: "<<Current_token->stringValue<<" with a type of "<<Current_token->type<<std::endl;
         }
-        //Current_token = NULL;
+
+        delete Current_token;
     }
 
 }
 
-//usefuly for quick tests; pass in an empty file
-void scanner::test(){
-    token *test_tok;
-    test_tok = new token;
-    *test_tok = symbol_table.map["if"];
-    std::cout<<"Token is: "<<test_tok->stringValue<<" of type: "<<test_tok->type<<std::endl;
-}
 
 void scanner::Get_token(){
     while(true){
@@ -134,6 +138,7 @@ void scanner::Get_token(){
                 break;
 
                 case 4:
+                //needed to check for end lines and spaces
                 invalid_char_test();
                 break;
 
@@ -145,23 +150,92 @@ void scanner::Get_token(){
     }
 }
 
+
 void scanner::build_char_token(){
     //if the character is not in a quote, then it is a token
     if(!quote_status){
-        Current_token.charValue = current_char;
+        Current_token->charValue = current_char;
         //Giant case statement here
         switch(current_char){
+            case '(':
+            Current_token->type = T_LPARAM;
+            break;
+
+            case ')':
+            Current_token->type = T_RPARAM;
+            break;
+
+            case '[':
+            Current_token->type = T_LBRACKET;
+            break;
+
+            case ']':
+            Current_token->type = T_RBRACKET;
+            break;
+
+            case ',':
+            Current_token->type = T_COMMA;
+            break;
+
+            case '/':
+            Current_token->type = T_SLASH;
+            break;
+
+            case '{':
+            Current_token->type = T_LBRACE;
+            break;
+
+            case '}':
+            Current_token->type = T_RBRACE;
+            break;
+
+            case '=':
+            Current_token->type = T_ASSIGN;
+            break;
+
+            case '+':
+            Current_token->type = T_PLUS;
+            break;
+
+            case '_':
+            Current_token->type = T_UNDERSCORE;
+            break;
+
+            case '.':
+            Current_token->type = T_PERIOD;
+            break;
+
+            case '!':
+            Current_token->type = T_EXCLAM;
+            break;
+
+            case ';':
+            Current_token->type = T_SEMICOLON;
+            break;
+
+            case ':':
+            Current_token->type = T_COLON;
+            break;
+
+            case '"':
+            //the value will be a quotation with a string value
+            Current_token->type = T_QUOTE;
+            //builds the string quoation
+            string_value_builder();
+            //build quote string here
+            break;
 
         }
-        std::cout<<current_char<<std::endl;
+        if(debug){
+            std::cout<<"DEBUG in build_char_token() of current char: "<<current_char<<std::endl;
+        }
+        
 
     }
-    // //else the character is part of a string
-    // else{
-    //     build_string + build_string + current_char;
-    // }
+
     source.get(next_char);
 }
+
 
 void scanner::build_number_token(){
     int token_int_value;
@@ -171,38 +245,51 @@ void scanner::build_number_token(){
     //numbers are valid until a non numbber character is used, or multiple decimals are used
     // while(isdigit(next_char) || (next_char=='.' && one_decimal)){
     while(isdigit(next_char) || next_char=='.'){
-        if(current_char == '.' && one_decimal){
-            std::cout<<"The number has more than one decimal"<<std::endl;
+        if(current_char == '.' && !one_decimal){
+            if(debug){
+                std::cout<<"ERROR: The number has more than one decimal"<<std::endl;
+            }
+            
             //throw error
+            error_detected = true;
             return;
-            break;
+            //break;
         }
         if(current_char == '.'){
             one_decimal = false;
+            is_float = true;
         }
         build_string = build_string + current_char;
         source.get(next_char);
         current_char = next_char;
+        //if end of the file breaks the loop
         if(source.eof()){
             break;
+        }
+        //increments line counter if end of the line
+        if(current_char == '\n'){
+            current_line++;
         }
     }
     if(is_float){
         token_float_value = std::stof(build_string);
         //assign token type and value here
-        Current_token.floatValue = token_float_value;
-        Current_token.type = T_FLOAT_VALUE;
+        Current_token->floatValue = token_float_value;
+        Current_token->type = T_FLOAT_VALUE;
+        Current_token->line_found = current_line;
 
     }
     else{
         token_int_value = std::stoi(build_string);
         //assign token type and value here
-        Current_token.intValue = token_int_value;
-        Current_token.type = T_INTEGER_VALUE;
+        Current_token->intValue = token_int_value;
+        Current_token->type = T_INTEGER_VALUE;
+        Current_token->line_found = current_line;
 
     }
 
 }
+
 //should probably return a string so that later checks on it can be done for reserved words
 void scanner::build_string_token(){
     //token is valid until a non letter or number is displayed
@@ -210,67 +297,86 @@ void scanner::build_string_token(){
         build_string = build_string + current_char;
         source.get(next_char);
         current_char = next_char;
+        //increments line counter is the line ends
+        if(current_char == '\n'){
+            current_line++;
+        }
         if(source.eof()){
             break;
         }
     }
     //checks to see whether the built string is either a reserved word or already in the symbol table
     if(symbol_table.is_in_table(build_string)){
-        Current_token = symbol_table.map[build_string];
+        *Current_token = symbol_table.map[build_string];
 
     }
     //if not in the symbol table it inserts the indentifier
     else{
         symbol_table.insert_stringValue(build_string,T_IDENTIFIER);
+        *Current_token = symbol_table.map[build_string];
     }
-    std::cout<<build_string<<std::endl;
+    if(debug){
+        std::cout<<"DEBUG: Id or Reserved word is: "<<build_string<<std::endl;
+    }
+    
     build_string = "";
 
 }
 
-void scanner::invalid_char_test(){
-    //if current making a string
-    if(quote_status){
-        while(true){
-            build_string = build_string + current_char;
-            if(current_char == '"'){
-                break;
-            }
-            //if a next line character is detected it increments the current_line counter
-            if(current_char = '\n'){
-                current_line++;
-            }
-            source.get(next_char);
-            current_char = next_char;
-            if(source.eof()){
-                std::cout<<"Error, there was never a closing quotation"<<std::endl;
-                break;
-                //error never had a closing quote
-            }
-        }
-        std::cout<<"The quotation is: "<<build_string<<std::endl;
-        //sets the token type to a string and assigns the value
-        Current_token.type = T_STRING_VALUE;
-        Current_token.stringValue = build_string;
-        Current_token.line_found = current_line;
 
+void scanner::invalid_char_test(){
+    if(current_char == '\n'){
+        if(debug){
+            std::cout<<"DEBUG: End of line character detected"<<std::endl;
+        }
+        
+        current_line++;
     }
-    //if not currently making a string, means either invalid or will be ignored
+    else if(isspace(current_char)){
+        if(debug){
+            std::cout<<"DEBUG: Space character detected"<<std::endl;
+        }
+        
+    }
     else{
+        if(debug){
+            std::cout<<"DEBUG: Invalid character detected"<<std::endl;
+        }
+        
+        error_detected = true;
+        //throw an error
+    }
+    source.get(next_char);
+}
+
+
+void scanner::string_value_builder(){
+    quote_status = true;
+    while(true){
+        build_string = build_string + current_char;
+        source.get(next_char);
+        if(next_char == '"'){
+            build_string = build_string + next_char;
+            quote_status = false;
+            break;
+        }
+        current_char = next_char;
         if(current_char == '\n'){
-            std::cout<<"End of line character detected"<<std::endl;
             current_line++;
         }
-        else if(isspace(current_char)){
-            std::cout<<"Space character detected"<<std::endl;
+        if(source.eof() && quote_status){
+            //no closing quotation mark;
+            error_detected = true;
+            break;
         }
-        else{
-        std::cout<<"Invalid character detected"<<std::endl;
-        //throw an error
-        }
-        source.get(next_char);
     }
+    if(debug){
+        std::cout<<"DEBUG: The detected quotation is: "<<build_string<<std::endl;
+    }
+    
+    Current_token->charValue = '\0';
+    Current_token->stringValue = build_string;
+    Current_token->line_found = current_line;
+
 }
  
-
-

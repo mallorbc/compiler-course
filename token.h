@@ -66,7 +66,22 @@ enum  token_type
 class token{
     public:
     //token(){};
-    //~token(){};
+    
+    //cleans up token object
+    ~token(){
+        this->type = 0;
+        this->line_found = 0;
+        this->column_found = 0;
+        this->global_scope = false;
+
+        this->intValue = 0;
+        this->stringValue = "";
+        this->floatValue = 0;
+        this->charValue = '\0';
+        this->boolValue = false;
+
+
+    };
     int type;
     int line_found;
     int column_found;
