@@ -84,6 +84,7 @@ void scanner::InitScanner(std::string file){
 
 
 void scanner::ReadFile(){
+    scanner_parser = new parser;
     //keeps running while not at the end of the file
     while(true){
         //breaks loop if end of file is reached
@@ -93,6 +94,14 @@ void scanner::ReadFile(){
         //Gets a token and places it in the Current_token variable
         Current_token = new token;
         Get_token();
+        if(!scanner_parser->started_parsing){
+            scanner_parser->start_parser(*Current_token);
+        }
+        else{
+            scanner_parser->parse_next_token(*Current_token);
+
+        }
+
         //build token vector here?
         if(Current_token->type == 279){
             std::cout<<"Token is an integer with a value of: "<<Current_token->intValue<<" with a type of "<<Current_token->type<<std::endl;

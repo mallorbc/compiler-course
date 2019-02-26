@@ -11,6 +11,7 @@
 #include "SymbolTable.h"
 #include "CustomFunctions.h"
 #include <cstdio>
+#include "parser.h"
 
 // struct Line_struct{
 //     std::string line_string;
@@ -83,6 +84,8 @@ class scanner{
     //used to trigger debug statements
     bool debug = false;
 
+
+    parser *scanner_parser;
 
 };
 
