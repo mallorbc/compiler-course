@@ -7,10 +7,28 @@ scanner::scanner(){
 
 //usefuly for quick tests; pass in an empty file
 void scanner::test(){
-    token *test_tok;
-    test_tok = new token;
-    *test_tok = symbol_table.map["if"];
-    std::cout<<"Token is: "<<test_tok->stringValue<<" of type: "<<test_tok->type<<std::endl;
+    // token *test_tok;
+    // test_tok = new token;
+    // *test_tok = symbol_table.map["if"];
+    // std::cout<<"Token is: "<<test_tok->stringValue<<" of type: "<<test_tok->type<<std::endl;
+
+    token test_token;
+    std::string test_string;
+    test_string = "";
+    while(!source.eof()){
+        test_token = Get_token();
+        test_string = "The token is type: " + std::to_string(test_token.type);
+        if(test_token.stringValue!=""){
+            test_string = test_string + " with a value of: " + test_token.stringValue;
+        }
+        else if(test_token.charValue!='\0'){
+            test_string = test_string + " with a value of: " + test_token.charValue;
+
+        }
+        //std::cout<<"Token is type: "<<test_token.type<<std::endl;
+        std::cout<<test_string<<std::endl;
+        test_string = "";
+    }
 }
 
 
@@ -79,28 +97,30 @@ void scanner::InitScanner(std::string file){
     //sets the current line to 1
     current_line = 1;
     //Starts reading the actual file
-    ReadFile();
+    //ReadFile();
 }
 
 
 void scanner::ReadFile(){
-    scanner_parser = new parser;
+    token read_token;
+    //scanner_parser = new parser;
     //keeps running while not at the end of the file
     while(true){
         //breaks loop if end of file is reached
         if(source.eof()){
+            end_of_file = true;
             break;
         }
         //Gets a token and places it in the Current_token variable
         Current_token = new token;
         Get_token();
-        if(!scanner_parser->started_parsing){
-            scanner_parser->start_parser(*Current_token);
-        }
-        else{
-            scanner_parser->parse_next_token(*Current_token);
+        // if(!scanner_parser->started_parsing){
+        //     scanner_parser->start_parser(*Current_token);
+        // }
+        // else{
+        //     scanner_parser->parse_next_token(*Current_token);
 
-        }
+       // }
 
         //build token vector here?
         if(Current_token->type == 279){
@@ -124,10 +144,13 @@ void scanner::ReadFile(){
 }
 
 
-void scanner::Get_token(){
+token scanner::Get_token(){
+    Current_token = new token;
+    token return_token;
     while(true){
         //breaks loop if end of file is reached
         if(source.eof()){
+            end_of_file = true;
             break;
         }
         current_char = next_char;
@@ -155,8 +178,20 @@ void scanner::Get_token(){
 
         }
         build_string = "";
-        break;
+        //if token is a valid token type it returns
+        if(Current_token->type!=0){
+            break;
+        }
+        //else the token is invalid and a new one is needed
+        else{
+            delete Current_token;
+            Current_token = new token;
+        }
     }
+    return_token = *Current_token;
+    delete Current_token;
+    return return_token;
+    //return *Current_token;
 }
 
 
@@ -273,6 +308,7 @@ void scanner::build_number_token(){
         current_char = next_char;
         //if end of the file breaks the loop
         if(source.eof()){
+            end_of_file = true;
             break;
         }
         //increments line counter if end of the line
@@ -311,6 +347,7 @@ void scanner::build_string_token(){
             current_line++;
         }
         if(source.eof()){
+            end_of_file = true;
             break;
         }
     }
@@ -375,6 +412,7 @@ void scanner::string_value_builder(){
         }
         if(source.eof() && quote_status){
             //no closing quotation mark;
+            end_of_file = true;
             error_detected = true;
             break;
         }

@@ -11,7 +11,7 @@
 #include "SymbolTable.h"
 #include "CustomFunctions.h"
 #include <cstdio>
-#include "parser.h"
+
 
 // struct Line_struct{
 //     std::string line_string;
@@ -38,7 +38,7 @@ class scanner{
     //checks to see whether token is an identifier or reserved word
     bool Is_Reserved_Word(std::string test_word);
     //stores the next token in Current_token
-    void Get_token();
+    token Get_token();
     //checks to see if is a reserved char
     bool Is_Reserved_Char(char test_char);
     //soley for quick tests
@@ -84,8 +84,10 @@ class scanner{
     //used to trigger debug statements
     bool debug = false;
 
+    bool end_of_file = false;
 
-    parser *scanner_parser;
+
+    //parser *scanner_parser;
 
 };
 

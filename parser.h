@@ -2,23 +2,38 @@
 #define PARSER_H
 #include "token.h"
 #include <iostream>
+#include <string>
+#include <vector>
+#include "scanner.h"
 
 
 class parser{
     public:
-    parser();
-    // parser(token parse_toke);
-    // void init_parser(token parse_token);
+    //parser();
+    parser(std::string parse_file);
+    token Get_Valid_Token();
     void start_parser(token first_token);
-    void parse_next_token(token next_token);
-    void detect_token();
-    void parse_program_header();
+    bool detect_token();
+
 
     token Current_parse_token;
-    token Previous_parse_token;
+    //token Previous_parse_token;
     int Current_parse_token_type;
-    bool error_detected = false;
+    bool no_errors = true;
     bool started_parsing = false;
+
+    scanner *Lexer;
+
+    std::string parse_file;
+
+    std::vector<std::string> error_reports;
+    void add_error_report(std::string error_report);
+    void generate_error_report(std::string error_message);
+    void print_errors();
+
+    bool parse_program_keyword();
+    bool parse_identifier();
+    bool parse_IS();
 
 
 };
