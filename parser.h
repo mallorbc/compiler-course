@@ -12,8 +12,6 @@ class parser{
     //parser();
     parser(std::string parse_file);
     token Get_Valid_Token();
-    void start_parser(token first_token);
-    bool detect_token();
 
 
     token Current_parse_token;
@@ -31,9 +29,18 @@ class parser{
     void generate_error_report(std::string error_message);
     void print_errors();
 
-    bool parse_program_keyword();
-    bool parse_identifier();
-    bool parse_IS();
+
+    bool parse_program();
+    bool parse_program_header();
+
+    bool parse_program_body();
+
+    bool parse_base_declaration();
+    bool parse_procedure_header();
+    bool parse_variable_declaration();
+    bool parse_type_declaration();
+    
+    bool parse_statement();
 
 
 };

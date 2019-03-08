@@ -60,7 +60,7 @@ class scanner{
 
 
     //tracks the current line; increments at the end of the line
-    int current_line;
+    int current_line = 1;
     //used to store the file name
     std::string FileName;
     //Creates an text input stream
