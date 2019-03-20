@@ -12,7 +12,7 @@ bool SymbolTable::init_reserved_words(){
     insert_stringValue("begin",T_BEGIN);
     insert_stringValue("end",T_END);
     insert_stringValue("global",T_GLOBAL);
-    insert_stringValue("procedure",T_PROCEDUIRE);
+    insert_stringValue("procedure",T_PROCEDURE);
     insert_stringValue("variable",T_VARIABLE);
     insert_stringValue("type",T_TYPE);
     insert_stringValue("integer",T_INTEGER_TYPE);

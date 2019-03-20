@@ -38,7 +38,12 @@ class parser{
     bool parse_base_declaration();
     bool parse_procedure_header();
     bool parse_variable_declaration();
+    
     bool parse_type_declaration();
+    bool parse_type_mark();
+
+    bool parse_parameter_list();
+    bool parse_parameter();
     
     bool parse_statement();
 

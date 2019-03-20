@@ -35,7 +35,7 @@ enum  token_type
  T_BEGIN = 262,
  T_END = 263,
  T_GLOBAL = 264,
- T_PROCEDUIRE = 265,
+ T_PROCEDURE = 265,
  T_VARIABLE = 266,
  T_TYPE = 267,
  T_INTEGER_TYPE = 268,
