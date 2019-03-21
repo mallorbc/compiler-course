@@ -1,6 +1,8 @@
 #include "parser.h"
 
 parser::parser(std::string file_to_parse){
+    //initalized the Current_parse_token type to 9999 as a flag to say that nothing has been loaded yet
+    Current_parse_token.type = 9999;
     bool valid_parse;
     parse_file = file_to_parse;
     Lexer = new scanner(parse_file);
@@ -24,10 +26,26 @@ parser::parser(std::string file_to_parse){
 }
 
 token parser::Get_Valid_Token(){
-    Current_parse_token = Lexer->Get_token();
-    Current_parse_token_type = Current_parse_token.type;
-    if(Current_parse_token.type == 0){
-        std::cout<<"Token type 0 detected"<<std::endl;
+    token first_token;
+    //if first token in the list;  may need a similar condition for the last token
+    if(Current_parse_token.type == 9999){
+        first_token = Lexer->Get_token();
+        Current_parse_token = Lexer->Get_token();
+        Look_ahead_tokens.push_back(Current_parse_token);
+        Current_parse_token = first_token;
+        Current_parse_token_type = Current_parse_token.type;
+        Next_parse_token = Look_ahead_tokens[0];
+        Next_parse_token_type = Next_parse_token.type;
+        
+    }
+    //if not the first token
+    else{
+        Current_parse_token = Look_ahead_tokens[0];
+        Current_parse_token_type = Current_parse_token.type;
+        Look_ahead_tokens.erase(Look_ahead_tokens.begin());
+        Look_ahead_tokens.push_back(Lexer->Get_token());
+        Next_parse_token = Look_ahead_tokens[0];
+        Next_parse_token_type = Next_parse_token.type;
     }
 
     return Current_parse_token;
@@ -52,7 +70,6 @@ void parser::print_errors(){
         std::cout<<error_reports[i]<<std::endl;
     }
 }
-
 
 
 bool parser::parse_program(){
@@ -156,23 +173,35 @@ bool parser::parse_procedure_header(){
     }
     Current_parse_token = Get_Valid_Token();
     if(Current_parse_token_type == T_LPARAM){
+        //If the procedure has no parameters
+        if(Next_parse_token_type == T_RPARAM){
+            Current_parse_token = Get_Valid_Token();
+        }
+        //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed.
+        else{
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_parameter_list();
+        if(valid_parse){
+            valid_parse = parse_procedure_body();
+        }
+        }
 
     }
     else{
         generate_error_report("Missing \"(\" needed to for procedure declaration");
         return false;
     }
-    Current_parse_token = Get_Valid_Token();
-    if(Current_parse_token_type == T_RPARAM){
+    //Current_parse_token = Get_Valid_Token();
 
-    }
     
-
-
     return valid_parse;
 
+}
+
+bool parser::parse_procedure_body(){
+    bool valid_parse;
+
+    return valid_parse;
 }
 
 bool parser::parse_type_mark(){
@@ -203,80 +232,59 @@ bool parser::parse_type_mark(){
         Current_parse_token = Get_Valid_Token();
         if(Current_parse_token_type == T_LBRACE){
             Current_parse_token = Get_Valid_Token();
-            if(Current_parse_token_type!=T_IDENTIFIER){
-                generate_error_report("Expected identifier as part of Enum");
-                return false;
-
-            }
-            else{
+            if(Current_parse_token_type == T_LBRACE){
                 Current_parse_token = Get_Valid_Token();
-                if(Current_parse_token_type == T_COMMA){
-                    bool identifier_needed = true;
-                    while(true){
-                        //expected an identifier and got an identifier, valid
-                        if(Current_parse_token_type == T_IDENTIFIER && identifier_needed){
-                            //generate code here?
-                            identifier_needed = false;
-
-                        }
-                        //expected a comma, got an identifier, throw an error
-                        else if(Current_parse_token_type == T_IDENTIFIER && !identifier_needed){
-                            generate_error_report("Expected a \",\", instead recieved a identifier");
-                            return false;
-                            
-                        }
-                        //expected a comma, got a comma, valid
-                        else if(Current_parse_token_type == T_COMMA && !identifier_needed){
-                            //generate code here?
-                            identifier_needed = true;
-                        }
-                        //expected an identifier, got a comma, throw an error
-                        else if(Current_parse_token_type == T_COMMA && identifier_needed){
-                            generate_error_report("Expected a \",\" or \"}\", recieved a repetead comma");
-                            return false;
-                        }
-                        //some other odd token was given
-                        else{
-                            if(identifier_needed){
-                                generate_error_report("Missing expected indentifier for entry in enumeration");
-                                return false;
-                            }
-                            else{
-                                generate_error_report("Expected \",\" for entry in enumeration");
-                                return false;
-                            }
-
-                        }
-                        Current_parse_token = Get_Valid_Token();
-                        if(Current_parse_token_type == T_RBRACE){
-                            //no trailing comma, right brace found, valid
-                            if(!identifier_needed){
-                                return true;
-                            }
-                            //trailing comma detected
-                            else{
-                                generate_error_report("Trailing comma detected before closing of enumeration");
-                                return false;
-
-                            }
-                        }
-
-                    }
-                }
-                //one identifier in the enuemeration, still valid
-                else if(Current_parse_token_type == T_RBRACE){
-                    valid_parse = true;
-
-                }
-                //invalid tokens inside an enumeration
-                else{
+                if(Current_parse_token_type!=T_IDENTIFIER){
+                    generate_error_report("Expected identifier as part of Enum");
                     return false;
                 }
+                else{
+                    Current_parse_token = Get_Valid_Token();
+                    //end of enumeration, contains one identifier
+                    if(Current_parse_token_type == T_RBRACE){
+                        valid_parse = true;
+                    }
+                    //else at least 2 identifiers exist in the enum
+                    else{
+                        //the first token has to be a comma
+                        if(Current_parse_token_type == T_COMMA){
+                            //The next token after a comma has to be an identifier
+                            if(Next_parse_token_type == T_IDENTIFIER){
+                                while(true){
+                                    Current_parse_token = Get_Valid_Token();
+                                    //if the next token after the identifer is a RBRACE, it is valid and end of the parse 
+                                    if(Next_parse_token_type == T_RBRACE){
+                                        Current_parse_token = Get_Valid_Token();
+                                        return true;
+                                    }
+                                    //else it better be a comma
+                                    else if(Next_parse_token_type == T_COMMA){
+                                        Current_parse_token = Get_Valid_Token();
+                                        //The current token is now a comma, so the next token needs to be an identifier
+                                        if(Next_parse_token_type!=T_IDENTIFIER){
+                                            generate_error_report("Missing expected identifier after comma in enumeration list");
+                                            return false;
+
+                                        }
+                                    }
+                                    //else it contains some other invalid token
+                                    else{
+                                        generate_error_report("Enumeration list must be either a comma or a identifier");
+                                        return false;
+
+                                    }
+
+                                }
+                            }
+
+                        }
+                        else{
+                            generate_error_report("Missing expected comma for list of enumerations");
+                            return false;
+                        }
+                    }
+                }
             }
-        }
-        else{
-            generate_error_report("Missing expected \"{\" to start enumeration");
-            return false;
         }
     }
     return valid_parse;
@@ -284,29 +292,24 @@ bool parser::parse_type_mark(){
 
 bool parser::parse_parameter_list(){
     bool valid_parse;
-    //if parameter list is empty
-    if(Current_parse_token_type == T_RPARAM){
-        valid_parse = true;
-    }
-    // else if()
-    //at least one parameter is passed
-    else{
-        bool parameter_needed = false;
-        while(true){
-            valid_parse = parse_parameter();
-            Current_parse_token = Get_Valid_Token();
-            if(Current_parse_token_type == T_RPARAM){
-                if(!parameter_needed){
-                    return true;
-                }
-                //trailing comma
-                else{
-                    generate_error_report("Extra trailing comma occuring in parameter list");
-                    return false;
-                }
-            }
 
-        }
+    valid_parse = parse_parameter();
+        // bool parameter_needed = false;
+        // while(true){
+        //     valid_parse = parse_parameter();
+        //     Current_parse_token = Get_Valid_Token();
+        //     if(Current_parse_token_type == T_RPARAM){
+        //         if(!parameter_needed){
+        //             return true;
+        //         }
+        //         //trailing comma
+        //         else{
+        //             generate_error_report("Extra trailing comma occuring in parameter list");
+        //             return false;
+        //         }
+        //     }
+
+        // }
         // valid_parse = parse_parameter();
         // Current_parse_token = Get_Valid_Token();
         // if(Current_parse_token_type == T_COMMA){
@@ -318,7 +321,6 @@ bool parser::parse_parameter_list(){
         //         }
         //     }
         // }
-    }
 
 
     return valid_parse;
@@ -327,9 +329,64 @@ bool parser::parse_parameter_list(){
 
 bool parser::parse_variable_declaration(){
     bool valid_parse;
+    if(Current_parse_token_type == T_IDENTIFIER){
+        Current_parse_token = Get_Valid_Token();
+    }
+    else{
+        generate_error_report("Missing identifier for variable declaration");
+        return false;
+    }
+    if(Current_parse_token_type == T_COLON){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_type_mark();
+        if(valid_parse){
+            Current_parse_token = Get_Valid_Token();
+            //checks for optional bracket to declare an array
+            if(Current_parse_token_type == T_LBRACKET){
+                Current_parse_token = Get_Valid_Token();
+                valid_parse = parse_bound();
+            }
+        }
+    }
+    else{
+        generate_error_report("Missing colon for delcaration of variable type");
+        return false;
+    }
+
 
     return valid_parse;
 
+}
+
+//definitely ask professor about this 
+bool parser::parse_bound(){
+    bool valid_parse;
+    //minus is an optional token
+
+    //minus is an optional token
+    // if(Current_parse_token_type == T_MINUS){
+    //     Current_parse_token = Get_Valid_Token();
+    //     //needs to check for a number here now
+    //     if(Current_parse_token_type == T_FLOAT_TYPE || Current_parse_token_type == T_INTEGER_TYPE){
+
+    //     }
+    //     // Isn't a number, resport an error
+    //     else{
+    //         generate_error_report("Missing needed number for bounded declaration");
+    //         return false;
+    //     }
+    // }
+    // //else it has to be a number
+    // else if(Current_parse_token_type == T_FLOAT_TYPE || Current_parse_token_type == T_INTEGER_TYPE){
+
+    // }
+    // //if not a - or a number, then it is an error
+    // else{
+    //     generate_error_report("Missing expected \"-\" or number for bounded declaration");
+    //     return false;
+    // }
+
+    return valid_parse;
 }
 
 bool parser::parse_type_declaration(){
@@ -348,4 +405,24 @@ bool parser::parse_statement(){
 bool parser::parse_parameter(){
     bool valid_parse;
     valid_parse = parse_variable_declaration();
+    return valid_parse;
+}
+
+bool parser::parse_number(){
+    bool valid_parse;
+    //the token will be either an integer or a float, or and error
+    if(Current_parse_token_type == T_INTEGER_TYPE){
+        valid_parse = true;
+        Current_parse_token = Get_Valid_Token();
+    }
+    else if(Current_parse_token_type == T_FLOAT_TYPE){
+        valid_parse = true;
+        Current_parse_token = Get_Valid_Token();
+    }
+    //not an integer, not a float, so is an error
+    else{
+        generate_error_report("Missing expected float or integer");
+        return false;
+
+    }
 }
