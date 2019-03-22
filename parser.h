@@ -45,16 +45,23 @@ class parser{
     bool parse_bound();
     bool parse_number();
 
-
+    //methods for parsing part of the procedures
     bool parse_procedure_header();
     bool parse_procedure_body();
 
+    //method for parsing type_mark which is used for type declarations
     bool parse_type_mark();
 
+    //methods used for parsing one or more parameters in a procedure declaration
     bool parse_parameter_list();
     bool parse_parameter();
-    
-    bool parse_statement();
+
+    //methods used for parsing statements
+    bool parse_base_statement();
+    bool parse_assignment_statement();
+    bool parse_if_statement();
+    bool parse_loop_statement();
+    bool parse_return_statement();
 
 
 };

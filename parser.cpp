@@ -107,7 +107,7 @@ bool parser::parse_program_header(){
 
 
 }
-
+//not done
 bool parser::parse_program_body(){
     bool valid_parse;
     //Current_parse_token = Get_Valid_Token();
@@ -115,6 +115,12 @@ bool parser::parse_program_body(){
         while(Current_parse_token_type!=T_BEGIN){
             //keeps parsing until keyword begin is found
             valid_parse = parse_base_declaration();
+            //Current_parse_token = Get_Valid_Token();
+            //after any declaration type you need a semicolon
+            if(Current_parse_token_type!=T_SEMICOLON){
+                generate_error_report("Missing \";\" to complete declaration");
+                return false;
+            }
             if(!valid_parse){
                 break;
             }
@@ -122,7 +128,7 @@ bool parser::parse_program_body(){
     }
     else{
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_statement();
+        valid_parse = parse_base_statement();
     }
     return valid_parse;
 }
@@ -150,6 +156,7 @@ bool parser::parse_base_declaration(){
         generate_error_report("Expected keywords \"procedure\",\"variable\", or \"type\" not found");
         return false;
     }
+    
     return valid_parse;
 
 }
@@ -175,13 +182,17 @@ bool parser::parse_procedure_header(){
     if(Current_parse_token_type == T_LPARAM){
         //If the procedure has no parameters
         if(Next_parse_token_type == T_RPARAM){
+            //sets valid_parse to true to allow parsing of procedure body
+            valid_parse = true;
             Current_parse_token = Get_Valid_Token();
         }
-        //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed.
+        //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed. Or errors which will be detected later
         else{
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_parameter_list();
+        //this if statement may not be needed
         if(valid_parse){
+            Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_body();
         }
         }
@@ -198,8 +209,28 @@ bool parser::parse_procedure_header(){
 
 }
 
+//likely will need debugging due to while loop
 bool parser::parse_procedure_body(){
     bool valid_parse;
+    //must be able to parse declarations until T_BEGIN is found
+    while(Current_parse_token_type!=T_BEGIN){
+        valid_parse = parse_base_declaration();
+        //after every declaration there needds to be a semicolon
+        if(Current_parse_token_type!=T_SEMICOLON){
+            generate_error_report("Missing \";\" needed to end a declaration");
+            return false;
+        }
+        else{
+            Current_parse_token = Get_Valid_Token();
+            if(Current_parse_token_type == T_BEGIN){
+                Current_parse_token = Get_Valid_Token();
+                break;
+            }
+        }
+
+    }
+    valid_parse = parse_statement();
+
 
     return valid_parse;
 }
@@ -208,24 +239,24 @@ bool parser::parse_type_mark(){
     bool valid_parse;
     //May need to do something once the type is determined
     if(Current_parse_token_type == T_INTEGER_TYPE){
-        
+        Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     else if(Current_parse_token_type == T_FLOAT_TYPE){
-
+        Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     else if(Current_parse_token_type == T_STRING_TYPE){
-
+        Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     else if(Current_parse_token_type == T_BOOL_TYPE){
-
+        Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //I think this means that the this will be the same type as the identifier
     else if(Current_parse_token_type == T_IDENTIFIER){
-
+        Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     else if(Current_parse_token_type == T_ENUM){
@@ -290,10 +321,35 @@ bool parser::parse_type_mark(){
     return valid_parse;
 }
 
+//likely won't work on the first try
 bool parser::parse_parameter_list(){
     bool valid_parse;
 
     valid_parse = parse_parameter();
+    //if no errors from parsing the parameter
+    if(valid_parse){
+        Current_parse_token = Get_Valid_Token();
+        ///meaning that there are more parameters
+        if(Current_parse_token_type == T_COMMA){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_parameter_list();
+
+        }
+        //there are no more parameters to parse
+        else if(Current_parse_token_type == T_RPARAM){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = true;
+
+        }
+        //an invalid token was detected
+        else{
+            generate_error_report("Missing expected comma or parameter");
+            return false;
+
+        }
+        
+
+    }
         // bool parameter_needed = false;
         // while(true){
         //     valid_parse = parse_parameter();
@@ -362,41 +418,38 @@ bool parser::parse_variable_declaration(){
 bool parser::parse_bound(){
     bool valid_parse;
     //minus is an optional token
-
-    //minus is an optional token
-    // if(Current_parse_token_type == T_MINUS){
-    //     Current_parse_token = Get_Valid_Token();
-    //     //needs to check for a number here now
-    //     if(Current_parse_token_type == T_FLOAT_TYPE || Current_parse_token_type == T_INTEGER_TYPE){
-
-    //     }
-    //     // Isn't a number, resport an error
-    //     else{
-    //         generate_error_report("Missing needed number for bounded declaration");
-    //         return false;
-    //     }
-    // }
-    // //else it has to be a number
-    // else if(Current_parse_token_type == T_FLOAT_TYPE || Current_parse_token_type == T_INTEGER_TYPE){
-
-    // }
-    // //if not a - or a number, then it is an error
-    // else{
-    //     generate_error_report("Missing expected \"-\" or number for bounded declaration");
-    //     return false;
-    // }
+    if(Current_parse_token_type == T_MINUS){
+        Current_parse_token = Get_Valid_Token();
+    }
+    valid_parse = parse_number();
 
     return valid_parse;
 }
 
 bool parser::parse_type_declaration(){
     bool valid_parse;
+    //T_TYPE has already been parsed;  May need changed in the future
+    if(Current_parse_token_type == T_IDENTIFIER){
+        Current_parse_token = Get_Valid_Token();
+    }
+    else{
+        generate_error_report("Missing required identifier for type declaration");
+        return false;
+    }
+    if(Current_parse_token_type == T_IS){
+        Current_parse_token = Get_Valid_Token();
+    }
+    else{
+        generate_error_report("Missing required \"is\" for type declaration");
+        return false;
+    }
+    valid_parse = parse_type_mark();
 
     return valid_parse;
 
 }
 
-bool parser::parse_statement(){
+bool parser::parse_base_statement(){
     bool valid_parse;
 
     return valid_parse;
