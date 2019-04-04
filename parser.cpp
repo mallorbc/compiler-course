@@ -1,5 +1,5 @@
 #include "parser.h"
-
+//ready for testing
 parser::parser(std::string file_to_parse){
     //initalized the Current_parse_token type to 9999 as a flag to say that nothing has been loaded yet
     Current_parse_token.type = 9999;
@@ -24,7 +24,7 @@ parser::parser(std::string file_to_parse){
     print_errors();
 
 }
-
+//ready for testing
 token parser::Get_Valid_Token(){
     token first_token;
     //if first token in the list;  may need a similar condition for the last token
@@ -53,11 +53,12 @@ token parser::Get_Valid_Token(){
 
 
 
-
+//ready for testing
 void parser::add_error_report(std::string error_report){
     error_reports.push_back(error_report);
 }
 
+//ready for testing
 void parser::generate_error_report(std::string error_message){
     std::string full_error_message = "";
     full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ':';
@@ -65,19 +66,21 @@ void parser::generate_error_report(std::string error_message){
     add_error_report(full_error_message);
 }
 
+//ready for testing
 void parser::print_errors(){
     for(int i = 0; i < error_reports.size(); i++){
         std::cout<<error_reports[i]<<std::endl;
     }
 }
 
-
+//ready for testing
 bool parser::parse_program(){
     bool valid_parse;
     valid_parse = parse_program_header();
     return valid_parse;
 }
 
+//ready for testing
 bool parser::parse_program_header(){
     bool valid_parse;
     Current_parse_token = Get_Valid_Token();
@@ -107,7 +110,8 @@ bool parser::parse_program_header(){
 
 
 }
-//not done
+
+//ready to test
 bool parser::parse_program_body(){
     bool valid_parse;
     //Current_parse_token = Get_Valid_Token();
@@ -122,17 +126,35 @@ bool parser::parse_program_body(){
                 return false;
             }
             if(!valid_parse){
-                break;
+                break;  
             }
+
         }
     }
     else{
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_base_statement();
+        //the program body ends with "end program"
+        //statements are technically optional
+        while(Current_parse_token_type!=T_END && Next_parse_token_type!=T_PROGRAM){
+            valid_parse = parse_base_statement();
+            if(Current_parse_token_type!=T_SEMICOLON){
+                generate_error_report("Missing \";\" to complete statement");
+                return false;
+            }
+            if(!valid_parse){
+                break;
+            }
+            //tokens "end" and "program" needed to end the program
+            if(Current_parse_token_type == T_END && Next_parse_token_type == T_PROGRAM){
+                break;
+            }
+        }
+        //valid_parse = parse_base_statement();
     }
     return valid_parse;
 }
 
+//ready to test
 bool parser::parse_base_declaration(){
     bool valid_parse;
     if(Current_parse_token_type == T_GLOBAL){
@@ -161,6 +183,8 @@ bool parser::parse_base_declaration(){
 
 }
 
+//ready to test
+//the token procedure is used to enter this function
 bool parser::parse_procedure_header(){
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -179,6 +203,7 @@ bool parser::parse_procedure_header(){
         return false;
     }
     Current_parse_token = Get_Valid_Token();
+    //must have left and right paretheses, parameters are optional
     if(Current_parse_token_type == T_LPARAM){
         //If the procedure has no parameters
         if(Next_parse_token_type == T_RPARAM){
@@ -198,24 +223,25 @@ bool parser::parse_procedure_header(){
         }
 
     }
+    //must have left and right paretheses, parameters are optional
     else{
         generate_error_report("Missing \"(\" needed to for procedure declaration");
         return false;
     }
     //Current_parse_token = Get_Valid_Token();
 
-    
     return valid_parse;
 
 }
 
 //likely will need debugging due to while loop
+//ready to test
 bool parser::parse_procedure_body(){
     bool valid_parse;
     //must be able to parse declarations until T_BEGIN is found
     while(Current_parse_token_type!=T_BEGIN){
         valid_parse = parse_base_declaration();
-        //after every declaration there needds to be a semicolon
+        //after every declaration there has to be a semicolon
         if(Current_parse_token_type!=T_SEMICOLON){
             generate_error_report("Missing \";\" needed to end a declaration");
             return false;
@@ -229,12 +255,13 @@ bool parser::parse_procedure_body(){
         }
 
     }
-    valid_parse = parse_statement();
-
+    //after doen parsing any and all declarations, must start parsing statements
+    valid_parse = parse_base_statement();
 
     return valid_parse;
 }
 
+//ready to test
 bool parser::parse_type_mark(){
     bool valid_parse;
     //May need to do something once the type is determined
@@ -322,6 +349,7 @@ bool parser::parse_type_mark(){
 }
 
 //likely won't work on the first try
+//ready to test
 bool parser::parse_parameter_list(){
     bool valid_parse;
 
@@ -383,6 +411,8 @@ bool parser::parse_parameter_list(){
 
 }
 
+//variable token is consumed to enter this function
+//ready to test
 bool parser::parse_variable_declaration(){
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -415,6 +445,7 @@ bool parser::parse_variable_declaration(){
 }
 
 //definitely ask professor about this 
+//ready to test
 bool parser::parse_bound(){
     bool valid_parse;
     //minus is an optional token
@@ -426,6 +457,8 @@ bool parser::parse_bound(){
     return valid_parse;
 }
 
+//token type is consumed to enter this function
+//ready test
 bool parser::parse_type_declaration(){
     bool valid_parse;
     //T_TYPE has already been parsed;  May need changed in the future
@@ -449,18 +482,38 @@ bool parser::parse_type_declaration(){
 
 }
 
+//not done
 bool parser::parse_base_statement(){
     bool valid_parse;
+    //an identifier means it will be an assignment statement
+    if(Current_parse_token_type == T_IDENTIFIER){
+        valid_parse = parse_assignment_statement();
+    }
+    else if(Current_parse_token_type == T_IF){
+        valid_parse = parse_if_statement();
+    }
+    else if(Current_parse_token_type == T_FOR){
+        valid_parse = parse_loop_statement();
+    }
+    else if(Current_parse_token_type == T_RETURN){
+        valid_parse = parse_return_statement();
+    }
+    else{
+        generate_error_report("Invalid statmentl; Not an assignment, if, loop, or return");
+        return false;
+    }
 
     return valid_parse;
 }
 
+//ready to test
 bool parser::parse_parameter(){
     bool valid_parse;
     valid_parse = parse_variable_declaration();
     return valid_parse;
 }
 
+//ready to test
 bool parser::parse_number(){
     bool valid_parse;
     //the token will be either an integer or a float, or and error
