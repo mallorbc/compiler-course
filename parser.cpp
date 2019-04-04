@@ -531,4 +531,33 @@ bool parser::parse_number(){
         return false;
 
     }
+    return valid_parse;
+}
+
+//not done
+bool parser::parse_assignment_statement(){
+    bool valid_parse;
+
+    return valid_parse;
+}
+
+//not done
+bool parser::parse_if_statement(){
+    bool valid_parse;
+
+    return valid_parse;
+}
+
+//not done
+bool parser::parse_loop_statement(){
+    bool valid_parse;
+
+    return valid_parse;
+}
+
+//not done
+bool parser::parse_return_statement(){
+    bool valid_parse;
+
+    return valid_parse;
 }
