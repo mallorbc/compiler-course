@@ -58,10 +58,15 @@ class parser{
 
     //methods used for parsing statements
     bool parse_base_statement();
+
     bool parse_assignment_statement();
+    bool parse_assignment_destination();
+
     bool parse_if_statement();
     bool parse_loop_statement();
     bool parse_return_statement();
+
+    bool parse_expression();
 
 
 };

@@ -487,15 +487,19 @@ bool parser::parse_base_statement(){
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if(Current_parse_token_type == T_IDENTIFIER){
+        //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
     }
     else if(Current_parse_token_type == T_IF){
+        Current_parse_token = Get_Valid_Token();
         valid_parse = parse_if_statement();
     }
     else if(Current_parse_token_type == T_FOR){
+        Current_parse_token = Get_Valid_Token();
         valid_parse = parse_loop_statement();
     }
     else if(Current_parse_token_type == T_RETURN){
+        Current_parse_token = Get_Valid_Token();
         valid_parse = parse_return_statement();
     }
     else{
@@ -534,16 +538,73 @@ bool parser::parse_number(){
     return valid_parse;
 }
 
-//not done
+//ready to test
+//already parsed an identifier token
 bool parser::parse_assignment_statement(){
     bool valid_parse;
+    Current_parse_token = Get_Valid_Token();
+    valid_parse = parse_assignment_destination();
+    if(valid_parse){
+        if(Current_parse_token_type == T_COLON){
+            Current_parse_token = Get_Valid_Token();
+        }
+        if(Current_parse_token_type == T_ASSIGN){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_expression();
+        }
+
+    }
+    //not a valid parse from parse assignment_destination
+    else{
+        return valid_parse;
+
+    }
 
     return valid_parse;
 }
 
 //not done
+//consumes if token before parsing
 bool parser::parse_if_statement(){
     bool valid_parse;
+    if(Current_parse_token_type == T_LPARAM){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_expression();
+        if(Current_parse_token_type == T_RPARAM){
+            Current_parse_token = Get_Valid_Token();
+            if(Current_parse_token_type == T_THEN){
+                Current_parse_token = Get_Valid_Token();
+                if(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
+                    while(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
+                        valid_parse = parse_base_statement();
+                        //required to have semicolon after parsing a statement
+                        if(Current_parse_token_type!=T_SEMICOLON){
+                            generate_error_report("Missing require \";\" after statement");
+                            return false;
+                        }
+                        //else is a semicolon
+                        else{
+
+                        }
+                    }
+                }
+            }
+            else{
+                generate_error_report("Missing expected keyword \"then\" for if statements");
+                return false;
+
+            }
+        }
+        else{
+            generate_error_report("Missing \")\" expected for if statment");
+            return false;
+        }
+    }
+    else{
+        generate_error_report("Missing \"(\" expected for if statment");
+        return false;
+    }
+
 
     return valid_parse;
 }
@@ -559,5 +620,42 @@ bool parser::parse_loop_statement(){
 bool parser::parse_return_statement(){
     bool valid_parse;
 
+    return valid_parse;
+}
+
+
+//ready to test
+//already consumes identifier before parsing
+bool parser::parse_assignment_destination(){
+    bool valid_parse;
+    //this means that the optional bracketed expression should exist
+    if(Current_parse_token_type == T_LBRACKET){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_expression();
+        //after parsing the expression, it should have a right bracket
+        if(Current_parse_token_type == T_RBRACKET){
+            Current_parse_token = Get_Valid_Token();
+
+        }
+        //required right bracket missing
+        else{
+            generate_error_report("Missing closing right bracket to the identifier expression");
+            return false;
+
+        }
+    }
+    //optional bracket not there
+    else{
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = true;
+
+    }
+    return valid_parse;
+}
+
+//not done
+bool parser::parse_expression(){
+    bool valid_parse;
+    
     return valid_parse;
 }
