@@ -563,7 +563,7 @@ bool parser::parse_assignment_statement(){
     return valid_parse;
 }
 
-//not done
+//ready for testing
 //consumes if token before parsing
 bool parser::parse_if_statement(){
     bool valid_parse;
@@ -587,6 +587,37 @@ bool parser::parse_if_statement(){
 
                         }
                     }
+                    if(Current_parse_token_type == T_ELSE){
+                        Current_parse_token = Get_Valid_Token();
+                        while(Current_parse_token_type!=T_END){
+                            valid_parse = parse_base_statement();
+                            //required to have a semicolon after parsing a statement
+                            if(Current_parse_token_type!=T_SEMICOLON){
+                                generate_error_report("Missing require \";\" after statement");
+                                return false;
+                            }
+                            //else is a semicolon
+                            else{
+
+                            }
+                        }
+                        if(Current_parse_token_type == T_END){
+                            Current_parse_token = Get_Valid_Token();
+
+                        }
+                        else{
+                            generate_error_report("Missing expected keyword \"end\" for end of statement");
+                            return false;
+                        }
+                        if(Current_parse_token_type == T_IF){
+                            Current_parse_token = Get_Valid_Token();
+                        }
+                        else{
+                            generate_error_report("Missing expected keyword \"if\" for end of statement");
+                            return false;
+                        }
+                        
+                    }
                 }
             }
             else{
@@ -609,17 +640,80 @@ bool parser::parse_if_statement(){
     return valid_parse;
 }
 
-//not done
+
+//ready to test
+//consumes for token before entering this function
 bool parser::parse_loop_statement(){
     bool valid_parse;
+    if(Current_parse_token_type == T_LPARAM){
+        //grabs what should be an identifier
+        Current_parse_token = Get_Valid_Token();   
+    }
+    //needs to consume an identifier before parsing the assignment declaration
+    if(Current_parse_token_type!=T_IDENTIFIER){
+        valid_parse = parse_assignment_statement();
+        Current_parse_token = Get_Valid_Token();
+    }
+    //missing required identifier for an assignment statement
+    else{
+        generate_error_report("Missing expeceted identifier for assignment statement");
+        return false;
+    }
+    //required semicolon after assignment statement
+    if(Current_parse_token_type == T_SEMICOLON){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_expression();
+        if(!valid_parse){
+            generate_error_report("Missing expected expression for loop");
+            return false;
+        }
+        else{
+            Current_parse_token = Get_Valid_Token();
+        }
+    }
+    Current_parse_token = Get_Valid_Token();
+    if(Current_parse_token_type == T_RPARAM){
+        Current_parse_token = Get_Valid_Token();
+        while(Current_parse_token_type!=T_END){
+            valid_parse = parse_base_statement();
+            if(!valid_parse){
+                generate_error_report("Missing expected valid statement inside for loop");
+                return false;
+            }
+            else{
+                Current_parse_token = Get_Valid_Token();
+                if(Current_parse_token_type==T_SEMICOLON){
+                    Current_parse_token = Get_Valid_Token();
+                }
+                else{
+                    generate_error_report("Missing expected \";\" at the end of a statement");
+                }
+            }
+        }
+        if(Current_parse_token_type == T_END){
+            Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            generate_error_report("Missing expected keyword \"end\" for end of statement");
+            return false;
+        }
+        if(Current_parse_token_type == T_FOR){
+            Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            generate_error_report("Missing expected keyword \"for\" for end of statement");
+            return false;
+        }
+    }
 
     return valid_parse;
 }
 
-//not done
+//ready to test
+//consumes return token before entering function
 bool parser::parse_return_statement(){
     bool valid_parse;
-
+    valid_parse = parse_expression();
     return valid_parse;
 }
 
@@ -653,9 +747,32 @@ bool parser::parse_assignment_destination(){
     return valid_parse;
 }
 
-//not done
+//not done; Looks very hard
+//doesn't consume anything before entering this function
 bool parser::parse_expression(){
     bool valid_parse;
+    Current_parse_token = Get_Valid_Token();
+    //if starts with not token, the next thing is arithOp
+    if(Current_parse_token_type==T_NOT){
+        Current_parse_token = Get_Valid_Token();
+
+    }
+    else{
+
+    }
+
     
+    return valid_parse;
+}
+
+bool parser::parse_name(){
+    bool valid_parse;
+
+    return valid_parse;
+}
+
+bool parser::parse_argument_list(){
+    bool valid_parse;
+
     return valid_parse;
 }

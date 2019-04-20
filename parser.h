@@ -42,8 +42,7 @@ class parser{
     bool parse_variable_declaration();
     bool parse_type_declaration();
 
-    bool parse_bound();
-    bool parse_number();
+
 
     //methods for parsing part of the procedures
     bool parse_procedure_header();
@@ -67,6 +66,13 @@ class parser{
     bool parse_return_statement();
 
     bool parse_expression();
+    //HAS BEEN UPDATED IN THE SPEC
+    bool parse_bound();
+    bool parse_number();
+    bool parse_name();
+
+    bool parse_argument_list();
+    
 
 
 };
