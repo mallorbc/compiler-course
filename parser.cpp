@@ -784,7 +784,7 @@ bool parser::parse_expression(){
 //all arithOps can be thought to starts with relations?
 bool parser::parse_arithOp(){
     bool valid_parse;
-    Current_parse_token = Get_Valid_Token();
+    //Current_parse_token = Get_Valid_Token();
     valid_parse = parse_relation();
     //meaning that this is <arithOp>+<relation> rather than just <relation>
     if(Current_parse_token_type == T_PLUS){
@@ -805,12 +805,66 @@ bool parser::parse_arithOp(){
     return valid_parse;
 }
 
+//not done; Looks very hard
+//consumes a token before entering this function
+//all arithOps can be thought to starts with terms?
 bool parser::parse_relation(){
     bool valid_parse;
+    
+    if(Current_parse_token_type == T_LESS){
+        Current_parse_token = Get_Valid_Token();
+        //meaning less than or equal to
+        if(Current_parse_token_type == T_ASSIGN){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_term();
+        }
+        //else just less than
+        else{
+            valid_parse = parse_term();
+        }
+        
+    }
+    else if(Current_parse_token_type == T_GREATER){
+        if(Current_parse_token_type == T_ASSIGN){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_term();
+        }
+        //else just greateer than
+        else{
+            valid_parse = parse_term();
+        }
+
+    }
+    else if(Current_parse_token_type == T_ASSIGN){
+        Current_parse_token = Get_Valid_Token();
+        if(Current_parse_token_type!=T_ASSIGN){
+            generate_error_report("\"=\" is not a valid relational operator");
+            return false;
+        }
+        else{
+            valid_parse = parse_term();
+        }
+    }
+    else if(Current_parse_token_type = T_EXCLAM){
+        Current_parse_token = Get_Valid_Token();
+        if(Current_parse_token_type!=T_ASSIGN){
+            generate_error_report("Invalid relational operator detected");
+        }
+    }
+    //else something else not expected
+    else{
+
+    }
 
     return valid_parse;
 }
 
+bool parser::parse_term(){
+    bool valid_parse;
+
+
+    return valid_parse;
+}
 bool parser::parse_name(){
     bool valid_parse;
 
