@@ -66,7 +66,9 @@ class parser{
     bool parse_return_statement();
 
     bool parse_expression();
-    //HAS BEEN UPDATED IN THE SPEC
+    bool parse_arithOp();
+    bool parse_relation();
+    //HAS BEEN UPDATED IN THE SPEC; NEEDS UPDATED
     bool parse_bound();
     bool parse_number();
     bool parse_name();

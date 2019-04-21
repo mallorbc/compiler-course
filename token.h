@@ -25,6 +25,8 @@ enum  token_type
  T_QUOTE = '"',
  T_EXCLAM = '!',
  T_COLON = ':',
+ T_VERTICAL_BAR = '|',
+ T_AMPERSAND = '&',
 
 //finish adding reserved words
  T_FOR = 257,

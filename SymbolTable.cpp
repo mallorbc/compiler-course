@@ -82,6 +82,8 @@ bool SymbolTable::init_reserved_chars(){
     insert_char_table('!',T_EXCLAM);
     insert_char_table(';',T_SEMICOLON);
     insert_char_table(':',T_COLON);
+    insert_char_table('|',T_VERTICAL_BAR);
+    insert_char_table('&',T_AMPERSAND);
 
     return 1;
 }

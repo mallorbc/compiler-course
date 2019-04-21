@@ -713,6 +713,7 @@ bool parser::parse_loop_statement(){
 //consumes return token before entering function
 bool parser::parse_return_statement(){
     bool valid_parse;
+    Current_parse_token = Get_Valid_Token();
     valid_parse = parse_expression();
     return valid_parse;
 }
@@ -748,20 +749,65 @@ bool parser::parse_assignment_destination(){
 }
 
 //not done; Looks very hard
-//doesn't consume anything before entering this function
+//consumes a token before entering this function
+//all expressions start be thought to start with a ArithOp?
 bool parser::parse_expression(){
     bool valid_parse;
-    Current_parse_token = Get_Valid_Token();
     //if starts with not token, the next thing is arithOp
-    if(Current_parse_token_type==T_NOT){
+    if(Current_parse_token_type == T_NOT){
         Current_parse_token = Get_Valid_Token();
-
     }
+    else{
+        valid_parse = parse_arithOp();
+    }
+    //meaning that this is <expression>&<arithOp> rather than just <arithOp>
+    if(Current_parse_token_type == T_AMPERSAND){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    //meaning that this is <expression>|<arithOp> rather than just <arithOp>
+    else if(Current_parse_token_type == T_VERTICAL_BAR){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    //else it was just an <arithOp>
     else{
 
     }
 
     
+    return valid_parse;
+}
+
+//not done; Looks very hard
+//consumes a token before entering this function
+//all arithOps can be thought to starts with relations?
+bool parser::parse_arithOp(){
+    bool valid_parse;
+    Current_parse_token = Get_Valid_Token();
+    valid_parse = parse_relation();
+    //meaning that this is <arithOp>+<relation> rather than just <relation>
+    if(Current_parse_token_type == T_PLUS){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
+    }
+    //meaning that this is <arithOp>-<relation> rather than just <relation>
+    else if(Current_parse_token_type == T_MINUS){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
+    }
+    //else if was just a <relation>
+    else{
+
+    }
+
+    
+    return valid_parse;
+}
+
+bool parser::parse_relation(){
+    bool valid_parse;
+
     return valid_parse;
 }
 
