@@ -9,6 +9,7 @@
 
 class parser{
     public:
+    bool debugging = true;
     //constructors for the parser
     parser(std::string parse_file);
 
@@ -69,12 +70,15 @@ class parser{
     bool parse_arithOp();
     bool parse_relation();
     bool parse_term();
+    bool parse_factor();
     //HAS BEEN UPDATED IN THE SPEC; NEEDS UPDATED
     bool parse_bound();
     bool parse_number();
     bool parse_name();
 
     bool parse_argument_list();
+
+    bool parse_procedure_call();
     
 
 

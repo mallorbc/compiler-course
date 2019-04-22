@@ -24,7 +24,7 @@ parser::parser(std::string file_to_parse){
     print_errors();
 
 }
-//ready for testing
+//ready for testing; May have issues at the end of the program
 token parser::Get_Valid_Token(){
     token first_token;
     //if first token in the list;  may need a similar condition for the last token
@@ -77,6 +77,9 @@ void parser::print_errors(){
 bool parser::parse_program(){
     bool valid_parse;
     valid_parse = parse_program_header();
+    if(debugging && !valid_parse){
+        std::cout<<"parser failed on parse_proram()"<<std::endl;
+    }
     return valid_parse;
 }
 
@@ -89,6 +92,9 @@ bool parser::parse_program_header(){
     }
     else{
         generate_error_report("Expected keyword \"Program\" not found");
+        if(debugging){
+            std::cout<<"parser failed on parse_program_header()"<<std::endl;
+        }
         return false;
     }
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -96,6 +102,9 @@ bool parser::parse_program_header(){
     }
     else{
         generate_error_report("Expected \"identifier\" not found");
+        if(debugging){
+            std::cout<<"parser failed on parse_program_header()"<<std::endl;
+        }
         return false;
     }  
     if(Current_parse_token_type == T_IS){
@@ -103,6 +112,9 @@ bool parser::parse_program_header(){
     }
     else{
         generate_error_report("Expected keyword \"is\" is not found");
+        if(debugging){
+            std::cout<<"parser failed on parse_program_header()"<<std::endl;
+        }
         return false;
     }
     valid_parse = parse_program_body();
@@ -122,12 +134,17 @@ bool parser::parse_program_body(){
             //Current_parse_token = Get_Valid_Token();
             //after any declaration type you need a semicolon
             if(Current_parse_token_type!=T_SEMICOLON){
+                if(debugging){
+                    std::cout<<"parser failed on parse_program_body()"<<std::endl;
+                 }
                 generate_error_report("Missing \";\" to complete declaration");
                 return false;
             }
             if(!valid_parse){
                 break;  
             }
+            //ADDED ON 4/21
+            Current_parse_token = Get_Valid_Token();
 
         }
     }
@@ -138,10 +155,16 @@ bool parser::parse_program_body(){
         while(Current_parse_token_type!=T_END && Next_parse_token_type!=T_PROGRAM){
             valid_parse = parse_base_statement();
             if(Current_parse_token_type!=T_SEMICOLON){
+                if(debugging){
+                    std::cout<<"parser failed on parse_program_body()"<<std::endl;
+                 }
                 generate_error_report("Missing \";\" to complete statement");
                 return false;
             }
             if(!valid_parse){
+                if(debugging){
+                    std::cout<<"parser failed on parse_program_body()"<<std::endl;
+                 }
                 break;
             }
             //tokens "end" and "program" needed to end the program
@@ -175,6 +198,9 @@ bool parser::parse_base_declaration(){
         valid_parse = parse_type_declaration();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_base_declaration()"<<std::endl;
+        }
         generate_error_report("Expected keywords \"procedure\",\"variable\", or \"type\" not found");
         return false;
     }
@@ -191,6 +217,9 @@ bool parser::parse_procedure_header(){
         Current_parse_token = Get_Valid_Token();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_procedure_header()"<<std::endl;
+        }
         generate_error_report("Procedure must be named a valid identifier");
         return false;
     }
@@ -225,6 +254,9 @@ bool parser::parse_procedure_header(){
     }
     //must have left and right paretheses, parameters are optional
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_procedure_header()"<<std::endl;
+        }
         generate_error_report("Missing \"(\" needed to for procedure declaration");
         return false;
     }
@@ -243,6 +275,9 @@ bool parser::parse_procedure_body(){
         valid_parse = parse_base_declaration();
         //after every declaration there has to be a semicolon
         if(Current_parse_token_type!=T_SEMICOLON){
+            if(debugging){
+                std::cout<<"parser failed on parse_procedure_body()"<<std::endl;
+            }
             generate_error_report("Missing \";\" needed to end a declaration");
             return false;
         }
@@ -294,6 +329,9 @@ bool parser::parse_type_mark(){
                 Current_parse_token = Get_Valid_Token();
                 if(Current_parse_token_type!=T_IDENTIFIER){
                     generate_error_report("Expected identifier as part of Enum");
+                    if(debugging){
+                        std::cout<<"parser failed on parse_type_mark()"<<std::endl;
+                    }
                     return false;
                 }
                 else{
@@ -320,6 +358,9 @@ bool parser::parse_type_mark(){
                                         Current_parse_token = Get_Valid_Token();
                                         //The current token is now a comma, so the next token needs to be an identifier
                                         if(Next_parse_token_type!=T_IDENTIFIER){
+                                            if(debugging){
+                                                std::cout<<"parser failed on parse_type_mark()"<<std::endl;
+                                            }
                                             generate_error_report("Missing expected identifier after comma in enumeration list");
                                             return false;
 
@@ -327,6 +368,9 @@ bool parser::parse_type_mark(){
                                     }
                                     //else it contains some other invalid token
                                     else{
+                                        if(debugging){
+                                            std::cout<<"parser failed on parse_type_mark()"<<std::endl;
+                                        }
                                         generate_error_report("Enumeration list must be either a comma or a identifier");
                                         return false;
 
@@ -337,6 +381,9 @@ bool parser::parse_type_mark(){
 
                         }
                         else{
+                            if(debugging){
+                                std::cout<<"parser failed on parse_type_mark()"<<std::endl;
+                            }
                             generate_error_report("Missing expected comma for list of enumerations");
                             return false;
                         }
@@ -371,6 +418,9 @@ bool parser::parse_parameter_list(){
         }
         //an invalid token was detected
         else{
+            if(debugging){
+                std::cout<<"parser failed on parse_parameter_list()"<<std::endl;
+            }
             generate_error_report("Missing expected comma or parameter");
             return false;
 
@@ -419,6 +469,9 @@ bool parser::parse_variable_declaration(){
         Current_parse_token = Get_Valid_Token();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_variable_declaration()"<<std::endl;
+        }
         generate_error_report("Missing identifier for variable declaration");
         return false;
     }
@@ -426,15 +479,21 @@ bool parser::parse_variable_declaration(){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_type_mark();
         if(valid_parse){
-            Current_parse_token = Get_Valid_Token();
+            //COMMENTED OUT 4/21/19
+            //Current_parse_token = Get_Valid_Token();
             //checks for optional bracket to declare an array
-            if(Current_parse_token_type == T_LBRACKET){
+            if(Next_parse_token_type == T_LBRACKET){
+                Current_parse_token = Get_Valid_Token();
+                //ADDED ON 4/21/19
                 Current_parse_token = Get_Valid_Token();
                 valid_parse = parse_bound();
             }
         }
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_variable_declaration()"<<std::endl;
+        }
         generate_error_report("Missing colon for delcaration of variable type");
         return false;
     }
@@ -444,7 +503,7 @@ bool parser::parse_variable_declaration(){
 
 }
 
-//definitely ask professor about this 
+//SPEC WAS UPDATED, UPDATE THIS
 //ready to test
 bool parser::parse_bound(){
     bool valid_parse;
@@ -466,6 +525,9 @@ bool parser::parse_type_declaration(){
         Current_parse_token = Get_Valid_Token();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_type_declaration()"<<std::endl;
+        }
         generate_error_report("Missing required identifier for type declaration");
         return false;
     }
@@ -473,6 +535,9 @@ bool parser::parse_type_declaration(){
         Current_parse_token = Get_Valid_Token();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_type_declaration()"<<std::endl;
+        }
         generate_error_report("Missing required \"is\" for type declaration");
         return false;
     }
@@ -503,6 +568,9 @@ bool parser::parse_base_statement(){
         valid_parse = parse_return_statement();
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_base_statement()"<<std::endl;
+        }
         generate_error_report("Invalid statmentl; Not an assignment, if, loop, or return");
         return false;
     }
@@ -531,6 +599,9 @@ bool parser::parse_number(){
     }
     //not an integer, not a float, so is an error
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_number()"<<std::endl;
+        }
         generate_error_report("Missing expected float or integer");
         return false;
 
@@ -556,6 +627,7 @@ bool parser::parse_assignment_statement(){
     }
     //not a valid parse from parse assignment_destination
     else{
+        std::cout<<"parser failed on parse_assignment_statement()"<<std::endl;
         return valid_parse;
 
     }
@@ -579,6 +651,9 @@ bool parser::parse_if_statement(){
                         valid_parse = parse_base_statement();
                         //required to have semicolon after parsing a statement
                         if(Current_parse_token_type!=T_SEMICOLON){
+                            if(debugging){
+                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+                            }
                             generate_error_report("Missing require \";\" after statement");
                             return false;
                         }
@@ -593,6 +668,9 @@ bool parser::parse_if_statement(){
                             valid_parse = parse_base_statement();
                             //required to have a semicolon after parsing a statement
                             if(Current_parse_token_type!=T_SEMICOLON){
+                                if(debugging){
+                                    std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+                                }
                                 generate_error_report("Missing require \";\" after statement");
                                 return false;
                             }
@@ -606,6 +684,9 @@ bool parser::parse_if_statement(){
 
                         }
                         else{
+                            if(debugging){
+                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+                            }
                             generate_error_report("Missing expected keyword \"end\" for end of statement");
                             return false;
                         }
@@ -613,6 +694,9 @@ bool parser::parse_if_statement(){
                             Current_parse_token = Get_Valid_Token();
                         }
                         else{
+                            if(debugging){
+                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+                            }
                             generate_error_report("Missing expected keyword \"if\" for end of statement");
                             return false;
                         }
@@ -621,17 +705,26 @@ bool parser::parse_if_statement(){
                 }
             }
             else{
+                if(debugging){
+                    std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+                }
                 generate_error_report("Missing expected keyword \"then\" for if statements");
                 return false;
 
             }
         }
         else{
+            if(debugging){
+                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+            }
             generate_error_report("Missing \")\" expected for if statment");
             return false;
         }
     }
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_if_statement()"<<std::endl;
+        }
         generate_error_report("Missing \"(\" expected for if statment");
         return false;
     }
@@ -656,6 +749,9 @@ bool parser::parse_loop_statement(){
     }
     //missing required identifier for an assignment statement
     else{
+        if(debugging){
+            std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+        }
         generate_error_report("Missing expeceted identifier for assignment statement");
         return false;
     }
@@ -664,6 +760,9 @@ bool parser::parse_loop_statement(){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_expression();
         if(!valid_parse){
+            if(debugging){
+                std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+            }
             generate_error_report("Missing expected expression for loop");
             return false;
         }
@@ -677,6 +776,9 @@ bool parser::parse_loop_statement(){
         while(Current_parse_token_type!=T_END){
             valid_parse = parse_base_statement();
             if(!valid_parse){
+                if(debugging){
+                    std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+                }
                 generate_error_report("Missing expected valid statement inside for loop");
                 return false;
             }
@@ -686,6 +788,9 @@ bool parser::parse_loop_statement(){
                     Current_parse_token = Get_Valid_Token();
                 }
                 else{
+                    if(debugging){
+                        std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+                    }
                     generate_error_report("Missing expected \";\" at the end of a statement");
                 }
             }
@@ -694,6 +799,9 @@ bool parser::parse_loop_statement(){
             Current_parse_token = Get_Valid_Token();
         }
         else{
+            if(debugging){
+                std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+            }
             generate_error_report("Missing expected keyword \"end\" for end of statement");
             return false;
         }
@@ -701,6 +809,9 @@ bool parser::parse_loop_statement(){
             Current_parse_token = Get_Valid_Token();
         }
         else{
+            if(debugging){
+                std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
+            }
             generate_error_report("Missing expected keyword \"for\" for end of statement");
             return false;
         }
@@ -734,6 +845,9 @@ bool parser::parse_assignment_destination(){
         }
         //required right bracket missing
         else{
+            if(debugging){
+                std::cout<<"parser failed on parse_assignment_destination()"<<std::endl;
+            }
             generate_error_report("Missing closing right bracket to the identifier expression");
             return false;
 
@@ -753,14 +867,7 @@ bool parser::parse_assignment_destination(){
 //all expressions start be thought to start with a ArithOp?
 bool parser::parse_expression(){
     bool valid_parse;
-    //if starts with not token, the next thing is arithOp
-    if(Current_parse_token_type == T_NOT){
-        Current_parse_token = Get_Valid_Token();
-    }
-    else{
-        valid_parse = parse_arithOp();
-    }
-    //meaning that this is <expression>&<arithOp> rather than just <arithOp>
+
     if(Current_parse_token_type == T_AMPERSAND){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_arithOp();
@@ -771,8 +878,13 @@ bool parser::parse_expression(){
         valid_parse = parse_arithOp();
     }
     //else it was just an <arithOp>
+    else if(Current_parse_token_type == T_NOT){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
     else{
-
+        //Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
     }
 
     
@@ -785,7 +897,7 @@ bool parser::parse_expression(){
 bool parser::parse_arithOp(){
     bool valid_parse;
     //Current_parse_token = Get_Valid_Token();
-    valid_parse = parse_relation();
+
     //meaning that this is <arithOp>+<relation> rather than just <relation>
     if(Current_parse_token_type == T_PLUS){
         Current_parse_token = Get_Valid_Token();
@@ -798,7 +910,8 @@ bool parser::parse_arithOp(){
     }
     //else if was just a <relation>
     else{
-
+        //Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
     }
 
     
@@ -825,6 +938,8 @@ bool parser::parse_relation(){
         
     }
     else if(Current_parse_token_type == T_GREATER){
+        Current_parse_token = Get_Valid_Token();
+        //greater than or equal to
         if(Current_parse_token_type == T_ASSIGN){
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_term();
@@ -838,7 +953,10 @@ bool parser::parse_relation(){
     else if(Current_parse_token_type == T_ASSIGN){
         Current_parse_token = Get_Valid_Token();
         if(Current_parse_token_type!=T_ASSIGN){
-            generate_error_report("\"=\" is not a valid relational operator");
+            if(debugging){
+                std::cout<<"parser failed on parse_relation()"<<std::endl;
+            }
+            generate_error_report("\"=\" is not a valid relational operator, did you mean \"==\"");
             return false;
         }
         else{
@@ -848,31 +966,186 @@ bool parser::parse_relation(){
     else if(Current_parse_token_type = T_EXCLAM){
         Current_parse_token = Get_Valid_Token();
         if(Current_parse_token_type!=T_ASSIGN){
+            if(debugging){
+                std::cout<<"parser failed on parse_relation()"<<std::endl;
+            }
             generate_error_report("Invalid relational operator detected");
         }
     }
-    //else something else not expected
+    //else just a term
     else{
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_term();
 
     }
 
     return valid_parse;
 }
 
+//not done
+//already consumes a token before being parsed
 bool parser::parse_term(){
     bool valid_parse;
+    if(Current_parse_token_type == T_MULT){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_factor();
+    }
+    else if(Current_parse_token_type == T_SLASH){
+        Current_parse_token =Get_Valid_Token();
+        valid_parse = parse_factor();
+    }
+    //else is just a factor
+    else{
+        valid_parse = parse_factor();
+    }
+
 
 
     return valid_parse;
 }
+
+
+//not done
+//already consumes a token before being parsed
+bool parser::parse_factor(){
+    bool valid_parse;
+    if(Current_parse_token_type == T_LPARAM){
+        valid_parse = parse_expression();
+        Current_parse_token = Get_Valid_Token();
+        if(Current_parse_token_type == T_RPARAM){
+            Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_factor()"<<std::endl;
+            }
+            generate_error_report("Missing \")\" to close expresssion factor");
+            return false;
+        }
+    }
+    //This means that this is either a procedure call or a name
+    else if(Current_parse_token_type == T_IDENTIFIER){
+        //this means that it is a procedure call
+        if(Next_parse_token_type == T_LPARAM){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_procedure_call();
+        }
+        //else it must be a name
+        else{
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_name();
+        }
+    }
+    //this means that it must be either a name or a number
+    else if(Current_parse_token_type == T_MINUS){
+        Current_parse_token = Get_Valid_Token();
+        //means that it isn't a name
+        if(Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE){
+            Current_parse_token = Get_Valid_Token();
+        }
+        //else it is a name
+        else if(Current_parse_token_type == T_IDENTIFIER){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_name();
+        }
+        //else it had a negative sign, it isn't a number, and it isn't a name
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_factor()"<<std::endl;
+            }
+            generate_error_report("Unexpected negative factor is not a name or a number");
+            return false;
+        }
+    }
+    //else is a non negative number
+    else if(Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE){
+        Current_parse_token = Get_Valid_Token();
+        //type checking will need to be done here?
+    }
+    else if(Current_parse_token_type == T_STRING_TYPE){
+        Current_parse_token = Get_Valid_Token();
+        //type checking will need to be done here?
+    }
+    else if(Current_parse_token_type == T_TRUE){
+        Current_parse_token = Get_Valid_Token();
+        //type checking will need to be done here?
+    }
+    else if(Current_parse_token_type == T_FALSE){
+        Current_parse_token =Get_Valid_Token();
+        //type checking will need to be done here?
+    }
+    //else nothing valid was seen
+    else{
+        if(debugging){
+            std::cout<<"parser failed on parse_factor()"<<std::endl;
+        }
+        generate_error_report("Invalid token for factor discovered");
+        return false;
+    }
+
+    return valid_parse;
+}
+
+//not done
+//already consumes indentifier token before being parsed
 bool parser::parse_name(){
     bool valid_parse;
+    if(Current_parse_token_type == T_LBRACKET){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_expression();
+        if(Current_parse_token_type == T_RBRACKET){
+            Current_parse_token =Get_Valid_Token();
+        }
+        //missing right bracket for the end of an optional expression
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_name()"<<std::endl;
+            }
+            generate_error_report("Missing require \"]\" for the end of optional expression for name");
+            return false;
+        }
+    }
+    //the optional expression does not exist do nothing
+    else{
+        Current_parse_token = Get_Valid_Token();
+    }
 
     return valid_parse;
 }
 
 bool parser::parse_argument_list(){
     bool valid_parse;
+
+    return valid_parse;
+}
+
+//not done
+//already consumes identifier token before parsingf
+bool parser::parse_procedure_call(){
+    bool valid_parse;
+    if(Current_parse_token_type == T_LPARAM){
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_argument_list();
+        if(Current_parse_token_type == T_RPARAM){
+            Current_parse_token = Get_Valid_Token();
+        }
+        //missing needed right param for the end of a procedure call
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_procedure_call()"<<std::endl;
+            }
+            generate_error_report("Missing required \")\" for the end of a procedure call");
+            return false;
+        }
+    }
+    //missing needed left param for the start of the procedure call
+    else{
+        if(debugging){
+            std::cout<<"parser failed on parse_procedure_call()"<<std::endl;
+        }
+        generate_error_report("Missing required \"(\" for the end of a procedure call");
+        return false;
+    }
 
     return valid_parse;
 }
