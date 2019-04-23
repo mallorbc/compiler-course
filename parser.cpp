@@ -968,7 +968,7 @@ bool parser::parse_relation(){
             valid_parse = parse_term();
         }
     }
-    else if(Current_parse_token_type = T_EXCLAM){
+    else if(Current_parse_token_type == T_EXCLAM){
         Current_parse_token = Get_Valid_Token();
         if(Current_parse_token_type!=T_ASSIGN){
             if(debugging){
@@ -979,8 +979,21 @@ bool parser::parse_relation(){
     }
     //else just a term
     else{
-        Current_parse_token = Get_Valid_Token();
+        //COMMENTED OUT 4/22
+        //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_term();
+        if(valid_parse){
+            if(Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER || Current_parse_token_type == T_ASSIGN || Current_parse_token_type == T_EXCLAM){
+                Current_parse_token = Get_Valid_Token();
+                if(Current_parse_token_type == T_ASSIGN){
+                    Current_parse_token = Get_Valid_Token();
+                    valid_parse = parse_term();
+                }
+                else{
+                    valid_parse = parse_term();
+                }
+            }
+        }
 
     }
 
@@ -1002,6 +1015,13 @@ bool parser::parse_term(){
     //else is just a factor
     else{
         valid_parse = parse_factor();
+        //ADDED 4/22
+        if(valid_parse){
+            if(Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH){
+                Current_parse_token = Get_Valid_Token();
+                valid_parse = parse_factor();
+            }
+        }
     }
 
 
@@ -1037,7 +1057,8 @@ bool parser::parse_factor(){
         }
         //else it must be a name
         else{
-            Current_parse_token = Get_Valid_Token();
+            //COMMENTED OUT 4/22
+            //Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name();
         }
     }
@@ -1063,21 +1084,25 @@ bool parser::parse_factor(){
         }
     }
     //else is a non negative number
-    else if(Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE){
+    else if(Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE){
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
+        return true;
     }
-    else if(Current_parse_token_type == T_STRING_TYPE){
+    else if(Current_parse_token_type == T_STRING_VALUE){
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
+        return true;
     }
     else if(Current_parse_token_type == T_TRUE){
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
+        return true;
     }
     else if(Current_parse_token_type == T_FALSE){
         Current_parse_token =Get_Valid_Token();
         //type checking will need to be done here?
+        return true;
     }
     //else nothing valid was seen
     else{
@@ -1113,6 +1138,7 @@ bool parser::parse_name(){
     //the optional expression does not exist do nothing
     else{
         Current_parse_token = Get_Valid_Token();
+        return true;
     }
 
     return valid_parse;
