@@ -231,7 +231,9 @@ bool parser::parse_procedure_header(){
         generate_error_report("Expected \":\" before type mark declaration");
         return false;
     }
-    Current_parse_token = Get_Valid_Token();
+    //COMMENTED OUT ON 4/21 FOR math.src
+    //THIS TOKEN IS NEEDED FOR ONE FUNCTION BUT BREAKS ANOTHER
+    //Current_parse_token = Get_Valid_Token();
     //must have left and right paretheses, parameters are optional
     if(Current_parse_token_type == T_LPARAM){
         //If the procedure has no parameters
@@ -246,7 +248,8 @@ bool parser::parse_procedure_header(){
         valid_parse = parse_parameter_list();
         //this if statement may not be needed
         if(valid_parse){
-            Current_parse_token = Get_Valid_Token();
+            //COMMENTED OUT 4/22
+            //Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_body();
         }
         }
@@ -399,11 +402,13 @@ bool parser::parse_type_mark(){
 //ready to test
 bool parser::parse_parameter_list(){
     bool valid_parse;
-
+    //ADDED 4/22 
+    Current_parse_token = Get_Valid_Token();
     valid_parse = parse_parameter();
     //if no errors from parsing the parameter
     if(valid_parse){
-        Current_parse_token = Get_Valid_Token();
+        //COMMENTED OUT 4/22
+        //Current_parse_token = Get_Valid_Token();
         ///meaning that there are more parameters
         if(Current_parse_token_type == T_COMMA){
             Current_parse_token = Get_Valid_Token();
