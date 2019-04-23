@@ -621,6 +621,7 @@ bool parser::parse_assignment_statement(){
     Current_parse_token = Get_Valid_Token();
     valid_parse = parse_assignment_destination();
     if(valid_parse){
+        //MAY BE A BUG HERE, SHOULD THROW ERROR?
         if(Current_parse_token_type == T_COLON){
             Current_parse_token = Get_Valid_Token();
         }
