@@ -665,6 +665,8 @@ bool parser::parse_if_statement(){
                         }
                         //else is a semicolon
                         else{
+                            //ADDED ON 4/23
+                            Current_parse_token = Get_Valid_Token();
 
                         }
                     }
@@ -830,7 +832,8 @@ bool parser::parse_loop_statement(){
 //consumes return token before entering function
 bool parser::parse_return_statement(){
     bool valid_parse;
-    Current_parse_token = Get_Valid_Token();
+    //COMMENTED OUT 4/23
+    //Current_parse_token = Get_Valid_Token();
     valid_parse = parse_expression();
     return valid_parse;
 }
