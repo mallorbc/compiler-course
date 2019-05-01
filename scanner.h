@@ -86,6 +86,9 @@ class scanner{
 
     bool end_of_file = false;
 
+    //used to indicated whether the last scanned char was \n
+    bool last_char_was_end_line = false;
+
 
     //parser *scanner_parser;
 

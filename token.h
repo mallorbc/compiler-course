@@ -81,6 +81,7 @@ class token{
         this->floatValue = 0;
         this->charValue = '\0';
         this->boolValue = false;
+        this->first_token_on_line = false;
 
 
     };
@@ -94,6 +95,8 @@ class token{
     bool boolValue;
     float floatValue;
     char charValue; 
+
+    bool first_token_on_line;
     // union value{
     //     int intValue;
     //     std::string stringValue;

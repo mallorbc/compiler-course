@@ -61,7 +61,12 @@ void parser::add_error_report(std::string error_report){
 //ready for testing
 void parser::generate_error_report(std::string error_message){
     std::string full_error_message = "";
-    full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ':';
+    if(Current_parse_token.first_token_on_line){
+        full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found-1) + ": ";
+    }
+    else{
+        full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
+    }
     full_error_message = full_error_message + error_message;
     add_error_report(full_error_message);
 }

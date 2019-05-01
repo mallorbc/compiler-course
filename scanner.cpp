@@ -190,6 +190,10 @@ token scanner::Get_token(){
     }
     return_token = *Current_token;
     delete Current_token;
+    //used to get correct line for the error report if the token that caused a token was on the previous line
+    if(last_char_was_end_line){
+        return_token.first_token_on_line = true;
+    }
     return return_token;
     //return *Current_token;
 }
@@ -380,6 +384,7 @@ void scanner::invalid_char_test(){
         }
         
        current_line++;
+       last_char_was_end_line = true;
     }
     else if(isspace(current_char)){
         if(debug){
