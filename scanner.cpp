@@ -199,6 +199,7 @@ void scanner::build_char_token(){
     //if the character is not in a quote, then it is a token
     if(!quote_status){
         Current_token->charValue = current_char;
+        Current_token->line_found = current_line;
         //Giant case statement here
         switch(current_char){
             case '(':
@@ -344,7 +345,7 @@ void scanner::build_string_token(){
         current_char = next_char;
         //increments line counter is the line ends
         if(current_char == '\n'){
-            current_line++;
+            //current_line++;
         }
         if(source.eof()){
             end_of_file = true;
@@ -354,12 +355,14 @@ void scanner::build_string_token(){
     //checks to see whether the built string is either a reserved word or already in the symbol table
     if(symbol_table.is_in_table(build_string)){
         *Current_token = symbol_table.map[build_string];
+        Current_token->line_found = current_line;
 
     }
     //if not in the symbol table it inserts the indentifier
     else{
         symbol_table.insert_stringValue(build_string,T_IDENTIFIER);
         *Current_token = symbol_table.map[build_string];
+        Current_token->line_found = current_line;
     }
     if(debug){
         std::cout<<"DEBUG: Id or Reserved word is: "<<build_string<<std::endl;
@@ -376,7 +379,7 @@ void scanner::invalid_char_test(){
             std::cout<<"DEBUG: End of line character detected"<<std::endl;
         }
         
-        current_line++;
+       current_line++;
     }
     else if(isspace(current_char)){
         if(debug){
