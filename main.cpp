@@ -21,11 +21,12 @@ int main(int argc, char *argv[])
 
         parser *file_parser;
         file_parser = new parser(string_arg);
-        //file_parser = new parser(string_arg);
+
         //Creates a pointer of object scanner
         scanner *first_scan;
         //Creates a new object scanner and passes in the file, the file is then read
-        first_scan = new scanner(string_arg);
+        //first_scan = new scanner(string_arg);
+        //first_scan->test();
         //first_scan->test();
         //first_scan->ReadFile();
         

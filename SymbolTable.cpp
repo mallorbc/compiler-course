@@ -84,6 +84,7 @@ bool SymbolTable::init_reserved_chars(){
     insert_char_table(':',T_COLON);
     insert_char_table('|',T_VERTICAL_BAR);
     insert_char_table('&',T_AMPERSAND);
+    insert_char_table('-',T_MINUS);
 
     return 1;
 }

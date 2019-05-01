@@ -247,6 +247,10 @@ void scanner::build_char_token(){
             Current_token->type = T_PLUS;
             break;
 
+            case '-':
+            Current_token->type = T_MINUS;
+            break;
+
             case '_':
             Current_token->type = T_UNDERSCORE;
             break;

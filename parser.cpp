@@ -298,8 +298,28 @@ bool parser::parse_procedure_body(){
         }
 
     }
-    //after doen parsing any and all declarations, must start parsing statements
-    valid_parse = parse_base_statement();
+    //after doen parsing any and all declarations, must start parsing statements\
+    //need to parse more than one base statement
+    while(Current_parse_token_type!=T_END){
+        valid_parse = parse_base_statement();
+        if(Current_parse_token_type == T_SEMICOLON){
+            Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            generate_error_report("Missing \";\" to end statement");
+            return false;
+        }
+    }
+    if(Current_parse_token_type == T_END){
+        Current_parse_token = Get_Valid_Token();
+        if(Current_parse_token_type == T_PROCEDURE){
+            Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            generate_error_report("Missing keyword \"procedure\" to close procedure body");
+            return false;
+        }
+    }
 
     return valid_parse;
 }
@@ -630,15 +650,23 @@ bool parser::parse_assignment_statement(){
         if(Current_parse_token_type == T_COLON){
             Current_parse_token = Get_Valid_Token();
         }
+        else{
+            generate_error_report("Missing \":\" needed for assignment statement");
+            return false;
+        }
         if(Current_parse_token_type == T_ASSIGN){
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_expression();
+        }
+        else{
+            generate_error_report("Missing \"=\" needed for assignment statement");
+            return false;
         }
 
     }
     //not a valid parse from parse assignment_destination
     else{
-        std::cout<<"parser failed on parse_assignment_statement()"<<std::endl;
+        std::cout<<"parser failed on parse_assignment_destination()"<<std::endl;
         return valid_parse;
 
     }
@@ -657,6 +685,7 @@ bool parser::parse_if_statement(){
             Current_parse_token = Get_Valid_Token();
             if(Current_parse_token_type == T_THEN){
                 Current_parse_token = Get_Valid_Token();
+                //may need to remove this if statement
                 if(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
                     while(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
                         valid_parse = parse_base_statement();
@@ -714,6 +743,20 @@ bool parser::parse_if_statement(){
                             return false;
                         }
                         
+                    }
+                    else if(Current_parse_token_type == T_END){
+                        Current_parse_token = Get_Valid_Token();
+                        if(Current_parse_token_type == T_IF){
+                            Current_parse_token = Get_Valid_Token();
+                            //end of if statement
+                            //set valid_parse to true?
+                            valid_parse = true;
+                        }
+                        else{
+                            generate_error_report("Missing \"if\" to complete \"end if\" to end the if statement");
+                            return false;
+                        }
+
                     }
                 }
             }
@@ -869,7 +912,8 @@ bool parser::parse_assignment_destination(){
     }
     //optional bracket not there
     else{
-        Current_parse_token = Get_Valid_Token();
+        //REMOVED 5/1
+        //Current_parse_token = Get_Valid_Token();
         valid_parse = true;
 
     }
@@ -926,6 +970,23 @@ bool parser::parse_arithOp(){
     else{
         //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_relation();
+    }
+    //allows parsing of relation again
+    if(valid_parse){
+        if(Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS){
+            if(Current_parse_token_type == T_PLUS){
+                //code generation stuff here probably different than T_MINUS
+            }
+            else if(Current_parse_token_type == T_MINUS){
+                //code generation stuff here probably different than T_PLUS
+            }
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_relation();
+        }
+        //else not adding or subtracting and is just a relation
+        else{
+
+        }
     }
 
     
@@ -1027,6 +1088,12 @@ bool parser::parse_term(){
         //ADDED 4/22
         if(valid_parse){
             if(Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH){
+                if(Current_parse_token_type == T_MULT){
+                    //code generation probaly different here than division
+                }
+                else if(Current_parse_token_type == T_SLASH){
+                    //code generation probably different here than multiplication
+                }
                 Current_parse_token = Get_Valid_Token();
                 valid_parse = parse_factor();
             }
