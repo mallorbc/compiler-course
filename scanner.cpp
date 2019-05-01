@@ -193,6 +193,7 @@ token scanner::Get_token(){
     //used to get correct line for the error report if the token that caused a token was on the previous line
     if(last_char_was_end_line){
         return_token.first_token_on_line = true;
+        last_char_was_end_line = false;
     }
     return return_token;
     //return *Current_token;
