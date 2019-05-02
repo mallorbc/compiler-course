@@ -1291,7 +1291,8 @@ bool parser::parse_procedure_call(){
         Current_parse_token = Get_Valid_Token();
         //if has no parameters
         if(Current_parse_token_type == T_RPARAM){
-            
+            valid_parse = true;
+            Current_parse_token = Get_Valid_Token();
         }
         else{
             valid_parse = parse_argument_list();
