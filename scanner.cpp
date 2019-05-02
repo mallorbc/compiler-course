@@ -348,7 +348,7 @@ void scanner::build_number_token(){
 //should probably return a string so that later checks on it can be done for reserved words
 void scanner::build_string_token(){
     //token is valid until a non letter or number is displayed
-    while(isdigit(next_char) || isalpha(next_char)){
+    while(isdigit(next_char) || isalpha(next_char) || next_char == '_'){
         build_string = build_string + current_char;
         source.get(next_char);
         current_char = next_char;
