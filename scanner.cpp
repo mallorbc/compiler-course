@@ -207,6 +207,10 @@ void scanner::build_char_token(){
         Current_token->line_found = current_line;
         //Giant case statement here
         switch(current_char){
+            case ';':
+            Current_token->type = T_SEMICOLON;
+            break;
+
             case '(':
             Current_token->type = T_LPARAM;
             break;
@@ -215,16 +219,8 @@ void scanner::build_char_token(){
             Current_token->type = T_RPARAM;
             break;
 
-            case '[':
-            Current_token->type = T_LBRACKET;
-            break;
-
-            case ']':
-            Current_token->type = T_RBRACKET;
-            break;
-
-            case ',':
-            Current_token->type = T_COMMA;
+            case '=':
+            Current_token->type = T_ASSIGN;
             break;
 
             case '/':
@@ -239,8 +235,16 @@ void scanner::build_char_token(){
             Current_token->type = T_RBRACE;
             break;
 
-            case '=':
-            Current_token->type = T_ASSIGN;
+            case '[':
+            Current_token->type = T_LBRACKET;
+            break;
+
+            case ']':
+            Current_token->type = T_RBRACKET;
+            break;
+
+            case ',':
+            Current_token->type = T_COMMA;
             break;
 
             case '+':
@@ -259,16 +263,16 @@ void scanner::build_char_token(){
             Current_token->type = T_PERIOD;
             break;
 
-            case '!':
-            Current_token->type = T_EXCLAM;
+            case '>':
+            Current_token->type = T_GREATER;
             break;
 
-            case ';':
-            Current_token->type = T_SEMICOLON;
+            case '<':
+            Current_token->type = T_LESS;
             break;
 
-            case ':':
-            Current_token->type = T_COLON;
+            case '*':
+            Current_token->type = T_MULT;
             break;
 
             case '"':
@@ -277,6 +281,22 @@ void scanner::build_char_token(){
             //builds the string quoation
             string_value_builder();
             //build quote string here
+            break;
+
+            case '!':
+            Current_token->type = T_EXCLAM;
+            break;
+
+            case ':':
+            Current_token->type = T_COLON;
+            break;
+
+            case '|':
+            Current_token->type = T_VERTICAL_BAR;
+            break;
+
+            case '&':
+            Current_token->type = T_AMPERSAND;
             break;
 
         }
