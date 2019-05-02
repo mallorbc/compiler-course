@@ -567,14 +567,12 @@ bool parser::parse_variable_declaration(){
 
 }
 
-//SPEC WAS UPDATED, UPDATE THIS
+//SPEC WAS UPDATED
+//UPDATED 5/1
 //ready to test
 bool parser::parse_bound(){
     bool valid_parse;
-    //minus is an optional token
-    if(Current_parse_token_type == T_MINUS){
-        Current_parse_token = Get_Valid_Token();
-    }
+
     valid_parse = parse_number();
 
     return valid_parse;
@@ -611,7 +609,7 @@ bool parser::parse_type_declaration(){
 
 }
 
-//not done
+//ready to test
 bool parser::parse_base_statement(){
     bool valid_parse;
     //an identifier means it will be an assignment statement
@@ -954,7 +952,7 @@ bool parser::parse_assignment_destination(){
     return valid_parse;
 }
 
-//not done; Looks very hard
+//ready to test
 //consumes a token before entering this function
 //all expressions start be thought to start with a ArithOp?
 bool parser::parse_expression(){
@@ -978,12 +976,28 @@ bool parser::parse_expression(){
         //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_arithOp();
     }
+    //check to see if expression continues with another Arithop
+    if(valid_parse){
+        if(Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR){
+            if(Current_parse_token_type == T_AMPERSAND){
+                //code generation different here than a pipe
+            }
+            else if(Current_parse_token_type == T_VERTICAL_BAR){
+                //code generation different here thana pipe
+            }
+            else{
+                //not valid ever?
+            }
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_arithOp();
+        }
+    }
 
     
     return valid_parse;
 }
 
-//not done; Looks very hard
+//ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with relations?
 bool parser::parse_arithOp(){
@@ -1019,6 +1033,7 @@ bool parser::parse_arithOp(){
         }
         //else not adding or subtracting and is just a relation
         else{
+            //nothing ever?
 
         }
     }
@@ -1027,7 +1042,7 @@ bool parser::parse_arithOp(){
     return valid_parse;
 }
 
-//not done; Looks very hard
+//ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with terms?
 bool parser::parse_relation(){
@@ -1104,7 +1119,7 @@ bool parser::parse_relation(){
     return valid_parse;
 }
 
-//not done
+//ready to test
 //already consumes a token before being parsed
 bool parser::parse_term(){
     bool valid_parse;

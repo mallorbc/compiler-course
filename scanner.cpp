@@ -437,6 +437,7 @@ void scanner::string_value_builder(){
     Current_token->charValue = '\0';
     Current_token->stringValue = build_string;
     Current_token->line_found = current_line;
+    Current_token->type = T_STRING_VALUE;
 
 }
  
