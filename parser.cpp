@@ -123,6 +123,13 @@ bool parser::parse_program_header(){
         return false;
     }
     valid_parse = parse_program_body();
+    if(Current_parse_token_type == T_PERIOD){
+        valid_parse = true;
+    }
+    else{
+        generate_error_report("Missing \".\" to end the program");
+        valid_parse = false;
+    }
     return valid_parse;
 
 
@@ -151,6 +158,33 @@ bool parser::parse_program_body(){
             //ADDED ON 4/21
             Current_parse_token = Get_Valid_Token();
 
+        }
+        //once the begin token is recieved
+        if(Current_parse_token_type == T_BEGIN){
+            Current_parse_token = Get_Valid_Token();
+            while(Current_parse_token_type!=T_END){
+                valid_parse = parse_base_statement();
+                if(Current_parse_token_type!=T_SEMICOLON){
+                    generate_error_report("Missing \";\" to end program statement");
+                    return false;
+                }
+                else{
+                    Current_parse_token = Get_Valid_Token();
+                }
+            }
+            //once the end token is recieved
+            Current_parse_token = Get_Valid_Token();
+            if(Current_parse_token_type == T_PROGRAM){
+                Current_parse_token = Get_Valid_Token();
+            }
+            else{
+                generate_error_report("Missing keyworkd \"program\" to end program");
+                return false;
+            }
+        }
+        else{
+            generate_error_report("Missing keyword \"begin\" to begin program statements");
+            return false;
         }
     }
     else{
@@ -1220,30 +1254,45 @@ bool parser::parse_name(){
     return valid_parse;
 }
 
+//not done
+//consumes one token before starting
 bool parser::parse_argument_list(){
     bool valid_parse;
+    valid_parse = parse_expression();
+    if(valid_parse){
+        if(Current_parse_token_type == T_COMMA){
+            valid_parse = parse_argument_list();
+        }
+    }
 
     return valid_parse;
 }
 
 //not done
-//already consumes identifier token before parsingf
+//already consumes identifier token before parsing
 bool parser::parse_procedure_call(){
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_argument_list();
+        //if has no parameters
         if(Current_parse_token_type == T_RPARAM){
-            Current_parse_token = Get_Valid_Token();
+            
         }
-        //missing needed right param for the end of a procedure call
         else{
-            if(debugging){
-                std::cout<<"parser failed on parse_procedure_call()"<<std::endl;
+            valid_parse = parse_argument_list();
+            if(Current_parse_token_type == T_RPARAM){
+                Current_parse_token = Get_Valid_Token();
             }
-            generate_error_report("Missing required \")\" for the end of a procedure call");
-            return false;
+            //missing needed right param for the end of a procedure call
+            else{
+                if(debugging){
+                    std::cout<<"parser failed on parse_procedure_call()"<<std::endl;
+                }
+                generate_error_report("Missing required \")\" for the end of a procedure call");
+                return false;
+                }
         }
+
     }
     //missing needed left param for the start of the procedure call
     else{
