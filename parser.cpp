@@ -736,6 +736,7 @@ bool parser::parse_if_statement(){
 
                         }
                     }
+                    //once the else token is recieved
                     if(Current_parse_token_type == T_ELSE){
                         Current_parse_token = Get_Valid_Token();
                         while(Current_parse_token_type!=T_END){
@@ -750,7 +751,7 @@ bool parser::parse_if_statement(){
                             }
                             //else is a semicolon
                             else{
-
+                                Current_parse_token = Get_Valid_Token();
                             }
                         }
                         if(Current_parse_token_type == T_END){
