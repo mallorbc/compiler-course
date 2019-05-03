@@ -334,6 +334,10 @@ bool parser::parse_procedure_body(){
     }
     //after doen parsing any and all declarations, must start parsing statements\
     //need to parse more than one base statement
+    //add this if statement in the case that never enters while loop
+    if(Current_parse_token_type == T_BEGIN){
+        Current_parse_token = Get_Valid_Token();
+    }
     while(Current_parse_token_type!=T_END){
         valid_parse = parse_base_statement();
         if(Current_parse_token_type == T_SEMICOLON){
