@@ -422,6 +422,8 @@ void scanner::build_string_token(){
             break;
         }
     }
+    //the values in the symbol table are lowercase convert these values to lower case for easy comparison
+    build_string = Tolower_string(build_string);
     //checks to see whether the built string is either a reserved word or already in the symbol table
     if(symbol_table.is_in_table(build_string)){
         *Current_token = symbol_table.map[build_string];
