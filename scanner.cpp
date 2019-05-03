@@ -179,8 +179,13 @@ token scanner::Get_token(){
         }
         build_string = "";
         //if token is a valid token type it returns
-        if(Current_token->type!=0){
+        if(Current_token->type!=0 && !is_slash_comment){
             break;
+        }
+        //tests if is a comment
+        else if(is_slash_comment){
+            delete Current_token;
+            Current_token = new token;
         }
         //else the token is invalid and a new one is needed
         else{
@@ -192,8 +197,8 @@ token scanner::Get_token(){
     delete Current_token;
     //used to get correct line for the error report if the token that caused a token was on the previous line
     if(last_char_was_end_line){
+        end_line_handler();
         return_token.first_token_on_line = true;
-        last_char_was_end_line = false;
     }
     return return_token;
     //return *Current_token;
@@ -223,7 +228,9 @@ void scanner::build_char_token(){
             Current_token->type = T_ASSIGN;
             break;
 
+            //potentially part of a comment indicator
             case '/':
+            comment_handler();
             Current_token->type = T_SLASH;
             break;
 
@@ -271,6 +278,7 @@ void scanner::build_char_token(){
             Current_token->type = T_LESS;
             break;
 
+            //pontentially part of a comment indicator
             case '*':
             Current_token->type = T_MULT;
             break;
@@ -344,6 +352,7 @@ void scanner::build_number_token(){
         //increments line counter if end of the line
         if(current_char == '\n'){
             current_line++;
+            is_slash_comment = false;
         }
     }
     if(is_float){
@@ -409,6 +418,7 @@ void scanner::invalid_char_test(){
         }
         
        current_line++;
+       is_slash_comment = false;
        last_char_was_end_line = true;
     }
     else if(isspace(current_char)){
@@ -442,6 +452,7 @@ void scanner::string_value_builder(){
         current_char = next_char;
         if(current_char == '\n'){
             current_line++;
+            is_slash_comment = false;
         }
         if(source.eof() && quote_status){
             //no closing quotation mark;
@@ -459,5 +470,23 @@ void scanner::string_value_builder(){
     Current_token->line_found = current_line;
     Current_token->type = T_STRING_VALUE;
 
+}
+
+void scanner::comment_handler(){
+    char peek_char;
+    if(current_char == '/'){
+        peek_char = source.peek();
+        if(peek_char == '/'){
+            //will be a comment until the next line
+            is_slash_comment = true;
+            source.get(next_char);
+            //source.get(next_char);
+        }
+    }
+}
+
+void scanner::end_line_handler(){
+    is_slash_comment = false;
+    last_char_was_end_line = false;
 }
  

@@ -57,6 +57,10 @@ class scanner{
     void invalid_char_test();
     //builds the string stored in quotes
     void string_value_builder();
+    //function used for handling comments
+    void comment_handler();
+    //will handle things relating to end lines
+    void end_line_handler();
 
 
     //tracks the current line; increments at the end of the line
@@ -88,6 +92,16 @@ class scanner{
 
     //used to indicated whether the last scanned char was \n
     bool last_char_was_end_line = false;
+
+    //will be used to tell whether the slash indicates a comment, or whether it indicates division
+    int slash_counter = 0;
+    //if slash_counter is equal to 2, the rest of the line will be ignored with this bool
+    bool is_slash_comment = false;
+
+    //used to count how many nested comment openers there are
+    int nested_comment_counter = 0;
+    //if in a nested comment, this bool will be used to ignore all tokens with this bool
+    bool is_nested_commented = false;
 
 
     //parser *scanner_parser;

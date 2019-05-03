@@ -637,7 +637,7 @@ bool parser::parse_base_statement(){
         if(debugging){
             std::cout<<"parser failed on parse_base_statement()"<<std::endl;
         }
-        generate_error_report("Invalid statmentl; Not an assignment, if, loop, or return");
+        generate_error_report("Invalid statement; Not an assignment, if, loop, or return");
         return false;
     }
 
