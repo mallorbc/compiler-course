@@ -153,6 +153,7 @@ token scanner::Get_token(){
             end_of_file = true;
             break;
         }
+        previous_char = current_char;
         current_char = next_char;
         if(is_first_char()){
             char_status = what_is_char(current_char);
@@ -178,7 +179,29 @@ token scanner::Get_token(){
 
         }
         build_string = "";
+
+        //TEMPORARY COMMENTS WILL KEEP UNTIL COMMENTS ARE CEMENTED
+
+        // if(previous_char == '\n'){
+        //     std::cout<<"Prev char test"<<std::endl;
+        //     if(test_counter == 1 && is_slash_comment){
+        //         end_line_handler();
+        //         test_counter = 0;
+        //     }
+        //     test_counter++;
+            
+        // }
         //if token is a valid token type it returns
+
+
+        // if(current_line!=prev_line){
+        //     std::cout<<"test";
+        //     if(current_line>prev_line+1){
+        //         std::cout<<"test 2";
+        //     }
+        // }
+
+
         if(Current_token->type!=0 && !is_slash_comment){
             break;
         }
@@ -192,14 +215,20 @@ token scanner::Get_token(){
             delete Current_token;
             Current_token = new token;
         }
+        //handles checking to see if the comment line has changed
+        if(is_slash_comment){
+            if((slash_comment_line!=current_line) && next_char == '\n'){
+                end_line_handler();
+            }
+        }
     }
     return_token = *Current_token;
     delete Current_token;
     //used to get correct line for the error report if the token that caused a token was on the previous line
-    if(last_char_was_end_line){
-        end_line_handler();
-        return_token.first_token_on_line = true;
-    }
+    // if(last_char_was_end_line){
+    //    // end_line_handler();
+    //     return_token.first_token_on_line = true;
+    // }
     return return_token;
     //return *Current_token;
 }
@@ -343,6 +372,7 @@ void scanner::build_number_token(){
         }
         build_string = build_string + current_char;
         source.get(next_char);
+        previous_char = current_char;
         current_char = next_char;
         //if end of the file breaks the loop
         if(source.eof()){
@@ -351,8 +381,9 @@ void scanner::build_number_token(){
         }
         //increments line counter if end of the line
         if(current_char == '\n'){
+            prev_line = current_line;
             current_line++;
-            is_slash_comment = false;
+            //is_slash_comment = false;
         }
     }
     if(is_float){
@@ -380,6 +411,7 @@ void scanner::build_string_token(){
     while(isdigit(next_char) || isalpha(next_char) || next_char == '_'){
         build_string = build_string + current_char;
         source.get(next_char);
+        previous_char = current_char;
         current_char = next_char;
         //increments line counter is the line ends
         if(current_char == '\n'){
@@ -416,9 +448,9 @@ void scanner::invalid_char_test(){
         if(debug){
             std::cout<<"DEBUG: End of line character detected"<<std::endl;
         }
-        
+       prev_line = current_line; 
        current_line++;
-       is_slash_comment = false;
+       //is_slash_comment = false;
        last_char_was_end_line = true;
     }
     else if(isspace(current_char)){
@@ -449,10 +481,12 @@ void scanner::string_value_builder(){
             quote_status = false;
             break;
         }
+        previous_char = current_char;
         current_char = next_char;
         if(current_char == '\n'){
+            prev_line = current_line;
             current_line++;
-            is_slash_comment = false;
+            //is_slash_comment = false;
         }
         if(source.eof() && quote_status){
             //no closing quotation mark;
@@ -479,6 +513,7 @@ void scanner::comment_handler(){
         if(peek_char == '/'){
             //will be a comment until the next line
             is_slash_comment = true;
+            slash_comment_line = current_line;
             source.get(next_char);
             //source.get(next_char);
         }

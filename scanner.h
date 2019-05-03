@@ -102,7 +102,12 @@ class scanner{
     int nested_comment_counter = 0;
     //if in a nested comment, this bool will be used to ignore all tokens with this bool
     bool is_nested_commented = false;
-
+    //char to hold the previous char; Probably not needed but no need to remove
+    char previous_char;
+    //tracks the previous line, will be different from current line when the line changes; probably not needed
+    int prev_line;
+    //tracks what line the double slash comment is on
+    int slash_comment_line;
 
     //parser *scanner_parser;
 
