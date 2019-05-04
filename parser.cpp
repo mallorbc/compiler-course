@@ -550,12 +550,26 @@ bool parser::parse_variable_declaration(){
             //COMMENTED OUT 4/21/19
             //Current_parse_token = Get_Valid_Token();
             //checks for optional bracket to declare an array
-            if(Next_parse_token_type == T_LBRACKET){
-                Current_parse_token = Get_Valid_Token();
-                //ADDED ON 4/21/19
+            if(Current_parse_token_type == T_LBRACKET){
                 Current_parse_token = Get_Valid_Token();
                 valid_parse = parse_bound();
+                if(Current_parse_token_type == T_RBRACKET){
+                    Current_parse_token = Get_Valid_Token();
+                }
+                //must have closing right bracket
+                else{
+                    generate_error_report("Missing \"]\" to close the array declaration");
+                    return false;
+                }
             }
+
+            // if(Next_parse_token_type == T_LBRACKET){
+            //     Current_parse_token = Get_Valid_Token();
+            //     //ADDED ON 4/21/19
+            //     Current_parse_token = Get_Valid_Token();
+            //     valid_parse = parse_bound();
+            // }
+
         }
     }
     else{
@@ -655,11 +669,11 @@ bool parser::parse_parameter(){
 bool parser::parse_number(){
     bool valid_parse;
     //the token will be either an integer or a float, or and error
-    if(Current_parse_token_type == T_INTEGER_TYPE){
+    if(Current_parse_token_type == T_INTEGER_VALUE){
         valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
-    else if(Current_parse_token_type == T_FLOAT_TYPE){
+    else if(Current_parse_token_type == T_FLOAT_VALUE){
         valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
@@ -796,6 +810,7 @@ bool parser::parse_if_statement(){
 
                     }
                 }
+                //NEED TO INCLDUE ELSE FOR IF STATEMENT WITH NO STATEMENTS
             }
             else{
                 if(debugging){

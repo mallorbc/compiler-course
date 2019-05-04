@@ -217,7 +217,7 @@ token scanner::Get_token(){
         }
         //handles checking to see if the comment line has changed
         if(is_slash_comment){
-            if((slash_comment_line!=current_line) && next_char == '\n'){
+            if((slash_comment_line!=current_line) && (next_char == '\n' || current_char == '\n')){
                 end_line_handler();
             }
         }
