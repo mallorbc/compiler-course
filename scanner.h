@@ -93,15 +93,14 @@ class scanner{
     //used to indicated whether the last scanned char was \n
     bool last_char_was_end_line = false;
 
-    //will be used to tell whether the slash indicates a comment, or whether it indicates division
-    int slash_counter = 0;
     //if slash_counter is equal to 2, the rest of the line will be ignored with this bool
     bool is_slash_comment = false;
-
     //used to count how many nested comment openers there are
     int nested_comment_counter = 0;
     //if in a nested comment, this bool will be used to ignore all tokens with this bool
     bool is_nested_commented = false;
+    //tracks whether or not the status of a nest comment changed
+    bool nested_comment_stat_change = false;
     //char to hold the previous char; Probably not needed but no need to remove
     char previous_char;
     //tracks the previous line, will be different from current line when the line changes; probably not needed

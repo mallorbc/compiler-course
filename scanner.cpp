@@ -201,12 +201,12 @@ token scanner::Get_token(){
         //     }
         // }
 
-
-        if(Current_token->type!=0 && !is_slash_comment){
+        //must be a valid token, and not either type of comment
+        if(Current_token->type!=0 && !is_slash_comment && !is_nested_commented){
             break;
         }
         //tests if is a comment
-        else if(is_slash_comment){
+        else if(is_slash_comment || is_nested_commented){
             delete Current_token;
             Current_token = new token;
         }
@@ -260,7 +260,13 @@ void scanner::build_char_token(){
             //potentially part of a comment indicator
             case '/':
             comment_handler();
-            Current_token->type = T_SLASH;
+            if(nested_comment_stat_change){
+                nested_comment_stat_change = false;
+            }
+            else{
+                Current_token->type = T_SLASH;
+            }
+            
             break;
 
             case '{':
@@ -309,7 +315,13 @@ void scanner::build_char_token(){
 
             //pontentially part of a comment indicator
             case '*':
-            Current_token->type = T_MULT;
+            comment_handler();
+            if(nested_comment_stat_change){
+                nested_comment_stat_change = false;
+            }
+            else{
+                Current_token->type = T_MULT;
+            }
             break;
 
             case '"':
@@ -510,14 +522,34 @@ void scanner::string_value_builder(){
 
 void scanner::comment_handler(){
     char peek_char;
+    peek_char = source.peek();
     if(current_char == '/'){
-        peek_char = source.peek();
         if(peek_char == '/'){
             //will be a comment until the next line
             is_slash_comment = true;
             slash_comment_line = current_line;
             source.get(next_char);
             //source.get(next_char);
+        }
+        //enter block comment stack by one
+        else if(peek_char == '*'){
+            nested_comment_counter++;
+            is_nested_commented = true;
+            nested_comment_stat_change = true;
+        }
+    }
+    else if(current_char == '*'){
+        //exit block comment by one
+        if(peek_char == '/'){
+            nested_comment_counter--;
+            if(nested_comment_counter<=0){
+                is_nested_commented = false;
+                nested_comment_stat_change = true;
+            }
+        }
+        //do nothing
+        else{
+
         }
     }
 }
