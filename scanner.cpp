@@ -544,11 +544,12 @@ void scanner::comment_handler(){
         //exit block comment by one
         if(peek_char == '/'){
             nested_comment_counter--;
+            //skips the next char since it is part of the block comment indicator
+            source.get(next_char);
             if(nested_comment_counter<=0){
                 is_nested_commented = false;
                 nested_comment_stat_change = true;
-                //skips the next char since it is part of the block comment indicator
-                source.get(next_char);
+
 
             }
         }
