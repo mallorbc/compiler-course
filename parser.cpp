@@ -852,10 +852,21 @@ bool parser::parse_loop_statement(){
         //grabs what should be an identifier
         Current_parse_token = Get_Valid_Token();   
     }
+    else{
+        generate_error_report("Missing \"(\" required for loop");
+        return false;
+    }
     //needs to consume an identifier before parsing the assignment declaration
-    if(Current_parse_token_type!=T_IDENTIFIER){
+    if(Current_parse_token_type == T_IDENTIFIER){
         valid_parse = parse_assignment_statement();
-        Current_parse_token = Get_Valid_Token();
+        if(Current_parse_token_type != T_SEMICOLON){
+            generate_error_report("Missing \";\" for loop assignment statement");
+            return false;
+        }
+        else{
+            Current_parse_token = Get_Valid_Token();
+        }
+        
     }
     //missing required identifier for an assignment statement
     else{
@@ -866,8 +877,8 @@ bool parser::parse_loop_statement(){
         return false;
     }
     //required semicolon after assignment statement
-    if(Current_parse_token_type == T_SEMICOLON){
-        Current_parse_token = Get_Valid_Token();
+    //if(Current_parse_token_type == T_SEMICOLON){
+        //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_expression();
         if(!valid_parse){
             if(debugging){
@@ -877,10 +888,12 @@ bool parser::parse_loop_statement(){
             return false;
         }
         else{
-            Current_parse_token = Get_Valid_Token();
+            //COMMENTED OUT 5/5
+            //Current_parse_token = Get_Valid_Token();
         }
-    }
-    Current_parse_token = Get_Valid_Token();
+    //}
+    //COMMENTED OUT 5/5
+    //Current_parse_token = Get_Valid_Token();
     if(Current_parse_token_type == T_RPARAM){
         Current_parse_token = Get_Valid_Token();
         while(Current_parse_token_type!=T_END){
@@ -892,19 +905,17 @@ bool parser::parse_loop_statement(){
                 generate_error_report("Missing expected valid statement inside for loop");
                 return false;
             }
+            if(Current_parse_token_type != T_SEMICOLON){
+                generate_error_report("Missing \";\" for end statement inside of loop");
+                return false;
+            }
+            //else is semicolon
             else{
                 Current_parse_token = Get_Valid_Token();
-                if(Current_parse_token_type==T_SEMICOLON){
-                    Current_parse_token = Get_Valid_Token();
-                }
-                else{
-                    if(debugging){
-                        std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-                    }
-                    generate_error_report("Missing expected \";\" at the end of a statement");
-                }
             }
+
         }
+        //checks for ending two tokens
         if(Current_parse_token_type == T_END){
             Current_parse_token = Get_Valid_Token();
         }
