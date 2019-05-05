@@ -280,18 +280,20 @@ bool parser::parse_procedure_header(){
             //sets valid_parse to true to allow parsing of procedure body
             valid_parse = true;
             Current_parse_token = Get_Valid_Token();
+            Current_parse_token = Get_Valid_Token();
         }
         //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed. Or errors which will be detected later
         else{
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_parameter_list();
+        }
         //this if statement may not be needed
         if(valid_parse){
             //COMMENTED OUT 4/22
             //Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_body();
         }
-        }
+        
 
     }
     //must have left and right paretheses, parameters are optional
