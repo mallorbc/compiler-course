@@ -1205,7 +1205,7 @@ bool parser::parse_factor(){
         //else it must be a name
         else{
             //COMMENTED OUT 4/22
-            //Current_parse_token = Get_Valid_Token();
+            Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name();
         }
     }
@@ -1284,7 +1284,7 @@ bool parser::parse_name(){
     }
     //the optional expression does not exist do nothing
     else{
-        Current_parse_token = Get_Valid_Token();
+        //Current_parse_token = Get_Valid_Token();
         return true;
     }
 
