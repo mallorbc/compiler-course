@@ -674,7 +674,6 @@ bool parser::parse_if_statement(){
             if(Current_parse_token_type == T_THEN){
                 Current_parse_token = Get_Valid_Token();
                 //may need to remove this if statement
-                if(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
                     while(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
                         valid_parse = parse_base_statement();
                         //required to have semicolon after parsing a statement
@@ -747,7 +746,6 @@ bool parser::parse_if_statement(){
                         }
 
                     }
-                }
                 //NEED TO INCLDUE ELSE FOR IF STATEMENT WITH NO STATEMENTS
             }
             else{
