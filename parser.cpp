@@ -79,9 +79,18 @@ void parser::print_errors(){
 }
 
 //ready for testing
+//refactored 1 time
 bool parser::parse_program(){
     bool valid_parse;
     valid_parse = parse_program_header();
+    valid_parse = parse_program_body();
+    if(Current_parse_token_type == T_PERIOD){
+        valid_parse = true;
+    }
+    else{
+        generate_error_report("Missing \".\" to end the program");
+        valid_parse = false;
+    }
     if(debugging && !valid_parse){
         std::cout<<"parser failed on parse_proram()"<<std::endl;
     }
@@ -89,10 +98,12 @@ bool parser::parse_program(){
 }
 
 //ready for testing
+//refactored 1
 bool parser::parse_program_header(){
     bool valid_parse;
     Current_parse_token = Get_Valid_Token();
     if(Current_parse_token_type == T_PROGRAM){
+        valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -103,6 +114,7 @@ bool parser::parse_program_header(){
         return false;
     }
     if(Current_parse_token_type == T_IDENTIFIER){
+        valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -113,6 +125,7 @@ bool parser::parse_program_header(){
         return false;
     }  
     if(Current_parse_token_type == T_IS){
+        valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -122,28 +135,19 @@ bool parser::parse_program_header(){
         }
         return false;
     }
-    valid_parse = parse_program_body();
-    if(Current_parse_token_type == T_PERIOD){
-        valid_parse = true;
-    }
-    else{
-        generate_error_report("Missing \".\" to end the program");
-        valid_parse = false;
-    }
+
     return valid_parse;
 
 
 }
 
 //ready to test
+//refactored 1 time
 bool parser::parse_program_body(){
     bool valid_parse;
-    //Current_parse_token = Get_Valid_Token();
-    if(Current_parse_token_type!=T_BEGIN){
+        //keeps parsing until keyword begin is found
         while(Current_parse_token_type!=T_BEGIN){
-            //keeps parsing until keyword begin is found
             valid_parse = parse_base_declaration();
-            //Current_parse_token = Get_Valid_Token();
             //after any declaration type you need a semicolon
             if(Current_parse_token_type!=T_SEMICOLON){
                 if(debugging){
@@ -186,33 +190,6 @@ bool parser::parse_program_body(){
             generate_error_report("Missing keyword \"begin\" to begin program statements");
             return false;
         }
-    }
-    else{
-        Current_parse_token = Get_Valid_Token();
-        //the program body ends with "end program"
-        //statements are technically optional
-        while(Current_parse_token_type!=T_END && Next_parse_token_type!=T_PROGRAM){
-            valid_parse = parse_base_statement();
-            if(Current_parse_token_type!=T_SEMICOLON){
-                if(debugging){
-                    std::cout<<"parser failed on parse_program_body()"<<std::endl;
-                 }
-                generate_error_report("Missing \";\" to complete statement");
-                return false;
-            }
-            if(!valid_parse){
-                if(debugging){
-                    std::cout<<"parser failed on parse_program_body()"<<std::endl;
-                 }
-                break;
-            }
-            //tokens "end" and "program" needed to end the program
-            if(Current_parse_token_type == T_END && Next_parse_token_type == T_PROGRAM){
-                break;
-            }
-        }
-        //valid_parse = parse_base_statement();
-    }
     return valid_parse;
 }
 
