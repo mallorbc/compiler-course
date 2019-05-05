@@ -247,9 +247,6 @@ bool parser::parse_procedure_header(){
         generate_error_report("Expected \":\" before type mark declaration");
         return false;
     }
-    //COMMENTED OUT ON 4/21 FOR math.src
-    //THIS TOKEN IS NEEDED FOR ONE FUNCTION BUT BREAKS ANOTHER
-    //Current_parse_token = Get_Valid_Token();
     //must have left and right paretheses, parameters are optional
     if(Current_parse_token_type == T_LPARAM){
         //If the procedure has no parameters
@@ -342,6 +339,7 @@ bool parser::parse_procedure_body(){
 }
 
 //ready to test
+//enum needs tested
 bool parser::parse_type_mark(){
     bool valid_parse;
     //May need to do something once the type is determined
@@ -440,17 +438,16 @@ bool parser::parse_type_mark(){
     return valid_parse;
 }
 
-//likely won't work on the first try
+
 //ready to test
+//refactored 1 time
 bool parser::parse_parameter_list(){
     bool valid_parse;
-    //ADDED 4/22 
+    //gets identifier token since it must be a variable, then parses variable
     Current_parse_token = Get_Valid_Token();
     valid_parse = parse_parameter();
     //if no errors from parsing the parameter
     if(valid_parse){
-        //COMMENTED OUT 4/22
-        //Current_parse_token = Get_Valid_Token();
         ///meaning that there are more parameters
         if(Current_parse_token_type == T_COMMA){
             Current_parse_token = Get_Valid_Token();
@@ -475,34 +472,6 @@ bool parser::parse_parameter_list(){
         
 
     }
-        // bool parameter_needed = false;
-        // while(true){
-        //     valid_parse = parse_parameter();
-        //     Current_parse_token = Get_Valid_Token();
-        //     if(Current_parse_token_type == T_RPARAM){
-        //         if(!parameter_needed){
-        //             return true;
-        //         }
-        //         //trailing comma
-        //         else{
-        //             generate_error_report("Extra trailing comma occuring in parameter list");
-        //             return false;
-        //         }
-        //     }
-
-        // }
-        // valid_parse = parse_parameter();
-        // Current_parse_token = Get_Valid_Token();
-        // if(Current_parse_token_type == T_COMMA){
-        //     while(true){
-        //         valid_parse = parse_parameter();
-        //         Current_parse_token = Get_Valid_Token();
-        //         if(Current_parse_token_type == T_RPARAM){
-        //             break;
-        //         }
-        //     }
-        // }
-
 
     return valid_parse;
 
