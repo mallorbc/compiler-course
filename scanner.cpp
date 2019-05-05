@@ -536,6 +536,8 @@ void scanner::comment_handler(){
             nested_comment_counter++;
             is_nested_commented = true;
             nested_comment_stat_change = true;
+            //skips the next char since it is part of the block comment indicator
+            source.get(next_char);
         }
     }
     else if(current_char == '*'){
@@ -545,6 +547,9 @@ void scanner::comment_handler(){
             if(nested_comment_counter<=0){
                 is_nested_commented = false;
                 nested_comment_stat_change = true;
+                //skips the next char since it is part of the block comment indicator
+                source.get(next_char);
+
             }
         }
         //do nothing
