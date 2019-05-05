@@ -340,6 +340,7 @@ bool parser::parse_procedure_body(){
 
 //ready to test
 //enum needs tested
+//write test prog for this
 bool parser::parse_type_mark(){
     bool valid_parse;
     //May need to do something once the type is determined
@@ -467,18 +468,14 @@ bool parser::parse_parameter_list(){
             }
             generate_error_report("Missing expected comma or parameter");
             return false;
-
         }
-        
-
     }
-
     return valid_parse;
-
 }
 
 //variable token is consumed to enter this function
 //ready to test
+//refactored 1 time
 bool parser::parse_variable_declaration(){
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -495,8 +492,6 @@ bool parser::parse_variable_declaration(){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_type_mark();
         if(valid_parse){
-            //COMMENTED OUT 4/21/19
-            //Current_parse_token = Get_Valid_Token();
             //checks for optional bracket to declare an array
             if(Current_parse_token_type == T_LBRACKET){
                 Current_parse_token = Get_Valid_Token();
@@ -510,14 +505,6 @@ bool parser::parse_variable_declaration(){
                     return false;
                 }
             }
-
-            // if(Next_parse_token_type == T_LBRACKET){
-            //     Current_parse_token = Get_Valid_Token();
-            //     //ADDED ON 4/21/19
-            //     Current_parse_token = Get_Valid_Token();
-            //     valid_parse = parse_bound();
-            // }
-
         }
     }
     else{
@@ -533,19 +520,21 @@ bool parser::parse_variable_declaration(){
 
 }
 
-//SPEC WAS UPDATED
-//UPDATED 5/1
+
 //ready to test
+//refactored 1 time
 bool parser::parse_bound(){
     bool valid_parse;
-
     valid_parse = parse_number();
-
+    if(!valid_parse){
+        generate_error_report("Missing expected number");
+    }
     return valid_parse;
 }
 
 //token type is consumed to enter this function
 //ready test
+//write test prog for
 bool parser::parse_type_declaration(){
     bool valid_parse;
     //T_TYPE has already been parsed;  May need changed in the future
@@ -576,11 +565,12 @@ bool parser::parse_type_declaration(){
 }
 
 //ready to test
+//refactored 1 time
 bool parser::parse_base_statement(){
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if(Current_parse_token_type == T_IDENTIFIER){
-        //Current_parse_token = Get_Valid_Token();
+        Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
     }
     else if(Current_parse_token_type == T_IF){
@@ -638,10 +628,10 @@ bool parser::parse_number(){
 }
 
 //ready to test
-//already parsed an identifier token
+//consumes an identifer before parsing
+//refactored 1 time
 bool parser::parse_assignment_statement(){
     bool valid_parse;
-    Current_parse_token = Get_Valid_Token();
     valid_parse = parse_assignment_destination();
     if(valid_parse){
         //MAY BE A BUG HERE, SHOULD THROW ERROR?
@@ -792,6 +782,7 @@ bool parser::parse_if_statement(){
 
 //ready to test
 //consumes for token before entering this function
+//refactored 1 time
 bool parser::parse_loop_statement(){
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
@@ -804,6 +795,7 @@ bool parser::parse_loop_statement(){
     }
     //needs to consume an identifier before parsing the assignment declaration
     if(Current_parse_token_type == T_IDENTIFIER){
+        Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
         if(Current_parse_token_type != T_SEMICOLON){
             generate_error_report("Missing \";\" for loop assignment statement");
