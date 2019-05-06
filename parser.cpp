@@ -73,6 +73,8 @@ void parser::print_errors(){
 //ready for testing
 //refactored 1 time
 bool parser::parse_program(){
+    //this tracks the state of the parser
+    parser_state state = S_PROGRAM;
     bool valid_parse;
     valid_parse = parse_program_header();
     valid_parse = parse_program_body();
@@ -92,6 +94,7 @@ bool parser::parse_program(){
 //ready for testing
 //refactored 1
 bool parser::parse_program_header(){
+    parser_state state = S_PROGRAM_HEADER;
     bool valid_parse;
     Current_parse_token = Get_Valid_Token();
     if(Current_parse_token_type == T_PROGRAM){
@@ -136,6 +139,8 @@ bool parser::parse_program_header(){
 //ready to test
 //refactored 1 time
 bool parser::parse_program_body(){
+    //this tracks the state of the parser
+    parser_state state = S_PROCEDURE_BODY;
     bool valid_parse;
         //keeps parsing until keyword begin is found
         while(Current_parse_token_type!=T_BEGIN){
@@ -188,6 +193,8 @@ bool parser::parse_program_body(){
 //ready to test
 //refactored 1 time
 bool parser::parse_base_declaration(){
+    //this tracks the state of the parser
+    parser_state state = S_BASE_DECLARATION;
     bool valid_parse;
     if(Current_parse_token_type == T_GLOBAL){
         //Do work for global declarations here
@@ -220,6 +227,8 @@ bool parser::parse_base_declaration(){
 
 
 bool parser::parse_procedure_declaration(){
+    //this tracks the state of the parser
+    parser_state state = S_PROCEDURE_DECLARATION;
     bool valid_parse;
     valid_parse = parse_procedure_header();
     valid_parse = parse_procedure_body();
@@ -230,6 +239,8 @@ bool parser::parse_procedure_declaration(){
 //ready to test
 //the token procedure is used to enter this function
 bool parser::parse_procedure_header(){
+    //this tracks the state of the parser
+    parser_state state = S_PROCEDURE_HEADER;
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
         Current_parse_token = Get_Valid_Token();
@@ -279,9 +290,11 @@ bool parser::parse_procedure_header(){
 
 }
 
-//likely will need debugging due to while loop
+
 //ready to test
 bool parser::parse_procedure_body(){
+    //this tracks the state of the parser
+    parser_state state = S_PROCEDURE_BODY;
     bool valid_parse;
     //must be able to parse declarations until T_BEGIN is found
     while(Current_parse_token_type!=T_BEGIN){
@@ -333,10 +346,13 @@ bool parser::parse_procedure_body(){
     return valid_parse;
 }
 
+
 //ready to test
 //enum needs tested
 //write test prog for this
 bool parser::parse_type_mark(){
+    //this tracks the state of the parser
+    parser_state state = S_TYPE_MARK;
     bool valid_parse;
     //May need to do something once the type is determined
     if(Current_parse_token_type == T_INTEGER_TYPE){
@@ -438,6 +454,8 @@ bool parser::parse_type_mark(){
 //ready to test
 //refactored 2 time
 bool parser::parse_parameter_list(){
+    //this tracks the state of the parser
+    parser_state state = S_PARAMETER_LIST;
     bool valid_parse;
     //gets identifier token since it must be a variable, then parses variable
     Current_parse_token = Get_Valid_Token();
@@ -472,6 +490,8 @@ bool parser::parse_parameter_list(){
 //ready to test
 //refactored 1 time
 bool parser::parse_variable_declaration(){
+    //this tracks the state of the parser
+    parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
         Current_parse_token = Get_Valid_Token();
@@ -519,6 +539,8 @@ bool parser::parse_variable_declaration(){
 //ready to test
 //refactored 1 time
 bool parser::parse_bound(){
+    //this tracks the state of the parser
+    parser_state state = S_BOUND;
     bool valid_parse;
     valid_parse = parse_number();
     if(!valid_parse){
@@ -531,6 +553,8 @@ bool parser::parse_bound(){
 //ready test
 //write test prog for
 bool parser::parse_type_declaration(){
+    //this tracks the state of the parser
+    parser_state state = S_TYPE_DECLARATION;
     bool valid_parse;
     //T_TYPE has already been parsed;  May need changed in the future
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -562,6 +586,8 @@ bool parser::parse_type_declaration(){
 //ready to test
 //refactored 1 time
 bool parser::parse_base_statement(){
+    //this tracks the state of the parser
+    parser_state state = S_BASE_STATEMENT;
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if(Current_parse_token_type == T_IDENTIFIER){
@@ -593,6 +619,8 @@ bool parser::parse_base_statement(){
 
 //ready to test
 bool parser::parse_parameter(){
+    //this tracks the state of the parser
+    parser_state state = S_PARAMETER;
     bool valid_parse;
     valid_parse = parse_variable_declaration();
     return valid_parse;
@@ -600,6 +628,8 @@ bool parser::parse_parameter(){
 
 //ready to test
 bool parser::parse_number(){
+    //this tracks the state of the parser
+    parser_state state = S_NUMBER;
     bool valid_parse;
     //the token will be either an integer or a float, or and error
     if(Current_parse_token_type == T_INTEGER_VALUE){
@@ -626,6 +656,8 @@ bool parser::parse_number(){
 //consumes an identifer before parsing
 //refactored 1 time
 bool parser::parse_assignment_statement(){
+    //this tracks the state of the parser
+    parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
     valid_parse = parse_assignment_destination();
     if(valid_parse){
@@ -661,6 +693,8 @@ bool parser::parse_assignment_statement(){
 //consumes if token before parsing
 //refactored 1 time
 bool parser::parse_if_statement(){
+    //this tracks the state of the parser
+    parser_state state = S_IF_STATEMENT;
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
         Current_parse_token = Get_Valid_Token();
@@ -738,6 +772,8 @@ bool parser::parse_if_statement(){
 //consumes for token before entering this function
 //refactored 1 time
 bool parser::parse_loop_statement(){
+    //this tracks the state of the parser
+    parser_state state = S_LOOP_STATEMENT;
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
         //grabs what should be an identifier
@@ -837,6 +873,8 @@ bool parser::parse_loop_statement(){
 //consumes return token before entering function
 //refactored 1 time
 bool parser::parse_return_statement(){
+    //this tracks the state of the parser
+    parser_state state = S_RETURN_STATEMENT;
     bool valid_parse;
     valid_parse = parse_expression();
     return valid_parse;
@@ -847,6 +885,8 @@ bool parser::parse_return_statement(){
 //already consumes identifier before parsing
 //refactored 1 time
 bool parser::parse_assignment_destination(){
+    //this tracks the state of the parser
+    parser_state state = S_ASSIGNMENT_DESTINATION;
     bool valid_parse;
     //this means that the optional bracketed expression should exist
     if(Current_parse_token_type == T_LBRACKET){
@@ -878,6 +918,8 @@ bool parser::parse_assignment_destination(){
 //consumes a token before entering this function
 //all expressions start be thought to start with a ArithOp?
 bool parser::parse_expression(){
+    //this tracks the state of the parser
+    parser_state state = S_EXPRESSION;
     bool valid_parse;
 
     if(Current_parse_token_type == T_AMPERSAND){
@@ -921,6 +963,8 @@ bool parser::parse_expression(){
 //consumes a token before entering this function
 //all arithOps can be thought to starts with relations?
 bool parser::parse_arithOp(){
+    //this tracks the state of the parser
+    parser_state state = S_ARITH_OP;
     bool valid_parse;
     //Current_parse_token = Get_Valid_Token();
 
@@ -966,6 +1010,8 @@ bool parser::parse_arithOp(){
 //consumes a token before entering this function
 //all arithOps can be thought to starts with terms?
 bool parser::parse_relation(){
+    //this tracks the state of the parser
+    parser_state state = S_RELATION;
     bool valid_parse;
     
     if(Current_parse_token_type == T_LESS){
@@ -1041,6 +1087,8 @@ bool parser::parse_relation(){
 //ready to test
 //already consumes a token before being parsed
 bool parser::parse_term(){
+    //this tracks the state of the parser
+    parser_state state = S_TERM;
     bool valid_parse;
     if(Current_parse_token_type == T_MULT){
         Current_parse_token = Get_Valid_Token();
@@ -1076,6 +1124,8 @@ bool parser::parse_term(){
 //not done
 //already consumes a token before being parsed
 bool parser::parse_factor(){
+    //this tracks the state of the parser
+    parser_state state = S_FACTOR;
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
         valid_parse = parse_expression();
@@ -1162,6 +1212,8 @@ bool parser::parse_factor(){
 //not done
 //already consumes indentifier token before being parsed
 bool parser::parse_name(){
+    //this tracks the state of the parser
+    parser_state state = S_NAME;
     bool valid_parse;
     if(Current_parse_token_type == T_LBRACKET){
         Current_parse_token = Get_Valid_Token();
@@ -1190,6 +1242,8 @@ bool parser::parse_name(){
 //ready to test
 //consumes one token before starting
 bool parser::parse_argument_list(){
+    //this tracks the state of the parser
+    parser_state state = S_ARGUMENT_LIST;
     bool valid_parse;
     valid_parse = parse_expression();
     if(valid_parse){
@@ -1204,6 +1258,8 @@ bool parser::parse_argument_list(){
 //ready to test
 //already consumes identifier token before parsing
 bool parser::parse_procedure_call(){
+    //this tracks the state of the parser
+    parser_state state = S_PROCEDURE_CALL;
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
         Current_parse_token = Get_Valid_Token();
