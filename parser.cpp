@@ -13,14 +13,6 @@ parser::parser(std::string file_to_parse){
     else{
         std::cout<<"The program had parsing errors"<<std::endl;
     }
-    // while(!Lexer->end_of_file){
-    //     Current_parse_token = Get_Valid_Token();
-    //     //should only happen at the end of the file now
-    //     if(Current_parse_token.type == 0){
-    //         continue;
-    //     }
-    //     std::cout<<"PARSE: starting to parse "<<Current_parse_token.type<<std::endl;
-    // }
     print_errors();
 
 }
@@ -756,6 +748,7 @@ bool parser::parse_loop_statement(){
     if(Current_parse_token_type == T_IDENTIFIER){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
+        //required semicolon after parse
         if(Current_parse_token_type != T_SEMICOLON){
             generate_error_report("Missing \";\" for loop assignment statement");
             return false;
@@ -773,9 +766,6 @@ bool parser::parse_loop_statement(){
         generate_error_report("Missing expeceted identifier for assignment statement");
         return false;
     }
-    //required semicolon after assignment statement
-    //if(Current_parse_token_type == T_SEMICOLON){
-        //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_expression();
         if(!valid_parse){
             if(debugging){
@@ -784,13 +774,10 @@ bool parser::parse_loop_statement(){
             generate_error_report("Missing expected expression for loop");
             return false;
         }
+        //else is valid
         else{
-            //COMMENTED OUT 5/5
-            //Current_parse_token = Get_Valid_Token();
+            //code gen?
         }
-    //}
-    //COMMENTED OUT 5/5
-    //Current_parse_token = Get_Valid_Token();
     if(Current_parse_token_type == T_RPARAM){
         Current_parse_token = Get_Valid_Token();
         while(Current_parse_token_type!=T_END){
@@ -834,16 +821,20 @@ bool parser::parse_loop_statement(){
             return false;
         }
     }
+    //else missing right paratheses
+    else{
+        generate_error_report("Missing \")\" for loop declaration");
+        return false;
+    }
 
     return valid_parse;
 }
 
 //ready to test
 //consumes return token before entering function
+//refactored 1 time
 bool parser::parse_return_statement(){
     bool valid_parse;
-    //COMMENTED OUT 4/23
-    //Current_parse_token = Get_Valid_Token();
     valid_parse = parse_expression();
     return valid_parse;
 }
@@ -851,6 +842,7 @@ bool parser::parse_return_statement(){
 
 //ready to test
 //already consumes identifier before parsing
+//refactored 1 time
 bool parser::parse_assignment_destination(){
     bool valid_parse;
     //this means that the optional bracketed expression should exist
@@ -874,10 +866,7 @@ bool parser::parse_assignment_destination(){
     }
     //optional bracket not there
     else{
-        //REMOVED 5/1
-        //Current_parse_token = Get_Valid_Token();
         valid_parse = true;
-
     }
     return valid_parse;
 }
@@ -1028,9 +1017,8 @@ bool parser::parse_relation(){
     }
     //else just a term
     else{
-        //COMMENTED OUT 4/22
-        //Current_parse_token = Get_Valid_Token();
         valid_parse = parse_term();
+        //checks to see if are any more terms to parse
         if(valid_parse){
             if(Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER || Current_parse_token_type == T_ASSIGN || Current_parse_token_type == T_EXCLAM){
                 Current_parse_token = Get_Valid_Token();
@@ -1064,7 +1052,6 @@ bool parser::parse_term(){
     //else is just a factor
     else{
         valid_parse = parse_factor();
-        //ADDED 4/22
         if(valid_parse){
             if(Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH){
                 if(Current_parse_token_type == T_MULT){
@@ -1199,7 +1186,7 @@ bool parser::parse_name(){
     return valid_parse;
 }
 
-//not done
+//ready to test
 //consumes one token before starting
 bool parser::parse_argument_list(){
     bool valid_parse;
@@ -1213,7 +1200,7 @@ bool parser::parse_argument_list(){
     return valid_parse;
 }
 
-//not done
+//ready to test
 //already consumes identifier token before parsing
 bool parser::parse_procedure_call(){
     bool valid_parse;
