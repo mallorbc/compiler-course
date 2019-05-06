@@ -26,39 +26,61 @@ enum char_type{
 
 class scanner{
     public:
+    //OBJECTS
     //used to hold the symbol table and character table
     SymbolTable symbol_table;
+
+    //CONSTRUCTORS:
+
     //two constructors for the class, first one is unused
     scanner();
     scanner(std::string file);
-    //reads the file
+
+
+    //METHODS:
+
+    //reads the file; useful only for testing
     void ReadFile();
+
     //initializes the scanner
     void InitScanner(std::string file);
+
     //checks to see whether token is an identifier or reserved word
     bool Is_Reserved_Word(std::string test_word);
-    //stores the next token in Current_token
+
+    //gets the next token and stores the next token in Current_token
     token Get_token();
+
     //checks to see if is a reserved char
     bool Is_Reserved_Char(char test_char);
+
     //soley for quick tests
     void test();
+
     //detects whether or not the current char is the first char in the token
     bool is_first_char();
+
     //start of the lexer; detects what the beggining char is
     int what_is_char(char test_char);
-    //builds char tokesn
+
+    //builds char token
     void build_char_token();
+
     //builds floats and integer tokens
     void build_number_token();
+
     //builds indentifiers and reserved words
     void build_string_token();
+
     //tracks spaces, end lines and invalid characters
     void invalid_char_test();
+
     //builds the string stored in quotes
     void string_value_builder();
+
     //function used for handling comments
     void comment_handler();
+
     //will handle things relating to end lines
     void end_line_handler();
 
@@ -110,7 +132,6 @@ class scanner{
 
     //token that will be stored as the last token that was sent
     token last_sent_token;
-    //parser *scanner_parser;
 
 };
 

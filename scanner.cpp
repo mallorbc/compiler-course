@@ -7,11 +7,6 @@ scanner::scanner(){
 
 //usefuly for quick tests; pass in an empty file
 void scanner::test(){
-    // token *test_tok;
-    // test_tok = new token;
-    // *test_tok = symbol_table.map["if"];
-    // std::cout<<"Token is: "<<test_tok->stringValue<<" of type: "<<test_tok->type<<std::endl;
-
     token test_token;
     std::string test_string;
     test_string = "";
@@ -96,11 +91,10 @@ void scanner::InitScanner(std::string file){
     FileName = file;
     //sets the current line to 1
     current_line = 1;
-    //Starts reading the actual file
-    //ReadFile();
 }
 
 
+//used for testing
 void scanner::ReadFile(){
     token read_token;
     //scanner_parser = new parser;
@@ -177,27 +171,6 @@ token scanner::Get_token(){
         }
         build_string = "";
 
-        //TEMPORARY COMMENTS WILL KEEP UNTIL COMMENTS ARE CEMENTED
-
-        // if(previous_char == '\n'){
-        //     std::cout<<"Prev char test"<<std::endl;
-        //     if(test_counter == 1 && is_slash_comment){
-        //         end_line_handler();
-        //         test_counter = 0;
-        //     }
-        //     test_counter++;
-            
-        // }
-        //if token is a valid token type it returns
-
-
-        // if(current_line!=prev_line){
-        //     std::cout<<"test";
-        //     if(current_line>prev_line+1){
-        //         std::cout<<"test 2";
-        //     }
-        // }
-
         //must be a valid token, and not either type of comment
         if(Current_token->type!=0 && !is_slash_comment && !is_nested_commented){
             break;
@@ -221,14 +194,10 @@ token scanner::Get_token(){
     }
     return_token = *Current_token;
     delete Current_token;
-    //used to get correct line for the error report if the token that caused a token was on the previous line
-    // if(last_char_was_end_line){
-    //    // end_line_handler();
-    //     return_token.first_token_on_line = true;
-    // }
+    //used if the program breaks from hitting the eof
     last_sent_token = return_token;
+
     return return_token;
-    //return *Current_token;
 }
 
 
@@ -364,7 +333,6 @@ void scanner::build_number_token(){
     bool is_float = false;
     bool one_decimal = true;
     //numbers are valid until a non numbber character is used, or multiple decimals are used
-    // while(isdigit(next_char) || (next_char=='.' && one_decimal)){
     while(isdigit(next_char) || next_char=='.'){
         if(current_char == '.' && !one_decimal){
             if(debug){
@@ -515,8 +483,8 @@ void scanner::string_value_builder(){
     Current_token->stringValue = build_string;
     Current_token->line_found = current_line;
     Current_token->type = T_STRING_VALUE;
-
 }
+
 
 void scanner::comment_handler(){
     char peek_char;
