@@ -6,6 +6,12 @@
 #include <vector>
 #include "scanner.h"
 
+enum parser_state{
+S_PROGRAM = 1,
+S_PROGRAM_HEADER = 2
+
+};
+
 
 class parser{
     public:
@@ -71,7 +77,7 @@ class parser{
     bool parse_relation();
     bool parse_term();
     bool parse_factor();
-    //HAS BEEN UPDATED IN THE SPEC; NEEDS UPDATED
+
     bool parse_bound();
     bool parse_number();
     bool parse_name();
@@ -79,7 +85,11 @@ class parser{
     bool parse_argument_list();
 
     bool parse_procedure_call();
+
+    void resync_parser(parser_state state);
 };
+
+
 
 
 #endif // !PARSER_H

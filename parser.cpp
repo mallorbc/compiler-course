@@ -1236,3 +1236,8 @@ bool parser::parse_procedure_call(){
 
     return valid_parse;
 }
+
+
+void parser::resync_parser(parser_state state){
+
+}
