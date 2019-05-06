@@ -1122,7 +1122,7 @@ bool parser::parse_term(){
 }
 
 
-//not done
+//ready to test
 //already consumes a token before being parsed
 bool parser::parse_factor(){
     //this tracks the state of the parser
@@ -1210,7 +1210,7 @@ bool parser::parse_factor(){
     return valid_parse;
 }
 
-//not done
+//ready to test
 //already consumes indentifier token before being parsed
 bool parser::parse_name(){
     //this tracks the state of the parser
@@ -1299,14 +1299,175 @@ bool parser::parse_procedure_call(){
 
 
 void parser::resync_parser(parser_state state){
+    //may be used to call proper parse function if needed
+    parser_state new_state;
+    //consumes tokens until it can resync
     switch (state){
         //1
+        //not possible?
         case S_PROGRAM:
 
         break;
 
         //2
         case S_PROGRAM_HEADER:
+        while(Current_parse_token_type!=T_GLOBAL || Current_parse_token_type!=T_PROCEDURE || Current_parse_token_type!=T_TYPE || Current_parse_token_type !=T_BEGIN || Current_parse_token_type!=T_INVALID){
+            Current_parse_token = Get_Valid_Token();
+        }
+        new_state = S_PROGRAM_BODY;
+
+        break;
+
+        //3
+        case S_PROGRAM_BODY:
+
+        break;
+
+        //4
+        case S_BASE_DECLARATION:
+
+        break;
+
+        //5
+        case S_PROCEDURE_DECLARATION:
+
+        break;
+
+        //6
+        case S_PROCEDURE_HEADER:
+
+        break;
+
+        //7
+        case S_PARAMETER_LIST:
+
+        break;
+
+        //8
+        case S_PARAMETER:
+
+        break;
+
+        //9
+        case S_PROCEDURE_BODY:
+
+        break;
+
+        //10
+        case S_VARIABLE_DECLARATION:
+
+        break;
+
+        //11
+        case S_TYPE_DECLARATION:
+
+        break;
+
+        //12
+        case S_TYPE_MARK:
+
+        break;
+
+        //13
+        case S_BOUND:
+
+        break;
+
+        //14
+        case S_BASE_STATEMENT:
+
+        break;
+        
+        //15
+        case S_PROCEDURE_CALL:
+
+        break;
+
+        //16
+        case S_ASSIGNMENT_STATMENT:
+
+        break;
+
+        //17
+        case S_ASSIGNMENT_DESTINATION:
+
+        break;
+
+        //18
+        case S_IF_STATEMENT:
+
+        break;
+
+        //19
+        case S_LOOP_STATEMENT:
+
+        break;
+
+        //20
+        case S_RETURN_STATEMENT:
+
+        break;
+
+        //21
+        case S_EXPRESSION:
+
+        break;
+
+        //22
+        case S_ARITH_OP:
+
+        break;
+
+        //23
+        case S_RELATION:
+
+        break;
+
+        //24
+        case S_TERM:
+
+        break;
+
+        //25
+        case S_FACTOR:
+
+        break;
+
+        //26
+        case S_NAME:
+
+        break;
+
+        //27
+        case S_ARGUMENT_LIST:
+
+        break;
+
+        //28
+        case S_NUMBER:
+
+        break;
+
+        //This should never happen
+        default:
+        std::cout<<"Error in resync start state"<<std::endl;
+        break;
+    }
+
+    //calls appropriate parse function based on the new state
+    switch (new_state){
+        //1
+        //not possible?
+        case S_PROGRAM:
+
+        break;
+
+        //2
+        case S_PROGRAM_HEADER:
+        while(Current_parse_token_type!=T_GLOBAL || Current_parse_token_type!=T_PROCEDURE || Current_parse_token_type!=T_TYPE || Current_parse_token_type !=T_BEGIN){
+            Current_parse_token = Get_Valid_Token();
+        }
+        new_state = S_PROGRAM_BODY;
 
         break;
 
