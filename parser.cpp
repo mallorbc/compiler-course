@@ -911,8 +911,6 @@ bool parser::parse_expression(){
             valid_parse = parse_arithOp();
         }
     }
-
-    
     return valid_parse;
 }
 

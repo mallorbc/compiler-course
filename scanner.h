@@ -108,6 +108,8 @@ class scanner{
     //tracks what line the double slash comment is on
     int slash_comment_line;
 
+    //token that will be stored as the last token that was sent
+    token last_sent_token;
     //parser *scanner_parser;
 
 };

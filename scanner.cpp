@@ -151,6 +151,10 @@ token scanner::Get_token(){
         //breaks loop if end of file is reached
         if(source.eof()){
             end_of_file = true;
+            //this will be useful for getting the correct line if the file runs over
+            *Current_token = last_sent_token;
+            //sets this token type to an invalid token type
+            Current_token->type = T_INVALID;
             break;
         }
         previous_char = current_char;
@@ -229,6 +233,7 @@ token scanner::Get_token(){
     //    // end_line_handler();
     //     return_token.first_token_on_line = true;
     // }
+    last_sent_token = return_token;
     return return_token;
     //return *Current_token;
 }
