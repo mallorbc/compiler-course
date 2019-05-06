@@ -664,6 +664,7 @@ bool parser::parse_assignment_statement(){
 
 //ready for testing
 //consumes if token before parsing
+//refactored 1 time
 bool parser::parse_if_statement(){
     bool valid_parse;
     if(Current_parse_token_type == T_LPARAM){
@@ -674,7 +675,10 @@ bool parser::parse_if_statement(){
             if(Current_parse_token_type == T_THEN){
                 Current_parse_token = Get_Valid_Token();
                 //may need to remove this if statement
-                    while(Current_parse_token_type!=T_ELSE && Current_parse_token_type!=T_END){
+                    while(Current_parse_token_type!=T_END){
+                        if(Current_parse_token_type ==T_ELSE){
+                            Current_parse_token = Get_Valid_Token();
+                        }
                         valid_parse = parse_base_statement();
                         //required to have semicolon after parsing a statement
                         if(Current_parse_token_type!=T_SEMICOLON){
@@ -688,65 +692,22 @@ bool parser::parse_if_statement(){
                         else{
                             //ADDED ON 4/23
                             Current_parse_token = Get_Valid_Token();
-
                         }
                     }
-                    //once the else token is recieved
-                    if(Current_parse_token_type == T_ELSE){
+                    if(Current_parse_token_type == T_END){
                         Current_parse_token = Get_Valid_Token();
-                        while(Current_parse_token_type!=T_END){
-                            valid_parse = parse_base_statement();
-                            //required to have a semicolon after parsing a statement
-                            if(Current_parse_token_type!=T_SEMICOLON){
-                                if(debugging){
-                                    std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-                                }
-                                generate_error_report("Missing require \";\" after statement");
-                                return false;
-                            }
-                            //else is a semicolon
-                            else{
-                                Current_parse_token = Get_Valid_Token();
-                            }
-                        }
-                        if(Current_parse_token_type == T_END){
-                            Current_parse_token = Get_Valid_Token();
-
-                        }
-                        else{
-                            if(debugging){
-                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-                            }
-                            generate_error_report("Missing expected keyword \"end\" for end of statement");
-                            return false;
-                        }
-                        if(Current_parse_token_type == T_IF){
-                            Current_parse_token = Get_Valid_Token();
-                        }
-                        else{
-                            if(debugging){
-                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-                            }
-                            generate_error_report("Missing expected keyword \"if\" for end of statement");
-                            return false;
-                        }
-                        
                     }
-                    else if(Current_parse_token_type == T_END){
+                    else{
+                        generate_error_report("Missing keyword \"end\" to end if statement");
+                        return false;
+                    }
+                    if(Current_parse_token_type == T_IF){
                         Current_parse_token = Get_Valid_Token();
-                        if(Current_parse_token_type == T_IF){
-                            Current_parse_token = Get_Valid_Token();
-                            //end of if statement
-                            //set valid_parse to true?
-                            valid_parse = true;
-                        }
-                        else{
-                            generate_error_report("Missing \"if\" to complete \"end if\" to end the if statement");
-                            return false;
-                        }
-
                     }
-                //NEED TO INCLDUE ELSE FOR IF STATEMENT WITH NO STATEMENTS
+                    else{
+                        generate_error_report("Missing keyword \"if\"to end if statement");
+                        return false;
+                    }
             }
             else{
                 if(debugging){

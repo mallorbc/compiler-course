@@ -79,9 +79,6 @@ class parser{
     bool parse_argument_list();
 
     bool parse_procedure_call();
-    
-
-
 };
 
 
