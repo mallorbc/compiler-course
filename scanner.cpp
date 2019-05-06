@@ -4,7 +4,6 @@ scanner::scanner(){
     
 }
 
-
 //usefuly for quick tests; pass in an empty file
 void scanner::test(){
     token test_token;
@@ -173,6 +172,9 @@ token scanner::Get_token(){
 
         //must be a valid token, and not either type of comment
         if(Current_token->type!=0 && !is_slash_comment && !is_nested_commented){
+            if(Current_token->line_found!=last_sent_token.line_found){
+                Current_token->first_token_on_line = true;
+            }
             break;
         }
         //tests if is a comment
@@ -191,6 +193,7 @@ token scanner::Get_token(){
                 end_line_handler();
             }
         }
+
     }
     return_token = *Current_token;
     delete Current_token;
@@ -525,6 +528,7 @@ void scanner::comment_handler(){
         }
     }
 }
+
 
 void scanner::end_line_handler(){
     is_slash_comment = false;

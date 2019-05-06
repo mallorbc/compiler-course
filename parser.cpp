@@ -53,12 +53,12 @@ void parser::add_error_report(std::string error_report){
 //ready for testing
 void parser::generate_error_report(std::string error_message){
     std::string full_error_message = "";
-    // if(Current_parse_token.first_token_on_line){
-    //     full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found-1) + ": ";
-    // }
-    // else{
+    if(Current_parse_token.first_token_on_line){
+        full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found-1) + ": ";
+    }
+    else{
         full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
-    // }
+    }
     full_error_message = full_error_message + error_message;
     add_error_report(full_error_message);
 }
@@ -433,7 +433,7 @@ bool parser::parse_type_mark(){
 
 
 //ready to test
-//refactored 1 time
+//refactored 2 time
 bool parser::parse_parameter_list(){
     bool valid_parse;
     //gets identifier token since it must be a variable, then parses variable
@@ -448,7 +448,7 @@ bool parser::parse_parameter_list(){
 
         }
         //there are no more parameters to parse
-        else if(Current_parse_token_type == T_RPARAM){
+        if(Current_parse_token_type == T_RPARAM){
             Current_parse_token = Get_Valid_Token();
             valid_parse = true;
 
@@ -458,7 +458,7 @@ bool parser::parse_parameter_list(){
             if(debugging){
                 std::cout<<"parser failed on parse_parameter_list()"<<std::endl;
             }
-            generate_error_report("Missing expected comma or parameter");
+            generate_error_report("Missing \")\" to close procedure parameter list");
             return false;
         }
     }
