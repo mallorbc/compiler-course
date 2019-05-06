@@ -186,6 +186,7 @@ bool parser::parse_program_body(){
 }
 
 //ready to test
+//refactored 1 time
 bool parser::parse_base_declaration(){
     bool valid_parse;
     if(Current_parse_token_type == T_GLOBAL){
@@ -194,7 +195,7 @@ bool parser::parse_base_declaration(){
     }
     if(Current_parse_token_type == T_PROCEDURE){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_procedure_header();
+        valid_parse = parse_procedure_declaration();
 
     }
     else if(Current_parse_token_type == T_VARIABLE){
@@ -216,6 +217,15 @@ bool parser::parse_base_declaration(){
     return valid_parse;
 
 }
+
+
+bool parser::parse_procedure_declaration(){
+    bool valid_parse;
+    valid_parse = parse_procedure_header();
+    valid_parse = parse_procedure_body();
+    return valid_parse;
+}
+
 
 //ready to test
 //the token procedure is used to enter this function
@@ -253,13 +263,6 @@ bool parser::parse_procedure_header(){
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_parameter_list();
         }
-        //this if statement may not be needed
-        if(valid_parse){
-            //COMMENTED OUT 4/22
-            //Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_body();
-        }
-        
 
     }
     //must have left and right paretheses, parameters are optional

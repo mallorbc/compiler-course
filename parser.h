@@ -8,7 +8,10 @@
 
 enum parser_state{
 S_PROGRAM = 1,
-S_PROGRAM_HEADER = 2
+S_PROGRAM_HEADER = 2,
+S_PROGRAM_BODY = 3,
+S_BASE_DECLARATION = 4
+
 
 };
 
@@ -52,6 +55,7 @@ class parser{
 
 
     //methods for parsing part of the procedures
+    bool parse_procedure_declaration();
     bool parse_procedure_header();
     bool parse_procedure_body();
 
