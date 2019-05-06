@@ -114,13 +114,6 @@ void scanner::ReadFile(){
         //Gets a token and places it in the Current_token variable
         Current_token = new token;
         Get_token();
-        // if(!scanner_parser->started_parsing){
-        //     scanner_parser->start_parser(*Current_token);
-        // }
-        // else{
-        //     scanner_parser->parse_next_token(*Current_token);
-
-       // }
 
         //build token vector here?
         if(Current_token->type == 279){
