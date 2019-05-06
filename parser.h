@@ -113,7 +113,7 @@ class parser{
 
     bool parse_procedure_call();
 
-    void resync_parser(parser_state state);
+    bool resync_parser(parser_state state);
 };
 
 

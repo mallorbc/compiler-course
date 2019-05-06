@@ -39,6 +39,9 @@ token parser::Get_Valid_Token(){
         Next_parse_token = Look_ahead_tokens[0];
         Next_parse_token_type = Next_parse_token.type;
     }
+    if (Current_parse_token_type>T_INVALID){
+        Current_parse_token = Get_Valid_Token();
+    }
 
     return Current_parse_token;
 }
@@ -88,7 +91,7 @@ bool parser::parse_program(){
     if(debugging && !valid_parse){
         std::cout<<"parser failed on parse_proram()"<<std::endl;
     }
-    resync_parser(state);
+    //resync_parser(state);
     return valid_parse;
 }
 
@@ -141,7 +144,7 @@ bool parser::parse_program_header(){
 //refactored 1 time
 bool parser::parse_program_body(){
     //this tracks the state of the parser
-    parser_state state = S_PROCEDURE_BODY;
+    parser_state state = S_PROGRAM_BODY;
     bool valid_parse;
         //keeps parsing until keyword begin is found
         while(Current_parse_token_type!=T_BEGIN){
@@ -152,15 +155,23 @@ bool parser::parse_program_body(){
                     std::cout<<"parser failed on parse_program_body()"<<std::endl;
                  }
                 generate_error_report("Missing \";\" to complete declaration");
-                return false;
+                //return false;
             }
             if(!valid_parse){
-                break;  
+                //break;
+                return resync_parser(state);
+                // if(!valid_parse){
+                //     break;
+                // }
+                
             }
             //ADDED ON 4/21
             Current_parse_token = Get_Valid_Token();
 
         }
+        // if(!valid_parse){
+        //     resync_parser(state);
+        // }
         //once the begin token is recieved
         if(Current_parse_token_type == T_BEGIN){
             Current_parse_token = Get_Valid_Token();
@@ -188,6 +199,7 @@ bool parser::parse_program_body(){
             generate_error_report("Missing keyword \"begin\" to begin program statements");
             return false;
         }
+
     return valid_parse;
 }
 
@@ -1298,7 +1310,9 @@ bool parser::parse_procedure_call(){
 }
 
 
-void parser::resync_parser(parser_state state){
+bool parser::resync_parser(parser_state state){
+    //state to return
+    bool return_state;
     //may be used to call proper parse function if needed
     parser_state new_state;
     //consumes tokens until it can resync
@@ -1311,15 +1325,20 @@ void parser::resync_parser(parser_state state){
 
         //2
         case S_PROGRAM_HEADER:
-        while(Current_parse_token_type!=T_GLOBAL || Current_parse_token_type!=T_PROCEDURE || Current_parse_token_type!=T_TYPE || Current_parse_token_type !=T_BEGIN || Current_parse_token_type!=T_INVALID){
-            Current_parse_token = Get_Valid_Token();
-        }
-        new_state = S_PROGRAM_BODY;
+
 
         break;
 
         //3
         case S_PROGRAM_BODY:
+            while(Current_parse_token_type!=T_GLOBAL && Current_parse_token_type!=T_PROCEDURE && Current_parse_token_type!=T_TYPE && Current_parse_token_type !=T_BEGIN && Current_parse_token_type!=T_INVALID){
+                Current_parse_token = Get_Valid_Token();
+            }
+            if(Current_parse_token_type == T_PROCEDURE){
+                Current_parse_token = Get_Valid_Token();
+                new_state = S_PROCEDURE_HEADER;
+            }
+        //new_state = S_PROGRAM_BODY;
 
         break;
 
@@ -1464,15 +1483,12 @@ void parser::resync_parser(parser_state state){
 
         //2
         case S_PROGRAM_HEADER:
-        while(Current_parse_token_type!=T_GLOBAL || Current_parse_token_type!=T_PROCEDURE || Current_parse_token_type!=T_TYPE || Current_parse_token_type !=T_BEGIN){
-            Current_parse_token = Get_Valid_Token();
-        }
-        new_state = S_PROGRAM_BODY;
 
         break;
 
         //3
         case S_PROGRAM_BODY:
+        ///return_state = parse_procedure_body();
 
         break;
 
@@ -1488,6 +1504,7 @@ void parser::resync_parser(parser_state state){
 
         //6
         case S_PROCEDURE_HEADER:
+        return_state = parse_procedure_header();
 
         break;
 
@@ -1606,5 +1623,5 @@ void parser::resync_parser(parser_state state){
         std::cout<<"Error in resync start state"<<std::endl;
         break;
     }
-
+    return return_state;
 }
