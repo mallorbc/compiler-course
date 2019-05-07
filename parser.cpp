@@ -57,11 +57,16 @@ void parser::add_error_report(std::string error_report){
 void parser::generate_error_report(std::string error_message){
     std::string full_error_message = "";
     if(!resync_status){
-        if(Current_parse_token.first_token_on_line){
-            full_error_message = "Error on line " + std::to_string(prev_token.line_found) + ": ";
+        if(Lexer->is_nested_commented == false){
+            if(Current_parse_token.first_token_on_line){
+                full_error_message = "Error on line " + std::to_string(prev_token.line_found) + ": ";
+            }
+            else{
+                full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
+            }
         }
         else{
-            full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
+            full_error_message = "Error on line " + std::to_string(Lexer->nested_comment_line) + ": ";
         }
         full_error_message = full_error_message + error_message;
         add_error_report(full_error_message);
@@ -160,6 +165,10 @@ bool parser::parse_program_body(){
                     valid_parse = resync_parser(state);
                     //if have run out of tokens
                     if(Current_parse_token_type == T_INVALID){
+                        if(Lexer->is_nested_commented){
+                            generate_error_report("Unclosed block comment detected");
+                            resync_status = true;
+                        }
                         return false;
                     }
                 }
@@ -172,27 +181,31 @@ bool parser::parse_program_body(){
                 valid_parse = resync_parser(state);
                 //if have run out of tokens
                 if(Current_parse_token_type == T_INVALID){
+                    if(Lexer->is_nested_commented){
+                        generate_error_report("Unclosed block comment detected");
+                        resync_status = true;
+                    }
                     return false;
                 }
             }
         }
-        // if(!valid_parse){
-        //     resync_parser(state);
-        // }
         //once the begin token is recieved
         if(Current_parse_token_type == T_BEGIN){
             Current_parse_token = Get_Valid_Token();
             while(Current_parse_token_type!=T_END){
                 valid_parse = parse_base_statement();
-                if(Current_parse_token_type!=T_SEMICOLON){
-                    generate_error_report("Missing \";\" to end program statement");
-                    return false;
-                }
-                else{
-                    Current_parse_token = Get_Valid_Token();
+                if(valid_parse){
+                    if(Current_parse_token_type == T_SEMICOLON){
+                        Current_parse_token = Get_Valid_Token();
+                    }
+                    else{
+                        generate_error_report("Missing \";\" to end program statement");
+                        valid_parse = resync_parser(state);
+                    }
+                    
                 }
             }
-            //once the end token is recieved
+            //once the end token is recieveds
             Current_parse_token = Get_Valid_Token();
             if(Current_parse_token_type == T_PROGRAM){
                 Current_parse_token = Get_Valid_Token();
@@ -1344,6 +1357,9 @@ bool parser::resync_parser(parser_state state){
         //3
         case S_PROGRAM_BODY:
         while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_INVALID){
+            //DECLARATIONS
+
+
             if(prev_token_type == T_PROCEDURE){
                 new_state = S_PROCEDURE_DECLARATION;
                 break;
@@ -1378,6 +1394,28 @@ bool parser::resync_parser(parser_state state){
                 new_state = S_BASE_DECLARATION;
             }
 
+
+            //STATEMENTS
+
+
+            //is a an assignment statement
+            if(Current_parse_token_type == T_IDENTIFIER){
+
+            }
+            else if(Current_parse_token_type == T_IF){
+
+            }
+            else if(Current_parse_token_type == T_FOR){
+
+            }
+            else if(Current_parse_token_type == T_RETURN){
+                
+                break;
+
+            }
+
+
+            //SEMICOLONS
             Current_parse_token = Get_Valid_Token();
             if(Current_parse_token_type == T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();

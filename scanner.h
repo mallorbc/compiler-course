@@ -133,6 +133,8 @@ class scanner{
     //token that will be stored as the last token that was sent
     token last_sent_token;
 
+    int nested_comment_line;
+
 };
 
 

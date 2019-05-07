@@ -503,6 +503,7 @@ void scanner::comment_handler(){
         //enter block comment stack by one
         else if(peek_char == '*'){
             nested_comment_counter++;
+            nested_comment_line = current_line;
             is_nested_commented = true;
             nested_comment_stat_change = true;
             //skips the next char since it is part of the block comment indicator
