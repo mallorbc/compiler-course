@@ -16,48 +16,16 @@ parser::parser(std::string file_to_parse){
     print_errors();
 
 }
+
+
 //ready for testing; May have issues at the end of the program
-// token parser::Get_Valid_Token2(){
-//     token first_token;
-//     //if first token in the list;  may need a similar condition for the last token
-//     if(Current_parse_token.type == 9999){
-//         first_token = Lexer->Get_token();
-//         Current_parse_token = Lexer->Get_token();
-//         Look_ahead_tokens.push_back(Current_parse_token);
-//         Current_parse_token = first_token;
-//         Current_parse_token_type = Current_parse_token.type;
-//         Next_parse_token = Look_ahead_tokens[0];
-//         Next_parse_token_type = Next_parse_token.type;
-        
-//     }
-//     //if not the first token
-//     else{
-//         prev_token = Current_parse_token;
-//         prev_token_type = Current_parse_token_type;
-//         Current_parse_token = Look_ahead_tokens[0];
-//         Current_parse_token_type = Current_parse_token.type;
-//         Look_ahead_tokens.erase(Look_ahead_tokens.begin());
-//         Look_ahead_tokens.push_back(Lexer->Get_token());
-//         Next_parse_token = Look_ahead_tokens[0];
-//         Next_parse_token_type = Next_parse_token.type;
-//     }
-//     if (Current_parse_token_type>T_INVALID){
-//         Current_parse_token = Get_Valid_Token();
-//     }
-
-//     return Current_parse_token;
-// }
-
 token parser::Get_Valid_Token(){
     token first_token;
     //if first token in the list;  may need a similar condition for the last token
     if(Current_parse_token.type == 9999){
         Current_parse_token = Lexer->Get_token();
         Next_parse_token = Lexer->Get_token();
-        //Look_ahead_tokens.push_back(Current_parse_token);
-        // Current_parse_token = first_token;
         Current_parse_token_type = Current_parse_token.type;
-        // Next_parse_token = Look_ahead_tokens[0];
         Next_parse_token_type = Next_parse_token.type;
         
     }
@@ -69,10 +37,6 @@ token parser::Get_Valid_Token(){
         Current_parse_token_type = Next_parse_token_type;
         Next_parse_token = Lexer->Get_token();
         Next_parse_token_type = Next_parse_token.type;
-        // Look_ahead_tokens.erase(Look_ahead_tokens.begin());
-        // Look_ahead_tokens.push_back(Lexer->Get_token());
-        // Next_parse_token = Look_ahead_tokens[0];
-        // Next_parse_token_type = Next_parse_token.type;
     }
     //for some reason junk is somtimes recieved
     if (Current_parse_token_type>T_INVALID || Current_parse_token_type<0){
@@ -81,7 +45,6 @@ token parser::Get_Valid_Token(){
 
     return Current_parse_token;
 }
-
 
 
 //ready for testing
