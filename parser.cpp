@@ -1378,10 +1378,40 @@ bool parser::resync_parser(parser_state state){
         // }
 
         while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_INVALID){
-            if(Current_parse_token_type == T_BEGIN){
-                new_state = S_PROCEDURE_BODY;
+            if(prev_token_type == T_PROCEDURE){
+                new_state = S_PROCEDURE_DECLARATION;
                 break;
             }
+            else if(prev_token_type == T_VARIABLE){
+                new_state = S_VARIABLE_DECLARATION;
+                break;
+            }
+            else if(prev_token_type == T_TYPE){
+                new_state = S_TYPE_DECLARATION;
+                break;
+            }
+            else if(prev_token_type == T_GLOBAL){
+                new_state = S_BASE_DECLARATION;
+                break;
+            }
+
+
+            if(Current_parse_token_type == T_BEGIN){
+                new_state = S_PROGRAM_BODY;
+                break;
+            }
+            else if(Current_parse_token_type == T_PROCEDURE){
+                new_state = S_BASE_DECLARATION;
+                break;
+            }
+            else if(Current_parse_token_type == T_VARIABLE){
+                new_state = S_BASE_DECLARATION;
+                break;
+            }
+            else if(Current_parse_token_type == T_TYPE){
+                new_state = S_BASE_DECLARATION;
+            }
+
             Current_parse_token = Get_Valid_Token();
             if(Current_parse_token_type == T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();
@@ -1401,6 +1431,7 @@ bool parser::resync_parser(parser_state state){
 
         //5
         case S_PROCEDURE_DECLARATION:
+
 
         break;
 
@@ -1427,10 +1458,12 @@ bool parser::resync_parser(parser_state state){
         //10
         case S_VARIABLE_DECLARATION:
 
+
         break;
 
         //11
         case S_TYPE_DECLARATION:
+  
 
         break;
 
@@ -1525,6 +1558,10 @@ bool parser::resync_parser(parser_state state){
         break;
     }
 
+
+
+
+    resync_status = false;
     //calls appropriate parse function based on the new state
     switch (new_state){
         //1
@@ -1547,17 +1584,44 @@ bool parser::resync_parser(parser_state state){
 
         //4
         case S_BASE_DECLARATION:
+        return_state = parse_base_declaration();
+        if(return_state){
+            if(Current_parse_token_type == T_SEMICOLON){
+                Current_parse_token = Get_Valid_Token();
+            }
+            else{
+                generate_error_report("Missing \";\" to complete declaration");
+                resync_parser(S_PROGRAM_BODY);
+            }
+        }
+        else{
+
+        }
 
         break;
 
         //5
         case S_PROCEDURE_DECLARATION:
+        return_state = parse_procedure_declaration();
+        if(return_state){
+            if(Current_parse_token_type ==T_SEMICOLON){
+                Current_parse_token = Get_Valid_Token();
+            }
+            else{
+                generate_error_report("Missing \";\" to complete declaration");
+                resync_parser(S_PROGRAM_BODY);
+            }
+        }
+        else{
+
+        }
+
 
         break;
 
         //6
         case S_PROCEDURE_HEADER:
-        return_state = parse_procedure_header();
+        // return_state = parse_procedure_header();
 
         break;
 
@@ -1578,14 +1642,38 @@ bool parser::resync_parser(parser_state state){
 
         //10
         case S_VARIABLE_DECLARATION:
-        //error_reports.pop_back();
-        //error_reports.pop_back();
         return_state = parse_variable_declaration();
+        if(return_state){
+            if(Current_parse_token_type ==T_SEMICOLON){
+                Current_parse_token = Get_Valid_Token();
+            }
+            else{
+                generate_error_report("Missing \";\" to complete declaration");
+                resync_parser(S_PROGRAM_BODY);
+            }
+        }
+        else{
+
+        }
+
 
         break;
 
         //11
         case S_TYPE_DECLARATION:
+        return_state = parse_type_declaration();
+        if(return_state){
+            if(Current_parse_token_type ==T_SEMICOLON){
+                Current_parse_token = Get_Valid_Token();
+            }
+            else{
+                generate_error_report("Missing \";\" to complete declaration");
+                resync_parser(S_PROGRAM_BODY);
+            }
+        }
+        else{
+
+        } 
 
         break;
 
