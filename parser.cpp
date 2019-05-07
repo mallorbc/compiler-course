@@ -17,16 +17,47 @@ parser::parser(std::string file_to_parse){
 
 }
 //ready for testing; May have issues at the end of the program
+// token parser::Get_Valid_Token2(){
+//     token first_token;
+//     //if first token in the list;  may need a similar condition for the last token
+//     if(Current_parse_token.type == 9999){
+//         first_token = Lexer->Get_token();
+//         Current_parse_token = Lexer->Get_token();
+//         Look_ahead_tokens.push_back(Current_parse_token);
+//         Current_parse_token = first_token;
+//         Current_parse_token_type = Current_parse_token.type;
+//         Next_parse_token = Look_ahead_tokens[0];
+//         Next_parse_token_type = Next_parse_token.type;
+        
+//     }
+//     //if not the first token
+//     else{
+//         prev_token = Current_parse_token;
+//         prev_token_type = Current_parse_token_type;
+//         Current_parse_token = Look_ahead_tokens[0];
+//         Current_parse_token_type = Current_parse_token.type;
+//         Look_ahead_tokens.erase(Look_ahead_tokens.begin());
+//         Look_ahead_tokens.push_back(Lexer->Get_token());
+//         Next_parse_token = Look_ahead_tokens[0];
+//         Next_parse_token_type = Next_parse_token.type;
+//     }
+//     if (Current_parse_token_type>T_INVALID){
+//         Current_parse_token = Get_Valid_Token();
+//     }
+
+//     return Current_parse_token;
+// }
+
 token parser::Get_Valid_Token(){
     token first_token;
     //if first token in the list;  may need a similar condition for the last token
     if(Current_parse_token.type == 9999){
-        first_token = Lexer->Get_token();
         Current_parse_token = Lexer->Get_token();
-        Look_ahead_tokens.push_back(Current_parse_token);
-        Current_parse_token = first_token;
+        Next_parse_token = Lexer->Get_token();
+        //Look_ahead_tokens.push_back(Current_parse_token);
+        // Current_parse_token = first_token;
         Current_parse_token_type = Current_parse_token.type;
-        Next_parse_token = Look_ahead_tokens[0];
+        // Next_parse_token = Look_ahead_tokens[0];
         Next_parse_token_type = Next_parse_token.type;
         
     }
@@ -34,14 +65,17 @@ token parser::Get_Valid_Token(){
     else{
         prev_token = Current_parse_token;
         prev_token_type = Current_parse_token_type;
-        Current_parse_token = Look_ahead_tokens[0];
-        Current_parse_token_type = Current_parse_token.type;
-        Look_ahead_tokens.erase(Look_ahead_tokens.begin());
-        Look_ahead_tokens.push_back(Lexer->Get_token());
-        Next_parse_token = Look_ahead_tokens[0];
+        Current_parse_token = Next_parse_token;
+        Current_parse_token_type = Next_parse_token_type;
+        Next_parse_token = Lexer->Get_token();
         Next_parse_token_type = Next_parse_token.type;
+        // Look_ahead_tokens.erase(Look_ahead_tokens.begin());
+        // Look_ahead_tokens.push_back(Lexer->Get_token());
+        // Next_parse_token = Look_ahead_tokens[0];
+        // Next_parse_token_type = Next_parse_token.type;
     }
-    if (Current_parse_token_type>T_INVALID){
+    //for some reason junk is somtimes recieved
+    if (Current_parse_token_type>T_INVALID || Current_parse_token_type<0){
         Current_parse_token = Get_Valid_Token();
     }
 
@@ -58,14 +92,16 @@ void parser::add_error_report(std::string error_report){
 //ready for testing
 void parser::generate_error_report(std::string error_message){
     std::string full_error_message = "";
-    if(Current_parse_token.first_token_on_line){
-        full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found-1) + ": ";
+    if(!resync_status){
+        if(Current_parse_token.first_token_on_line){
+            full_error_message = "Error on line " + std::to_string(prev_token.line_found) + ": ";
+        }
+        else{
+            full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
+        }
+        full_error_message = full_error_message + error_message;
+        add_error_report(full_error_message);
     }
-    else{
-        full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
-    }
-    full_error_message = full_error_message + error_message;
-    add_error_report(full_error_message);
 }
 
 //ready for testing
@@ -151,39 +187,22 @@ bool parser::parse_program_body(){
         //keeps parsing until keyword begin is found
         while(Current_parse_token_type!=T_BEGIN){
             valid_parse = parse_base_declaration();
-            //after any declaration type you need a semicolon
-            if(Current_parse_token_type!=T_SEMICOLON){
+            if(valid_parse){
+                if(Current_parse_token_type == T_SEMICOLON){
+                    Current_parse_token = Get_Valid_Token();
+                }
+                else{
+                    generate_error_report("Missing \";\" to complete declaration");
+                    valid_parse = resync_parser(state);
+                }
+            }
+            //else parse_base_declaration failed
+            else{
                 if(debugging){
                     std::cout<<"parser failed on parse_program_body()"<<std::endl;
                  }
-                generate_error_report("Missing \";\" to complete declaration");
-                //return false;
-            }
-            if(!valid_parse){
-                //break;
                 valid_parse = resync_parser(state);
-                if(valid_parse){
-                    if(Current_parse_token_type == T_SEMICOLON){
-                        Current_parse_token = Get_Valid_Token();                  
-                    }
-                    else{
-                        std::cout<<Current_parse_token.type<<std::endl;
-                        return false;
-                    }
-                }
-                else{
-                    break;
-                }
-                // if(!valid_parse){
-                //     break;
-                // }
-                
             }
-            else{
-            //ADDED ON 4/21
-            Current_parse_token = Get_Valid_Token();
-            }
-
         }
         // if(!valid_parse){
         //     resync_parser(state);
@@ -327,6 +346,10 @@ bool parser::parse_procedure_body(){
     bool valid_parse;
     //must be able to parse declarations until T_BEGIN is found
     while(Current_parse_token_type!=T_BEGIN){
+        //for resyncing
+        if(Current_parse_token_type == T_END){
+            break;
+        }
         valid_parse = parse_base_declaration();
         //after every declaration there has to be a semicolon
         if(Current_parse_token_type!=T_SEMICOLON){
@@ -1327,6 +1350,7 @@ bool parser::parse_procedure_call(){
 
 
 bool parser::resync_parser(parser_state state){
+    resync_status = true;
     //state to return
     bool return_state;
     //may be used to call proper parse function if needed
@@ -1355,12 +1379,56 @@ bool parser::resync_parser(parser_state state){
             //     new_state = S_PROCEDURE_HEADER;
             // }
         //new_state = S_PROGRAM_BODY;
-        while(prev_token_type!=T_GLOBAL && prev_token_type!=T_PROCEDURE && prev_token_type!=T_TYPE && prev_token_type!=T_BEGIN && prev_token_type!=T_INVALID && prev_token_type!=T_VARIABLE){
+        // while(prev_token_type!=T_GLOBAL && prev_token_type!=T_PROCEDURE && prev_token_type!=T_TYPE && prev_token_type!=T_BEGIN && prev_token_type!=T_INVALID && prev_token_type!=T_VARIABLE){
+        //     Current_parse_token = Get_Valid_Token();
+        // }
+        // if(prev_token_type == T_VARIABLE){
+        //     new_state = S_VARIABLE_DECLARATION;
+        // }
+        // if(prev_token_type == T_PROCEDURE){
+        //     std::cout<<"test";
+        // }
+
+
+        // while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_BEGIN && Current_parse_token_type!=T_PROCEDURE && Current_parse_token_type!=T_VARIABLE && Current_parse_token_type!=T_TYPE && Current_parse_token_type!=T_END){
+        //     Current_parse_token = Get_Valid_Token();
+        //     if(prev_token_type == T_PROCEDURE){
+        //         new_state = S_PROCEDURE_HEADER;
+        //         break;
+        //     }
+        //     else if(prev_token_type == S_VARIABLE_DECLARATION){
+        //         new_state = S_VARIABLE_DECLARATION;
+        //         break;
+        //     }
+        //     else if(Current_parse_token_type == T_SEMICOLON){
+        //         Current_parse_token = Get_Valid_Token();
+        //         new_state = S_PROGRAM_BODY;
+        //     break;
+        //     }
+        //     else if(Current_parse_token_type == T_BEGIN){
+        //     new_state = S_PROGRAM_BODY;
+        //     }
+        //     else if(Current_parse_token_type == T_PROCEDURE){
+        //     new_state = S_PROGRAM_BODY;
+        //     }
+            
+        // }
+
+        while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_INVALID){
+            if(Current_parse_token_type == T_BEGIN){
+                new_state = S_PROCEDURE_BODY;
+                break;
+            }
             Current_parse_token = Get_Valid_Token();
+            if(Current_parse_token_type == T_SEMICOLON){
+                Current_parse_token = Get_Valid_Token();
+                new_state = S_PROGRAM_BODY;
+                break;
+            }
         }
-        if(prev_token_type == T_VARIABLE){
-            new_state = S_VARIABLE_DECLARATION;
-        }
+
+       
+
         break;
 
         //4
@@ -1509,7 +1577,8 @@ bool parser::resync_parser(parser_state state){
 
         //3
         case S_PROGRAM_BODY:
-        ///return_state = parse_procedure_body();
+        //return_state = parse_program_body();
+        return_state = true;
 
         break;
 
@@ -1546,6 +1615,8 @@ bool parser::resync_parser(parser_state state){
 
         //10
         case S_VARIABLE_DECLARATION:
+        //error_reports.pop_back();
+        //error_reports.pop_back();
         return_state = parse_variable_declaration();
 
         break;
@@ -1645,5 +1716,6 @@ bool parser::resync_parser(parser_state state){
         std::cout<<"Error in resync start state"<<std::endl;
         break;
     }
+    resync_status = false;
     return return_state;
 }
