@@ -37,11 +37,19 @@ token parser::Get_Valid_Token(){
         Current_parse_token_type = Next_parse_token_type;
         Next_parse_token = Lexer->Get_token();
         Next_parse_token_type = Next_parse_token.type;
+        //for some reason random junk sometimes appears
+        while(Next_parse_token_type>T_INVALID || Next_parse_token_type<0){
+        Next_parse_token = Lexer->Get_token();
+        Next_parse_token_type = Next_parse_token.type;
+        }
     }
     //for some reason junk is somtimes recieved
-    if (Current_parse_token_type>T_INVALID || Current_parse_token_type<0){
-        Current_parse_token = Get_Valid_Token();
-    }
+    // if (Current_parse_token_type>T_INVALID || Current_parse_token_type<0){
+    //     Current_parse_token = Get_Valid_Token();
+    // }
+    // if(Next_parse_token_type>T_INVALID || Next_parse_token_type < 0){
+
+    // }
 
     return Current_parse_token;
 }
@@ -1334,49 +1342,6 @@ bool parser::resync_parser(parser_state state){
 
         //3
         case S_PROGRAM_BODY:
-            // while(Current_parse_token_type!=T_GLOBAL && Current_parse_token_type!=T_PROCEDURE && Current_parse_token_type!=T_TYPE && Current_parse_token_type !=T_BEGIN && Current_parse_token_type!=T_INVALID){
-            //     Current_parse_token = Get_Valid_Token();
-            // }
-            // if(Current_parse_token_type == T_PROCEDURE){
-            //     Current_parse_token = Get_Valid_Token();
-            //     new_state = S_PROCEDURE_HEADER;
-            // }
-        //new_state = S_PROGRAM_BODY;
-        // while(prev_token_type!=T_GLOBAL && prev_token_type!=T_PROCEDURE && prev_token_type!=T_TYPE && prev_token_type!=T_BEGIN && prev_token_type!=T_INVALID && prev_token_type!=T_VARIABLE){
-        //     Current_parse_token = Get_Valid_Token();
-        // }
-        // if(prev_token_type == T_VARIABLE){
-        //     new_state = S_VARIABLE_DECLARATION;
-        // }
-        // if(prev_token_type == T_PROCEDURE){
-        //     std::cout<<"test";
-        // }
-
-
-        // while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_BEGIN && Current_parse_token_type!=T_PROCEDURE && Current_parse_token_type!=T_VARIABLE && Current_parse_token_type!=T_TYPE && Current_parse_token_type!=T_END){
-        //     Current_parse_token = Get_Valid_Token();
-        //     if(prev_token_type == T_PROCEDURE){
-        //         new_state = S_PROCEDURE_HEADER;
-        //         break;
-        //     }
-        //     else if(prev_token_type == S_VARIABLE_DECLARATION){
-        //         new_state = S_VARIABLE_DECLARATION;
-        //         break;
-        //     }
-        //     else if(Current_parse_token_type == T_SEMICOLON){
-        //         Current_parse_token = Get_Valid_Token();
-        //         new_state = S_PROGRAM_BODY;
-        //     break;
-        //     }
-        //     else if(Current_parse_token_type == T_BEGIN){
-        //     new_state = S_PROGRAM_BODY;
-        //     }
-        //     else if(Current_parse_token_type == T_PROCEDURE){
-        //     new_state = S_PROGRAM_BODY;
-        //     }
-            
-        // }
-
         while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_INVALID){
             if(prev_token_type == T_PROCEDURE){
                 new_state = S_PROCEDURE_DECLARATION;
