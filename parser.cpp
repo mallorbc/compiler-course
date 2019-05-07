@@ -43,13 +43,6 @@ token parser::Get_Valid_Token(){
         Next_parse_token_type = Next_parse_token.type;
         }
     }
-    //for some reason junk is somtimes recieved
-    // if (Current_parse_token_type>T_INVALID || Current_parse_token_type<0){
-    //     Current_parse_token = Get_Valid_Token();
-    // }
-    // if(Next_parse_token_type>T_INVALID || Next_parse_token_type < 0){
-
-    // }
 
     return Current_parse_token;
 }
@@ -165,6 +158,10 @@ bool parser::parse_program_body(){
                 else{
                     generate_error_report("Missing \";\" to complete declaration");
                     valid_parse = resync_parser(state);
+                    //if have run out of tokens
+                    if(Current_parse_token_type == T_INVALID){
+                        return false;
+                    }
                 }
             }
             //else parse_base_declaration failed
@@ -173,6 +170,10 @@ bool parser::parse_program_body(){
                     std::cout<<"parser failed on parse_program_body()"<<std::endl;
                  }
                 valid_parse = resync_parser(state);
+                //if have run out of tokens
+                if(Current_parse_token_type == T_INVALID){
+                    return false;
+                }
             }
         }
         // if(!valid_parse){
@@ -1383,6 +1384,10 @@ bool parser::resync_parser(parser_state state){
                 new_state = S_PROGRAM_BODY;
                 break;
             }
+            // else if(Current_parse_token_type == T_INVALID){
+            //     return true;
+            //     break;
+            // }
         }
 
        
