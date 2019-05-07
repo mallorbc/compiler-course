@@ -114,6 +114,9 @@ class parser{
     bool parse_procedure_call();
 
     bool resync_parser(parser_state state);
+
+    token prev_token;
+    int prev_token_type;
 };
 
 
