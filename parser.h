@@ -119,6 +119,8 @@ class parser{
     int prev_token_type;
 
     bool resync_status = false;
+
+    bool parsing_statements = false;
 };
 
 
