@@ -17,6 +17,7 @@ clear
 #moves compiler binary to testPgms/correct and then starts testing
 yes | cp compiler testPgms/correct
 yes | cp compiler testPgms/custom
+yes | cp compiler testPgms/fail
 cd testPgms/correct
 
 echo "Testing provided programs"
@@ -103,5 +104,20 @@ echo "Testing custom_math.src"
 sleep 1
 echo $(./compiler custom_math.src)
 sleep 1 
+clear
+
+echo "Running failure files"
+echo "Testing math_fail.src"
+sleep 2
+cd ../
+cd ./fail
+echo $(./compiler math_fail.src)
+sleep 3
+clear
+
+echo "Testing test1_fail.src"
+sleep 1
+echo $(./compiler test1_fail.src)
+sleep 3
 clear
 
