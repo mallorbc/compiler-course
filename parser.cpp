@@ -837,18 +837,21 @@ bool parser::parse_if_statement(){
         valid_parse = parse_expression();
         if(Current_parse_token_type == T_RPARAM){
             Current_parse_token = Get_Valid_Token();
-            if(Current_parse_token_type == T_THEN){
+        }
+        else{
+            generate_error_report("Missing \")\" expected for if statment");
+            valid_parse = resync_parser(state);
+            //return false;
+        }
+        if(Current_parse_token_type == T_THEN){
                 Current_parse_token = Get_Valid_Token();
+        }
+        else{
+            generate_error_report("Missing expected keyword \"then\" for if statements");
+            valid_parse = resync_parser(state);
+            if(Current_parse_token_type == T_INVALID){
+                return false;                }
             }
-            else{
-                if(debugging){
-                    std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-                }
-                generate_error_report("Missing expected keyword \"then\" for if statements");
-                valid_parse = resync_parser(state);
-
-            }
-                
                 //may need to remove this if statement
                     while(Current_parse_token_type!=T_END){
                         if(Current_parse_token_type ==T_ELSE){
@@ -904,14 +907,7 @@ bool parser::parse_if_statement(){
                         //return false;
                     }
 
-        }
-        else{
-            if(debugging){
-                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-            }
-            generate_error_report("Missing \")\" expected for if statment");
-            return false;
-        }
+
     }
     else{
         if(debugging){
@@ -928,104 +924,7 @@ bool parser::parse_if_statement(){
 
 //ready to test
 //consumes for token before entering this function
-//refactored 1 time
-// bool parser::parse_loop_statement(){
-//     //this tracks the state of the parser
-//     parser_state state = S_LOOP_STATEMENT;
-//     bool valid_parse;
-//     if(Current_parse_token_type == T_LPARAM){
-//         //grabs what should be an identifier
-//         Current_parse_token = Get_Valid_Token();   
-//     }
-//     else{
-//         generate_error_report("Missing \"(\" required for loop");
-//         //return false;
-//     }
-//     //needs to consume an identifier before parsing the assignment declaration
-//     if(Current_parse_token_type == T_IDENTIFIER){
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_assignment_statement();
-//         //required semicolon after parse
-//         if(Current_parse_token_type != T_SEMICOLON){
-//             generate_error_report("Missing \";\" for loop assignment statement");
-//             return false;
-//         }
-//         else{
-//             Current_parse_token = Get_Valid_Token();
-//         }
-        
-//     }
-//     //missing required identifier for an assignment statement
-//     else{
-//         if(debugging){
-//             std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-//         }
-//         generate_error_report("Missing expeceted identifier for assignment statement");
-//         return false;
-//     }
-//         valid_parse = parse_expression();
-//         if(!valid_parse){
-//             if(debugging){
-//                 std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-//             }
-//             generate_error_report("Missing expected expression for loop");
-//             return false;
-//         }
-//         //else is valid
-//         else{
-//             //code gen?
-//         }
-//     if(Current_parse_token_type == T_RPARAM){
-//         Current_parse_token = Get_Valid_Token();
-//         while(Current_parse_token_type!=T_END){
-//             valid_parse = parse_base_statement();
-//             if(!valid_parse){
-//                 if(debugging){
-//                     std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-//                 }
-//                 generate_error_report("Missing expected valid statement inside for loop");
-//                 return false;
-//             }
-//             if(Current_parse_token_type != T_SEMICOLON){
-//                 generate_error_report("Missing \";\" for end statement inside of loop");
-//                 return false;
-//             }
-//             //else is semicolon
-//             else{
-//                 Current_parse_token = Get_Valid_Token();
-//             }
-
-//         }
-//         //checks for ending two tokens
-//         if(Current_parse_token_type == T_END){
-//             Current_parse_token = Get_Valid_Token();
-//         }
-//         else{
-//             if(debugging){
-//                 std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-//             }
-//             generate_error_report("Missing expected keyword \"end\" for end of statement");
-//             return false;
-//         }
-//         if(Current_parse_token_type == T_FOR){
-//             Current_parse_token = Get_Valid_Token();
-//         }
-//         else{
-//             if(debugging){
-//                 std::cout<<"parser failed on parse_loop_statement()"<<std::endl;
-//             }
-//             generate_error_report("Missing expected keyword \"for\" for end of statement");
-//             return false;
-//         }
-//     }
-//     //else missing right paratheses
-//     else{
-//         generate_error_report("Missing \")\" for loop declaration");
-//         return false;
-//     }
-
-//     return valid_parse;
-// }
+//refactored 2 times
 bool parser::parse_loop_statement(){
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
@@ -1836,6 +1735,9 @@ bool parser::resync_parser(parser_state state){
                 new_state = S_BASE_STATEMENT;
                 break;
             }
+            // else if(Current_parse_token_type == T_THEN){
+            //     Cure
+            // }
             else if(Current_parse_token_type == T_FOR){
                 new_state = S_BASE_STATEMENT;
                 break;
