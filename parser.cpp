@@ -161,7 +161,9 @@ bool parser::parse_program_body(){
                 Current_parse_token = Get_Valid_Token();
             }
             else{
-                generate_error_report("Missing \";\" to complete declaration");
+                if(valid_parse){
+                    generate_error_report("Missing \";\" to complete declaration");
+                }
                 valid_parse = resync_parser(state);
                     //if have run out of tokens
                     if(Current_parse_token_type == T_INVALID){
@@ -188,6 +190,9 @@ bool parser::parse_program_body(){
                     std::cout<<"parser failed on parse_program_body()"<<std::endl;
                  }
                 valid_parse = resync_parser(state);
+                if(Current_parse_token_type == T_INVALID){
+                    return false;
+                }
             }
             parsing_statements = false;
         }
@@ -197,7 +202,10 @@ bool parser::parse_program_body(){
         }
         else{
             generate_error_report("Missing keyword \"begin\" to begin program statements");
-            resync_parser(state);
+            valid_parse = resync_parser(state);
+            if(Current_parse_token_type == T_INVALID){
+                return false;
+            }
             //return false;
         }
         while(Current_parse_token_type!=T_END){
@@ -206,7 +214,9 @@ bool parser::parse_program_body(){
                 Current_parse_token = Get_Valid_Token();
             }
             else{
-                generate_error_report("Missing \";\" to end program statement");
+                if(valid_parse){
+                    generate_error_report("Missing \";\" to end program statement");
+                }
                 valid_parse = resync_parser(state);
                 //if have run out of tokens
                 if(Current_parse_token_type == T_INVALID){
@@ -393,6 +403,9 @@ bool parser::parse_procedure_body(){
                 std::cout<<"parser failed on parse_procedure_body()"<<std::endl;
             }
             valid_parse = resync_parser(state);
+            if(Current_parse_token_type == T_INVALID){
+                return false;
+            }
         }
     }
 
@@ -404,7 +417,11 @@ bool parser::parse_procedure_body(){
         Current_parse_token = Get_Valid_Token();
     }
     else{
+        generate_error_report("Missing keyword \"begin\" to begin procedure statements");
         valid_parse = resync_parser(state);
+        if(Current_parse_token_type == T_INVALID){
+            return false;
+        }
     }
     parsing_statements = true;
     while(Current_parse_token_type!=T_END){
@@ -413,7 +430,9 @@ bool parser::parse_procedure_body(){
             Current_parse_token = Get_Valid_Token();
         }
         else{
-            generate_error_report("Missing \";\" to end program statement");
+            if(valid_parse){
+                generate_error_report("Missing \";\" to end program statement");
+            }
             valid_parse = resync_parser(state);
             //if have run out of tokens
             if(Current_parse_token_type == T_INVALID){
@@ -432,6 +451,9 @@ bool parser::parse_procedure_body(){
         }
         else{
             valid_parse = resync_parser(state);
+            if(Current_parse_token_type == T_INVALID){
+                return false;
+            }
         }
     }
     if(Current_parse_token_type == T_END){
@@ -823,33 +845,50 @@ bool parser::parse_if_statement(){
                             Current_parse_token = Get_Valid_Token();
                         }
                         valid_parse = parse_base_statement();
-                        //required to have semicolon after parsing a statement
-                        if(Current_parse_token_type!=T_SEMICOLON){
-                            if(debugging){
-                                std::cout<<"parser failed on parse_if_statement()"<<std::endl;
-                            }
-                            generate_error_report("Missing required \";\" after statement");
-                            return false;
-                        }
-                        //else is a semicolon
-                        else{
-                            //ADDED ON 4/23
+                        if(Current_parse_token_type == T_SEMICOLON){
                             Current_parse_token = Get_Valid_Token();
                         }
+                        else{
+                            if(valid_parse){
+                                generate_error_report("Missing \";\" to end statement in if statement");
+                            }
+                            valid_parse = resync_parser(state);
+                            //if have run out of tokens
+                            if(Current_parse_token_type == T_INVALID){
+                                if(Lexer->is_nested_commented){
+                                    generate_error_report("Unclosed block comment detected");
+                                    resync_status = true;
+                                }
+                                return false;
+                            }
+                        }
+                        //conditions to break loop
+                        if(valid_parse){
+                            if(Current_parse_token_type == T_END || Current_parse_token_type == T_INVALID){
+                                break;
+                            }
+                            if(Current_parse_token_type == T_IF && Next_parse_token_type!=T_LPARAM){
+                                break;
+                            }
+                        }
+                        else{
+                            valid_parse = resync_parser(state);
+                        }
+
                     }
                     if(Current_parse_token_type == T_END){
                         Current_parse_token = Get_Valid_Token();
                     }
                     else{
                         generate_error_report("Missing keyword \"end\" to end if statement");
-                        return false;
+                        //return false;
                     }
                     if(Current_parse_token_type == T_IF){
                         Current_parse_token = Get_Valid_Token();
                     }
                     else{
                         generate_error_report("Missing keyword \"if\"to end if statement");
-                        return false;
+                        //return false;
                     }
             }
             else{
@@ -1069,6 +1108,9 @@ bool parser::parse_expression(){
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_arithOp();
         }
+    }
+    else{
+        generate_error_report("Error in expression");
     }
     return valid_parse;
 }
@@ -1698,6 +1740,29 @@ bool parser::resync_parser(parser_state state){
 
         //18
         case S_IF_STATEMENT:
+        while(Current_parse_token_type!=T_SEMICOLON && Current_parse_token_type!=T_INVALID){
+            if(Current_parse_token_type == T_IF){
+                new_state = S_BASE_STATEMENT;
+                break;
+            }
+            else if(Current_parse_token_type == T_FOR){
+                new_state = S_BASE_STATEMENT;
+                break;
+            }
+            else if(Current_parse_token_type == T_RETURN){
+                new_state = S_BASE_STATEMENT;
+                break;
+            }
+            // else if(Current_parse_token_type ==T_IDENTIFIER){
+            //     new_state = S_BASE_DECLARATION;
+            //     break;    
+            // }
+            else if(Current_parse_token_type == T_END){
+                return true;
+            }
+
+            Current_parse_token = Get_Valid_Token();
+        }
 
         break;
 
@@ -1861,7 +1926,7 @@ bool parser::resync_parser(parser_state state){
             }
             else{
                 generate_error_report("Missing \";\" to complete declaration");
-                resync_parser(original_state);
+                return_state = resync_parser(original_state);
             }
         }
         else{
@@ -1880,7 +1945,7 @@ bool parser::resync_parser(parser_state state){
             }
             else{
                 generate_error_report("Missing \";\" to complete declaration");
-                resync_parser(original_state);
+                return_state = resync_parser(original_state);
             }
         }
         else{
@@ -1907,8 +1972,8 @@ bool parser::resync_parser(parser_state state){
                 Current_parse_token = Get_Valid_Token();
             }
             else{
-                generate_error_report("Missing required \";\" after statement");
-                resync_parser(original_state);
+                generate_error_report("Missing \";\" to end program statement");
+                 return_state = resync_parser(original_state);
             }
         }
 
@@ -1931,6 +1996,7 @@ bool parser::resync_parser(parser_state state){
 
         //18
         case S_IF_STATEMENT:
+
 
         break;
 
