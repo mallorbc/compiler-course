@@ -277,7 +277,7 @@ bool parser::parse_base_declaration(){
         if(debugging){
             std::cout<<"parser failed on parse_base_declaration()"<<std::endl;
         }
-        generate_error_report("Expected keywords \"procedure\",\"variable\", or \"type\" not found");
+        generate_error_report("Expected keywords \"procedure\",\"variable\" \"type\", or \"begin\" not found");
         return false;
     }
     
@@ -310,16 +310,18 @@ bool parser::parse_procedure_header(){
             std::cout<<"parser failed on parse_procedure_header()"<<std::endl;
         }
         generate_error_report("Procedure must be named a valid identifier");
-        return false;
+        Current_parse_token = Get_Valid_Token();
+        //valid_parse = resync_parser(state);
+        //return false;
     }
     if(Current_parse_token_type == T_COLON){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark();
     }
     else{
         generate_error_report("Expected \":\" before type mark declaration");
-        return false;
+
     }
+    valid_parse = parse_type_mark();
     //must have left and right paretheses, parameters are optional
     if(Current_parse_token_type == T_LPARAM){
         //If the procedure has no parameters
@@ -363,7 +365,9 @@ bool parser::parse_procedure_body(){
             Current_parse_token = Get_Valid_Token();
         }
         else{
+            if(valid_parse){
             generate_error_report("Missing \";\" to complete declaration");
+            }
             valid_parse = resync_parser(state);
                 //if have run out of tokens
                 if(Current_parse_token_type == T_INVALID){
@@ -376,9 +380,9 @@ bool parser::parse_procedure_body(){
 
         }
         if(valid_parse){
-            if(Current_parse_token_type == T_BEGIN ||Current_parse_token_type == T_IF
-            || Current_parse_token_type == T_IDENTIFIER || Current_parse_token_type == T_FOR
-            || Current_parse_token_type == T_RETURN || Current_parse_token_type == T_END){
+            if(Current_parse_token_type == T_BEGIN ||Current_parse_token_type == T_IF 
+            || Current_parse_token_type == T_FOR || Current_parse_token_type == T_RETURN 
+            || Current_parse_token_type == T_END){
                 break;
             }
 
@@ -552,12 +556,17 @@ bool parser::parse_type_mark(){
             }
         }
     }
+    else{
+        generate_error_report("Missing valid type mark");
+        return false;
+    }
     return valid_parse;
 }
 
 
 //ready to test
 //refactored 2 time
+//consumes variable token first
 bool parser::parse_parameter_list(){
     //this tracks the state of the parser
     parser_state state = S_PARAMETER_LIST;
@@ -1403,6 +1412,7 @@ bool parser::parse_procedure_call(){
 
 
 bool parser::resync_parser(parser_state state){
+    int temp_token_type;
     resync_status = true;
     //state to return
     bool return_state;
@@ -1533,6 +1543,7 @@ bool parser::resync_parser(parser_state state){
 
         //6
         case S_PROCEDURE_HEADER:
+        new_state = original_state;
 
         break;
 
@@ -1590,11 +1601,18 @@ bool parser::resync_parser(parser_state state){
                 break;
             }
             else if(Current_parse_token_type == T_VARIABLE){
-                new_state = S_BASE_DECLARATION;
-                break;
+                if(prev_token_type == T_LPARAM){
+                    new_state = S_PARAMETER_LIST;
+                    break;
+                }
+                else{
+                    new_state = S_BASE_DECLARATION;
+                    break;
+                }
             }
             else if(Current_parse_token_type == T_TYPE){
                 new_state = S_BASE_DECLARATION;
+                break;
             }
 
 
@@ -1765,9 +1783,10 @@ bool parser::resync_parser(parser_state state){
 
         //4
         case S_BASE_DECLARATION:
+        temp_token_type = Current_parse_token_type;
         return_state = parse_base_declaration();
         if(return_state){
-            if(Current_parse_token_type == T_SEMICOLON){
+            if((Current_parse_token_type == T_SEMICOLON) || (Current_parse_token_type == T_RPARAM && temp_token_type == T_VARIABLE)){
                 Current_parse_token = Get_Valid_Token();
             }
             else{
@@ -1802,13 +1821,25 @@ bool parser::resync_parser(parser_state state){
 
         //6
         case S_PROCEDURE_HEADER:
+        //Current_parse_token = Get_Valid_Token();
+        return true;
         // return_state = parse_procedure_header();
 
         break;
 
         //7
         case S_PARAMETER_LIST:
-
+        return_state = parse_parameter_list();
+        return_state = parse_procedure_body();
+        // if(return_state){
+        //     if(Current_parse_token_type == T_RPARAM){
+        //         Current_parse_token = Get_Valid_Token();
+        //     }
+        //     else{
+        //         generate_error_report("Missing \")\" to close procedure parameter list");
+        //         return true;
+        //     }
+        // }
         break;
 
         //8
