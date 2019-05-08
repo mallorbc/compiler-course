@@ -27,3 +27,6 @@ After the compiler is compiled, it can be used but running the executable in the
 ```cli
 ./<name of binary> <name of file to compile>
 ```
+
+## Testing the Compiler
+The shell script *test_all.sh* builds the compiler using the make file, then proceeds to test the compiler using the script and test files. These test files are located in testPgms/correct, which are test files provided by the professor, and in testPgms/custom for a correct test file that I made, and testPgms/fail which are files that I made that do not work.
