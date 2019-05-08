@@ -41,7 +41,7 @@ S_NUMBER = 28
 
 class parser{
     public:
-    bool debugging = true;
+    bool debugging = false;
     //constructors for the parser
     parser(std::string parse_file);
 
@@ -121,6 +121,8 @@ class parser{
     bool resync_status = false;
 
     bool parsing_statements = false;
+
+    bool errors_occured = false;
 };
 
 
