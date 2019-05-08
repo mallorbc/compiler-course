@@ -8,7 +8,13 @@ parser::parser(std::string file_to_parse){
     Lexer = new scanner(parse_file);
     valid_parse = parse_program();
     if(valid_parse){
-        std::cout<<"The program parsed successfully"<<std::endl;
+        if(errors_occured){
+            std::cout<<"The program parsed successfully with errors"<<std::endl;
+        }
+        else{
+            std::cout<<"The program parsed successfully with no errors"<<std::endl;
+        }
+        
     }
     else{
         std::cout<<"The program had parsing errors"<<std::endl;
@@ -1274,12 +1280,15 @@ bool parser::parse_relation(){
         if(valid_parse){
             if(Current_parse_token_type == T_ASSIGN){
                 Current_parse_token = Get_Valid_Token();
-                if(Current_parse_token_type!=T_ASSIGN){
-                    generate_error_report("Not a valid relational operator");
-                    errors_occured = true;
+                if(Current_parse_token_type==T_ASSIGN){
+                    Current_parse_token = Get_Valid_Token();
+                    valid_parse = parse_term();
+
                 }
                 else{
-                    valid_parse = parse_term();
+                    generate_error_report("Not a valid relational operator");
+                    errors_occured = true;
+                    
                 }
             }
             else if(Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER ||  Current_parse_token_type == T_EXCLAM){
