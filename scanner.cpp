@@ -448,7 +448,7 @@ void scanner::invalid_char_test(){
         }
         
         error_detected = true;
-        //throw an error
+
     }
     source.get(next_char);
 }

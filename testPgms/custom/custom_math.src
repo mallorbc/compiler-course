@@ -4,6 +4,19 @@ variable value : integer;
 variable tmp : integer;
 variable out : bool;
 
+//tests all type marks with type declaration
+global type tester is integer; 
+type tester2 is float;
+type tester3 is string;
+global type tester4 is bool;
+
+type tester5 is enum{one};
+type tester is enum{testing,testing2,test3};
+
+/*
+block
+*/
+
 procedure Fib : integer(variable val : integer)
 	variable tmp1 : integer;
     variable tmp2 : integer;

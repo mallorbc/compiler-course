@@ -93,3 +93,15 @@ echo "All 11 given tests have been tested"
 sleep 2
 clear
 
+echo "Running custom test"
+sleep 2
+cd ../
+cd ./custom
+clear
+
+echo "Testing custom_math.src"
+sleep 1
+echo $(./compiler custom_math.src)
+sleep 1 
+clear
+

@@ -286,27 +286,51 @@ bool parser::parse_base_declaration(){
     if(Current_parse_token_type == T_GLOBAL){
         //Do work for global declarations here
         Current_parse_token = Get_Valid_Token();
-    }
-    if(Current_parse_token_type == T_PROCEDURE){
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_procedure_declaration();
 
-    }
-    else if(Current_parse_token_type == T_VARIABLE){
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_variable_declaration();
-    }
-    else if(Current_parse_token_type == T_TYPE){
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_declaration();
+        if(Current_parse_token_type == T_PROCEDURE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_procedure_declaration();
+
+        }
+        else if(Current_parse_token_type == T_VARIABLE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_variable_declaration();
+        }
+        else if(Current_parse_token_type == T_TYPE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_type_declaration();
+        }
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_base_declaration()"<<std::endl;
+            }
+            generate_error_report("Expected keywords \"procedure\",\"variable\" \"type\", or \"begin\" not found");
+            errors_occured = true;
+            return false;
+        }
     }
     else{
-        if(debugging){
-            std::cout<<"parser failed on parse_base_declaration()"<<std::endl;
+        if(Current_parse_token_type == T_PROCEDURE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_procedure_declaration();
+
         }
-        generate_error_report("Expected keywords \"procedure\",\"variable\" \"type\", or \"begin\" not found");
-        errors_occured = true;
-        return false;
+        else if(Current_parse_token_type == T_VARIABLE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_variable_declaration();
+        }
+        else if(Current_parse_token_type == T_TYPE){
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_type_declaration();
+        }
+        else{
+            if(debugging){
+                std::cout<<"parser failed on parse_base_declaration()"<<std::endl;
+            }
+            generate_error_report("Expected keywords \"procedure\",\"variable\" \"type\", or \"begin\" not found");
+            errors_occured = true;
+            return false;
+        }
     }
     
     return valid_parse;
@@ -539,8 +563,8 @@ bool parser::parse_type_mark(){
         Current_parse_token = Get_Valid_Token();
         if(Current_parse_token_type == T_LBRACE){
             Current_parse_token = Get_Valid_Token();
-            if(Current_parse_token_type == T_LBRACE){
-                Current_parse_token = Get_Valid_Token();
+            // if(Current_parse_token_type == T_LBRACE){
+            //     Current_parse_token = Get_Valid_Token();
                 if(Current_parse_token_type!=T_IDENTIFIER){
                     generate_error_report("Expected identifier as part of Enum");
                     errors_occured = true;
@@ -553,6 +577,7 @@ bool parser::parse_type_mark(){
                     Current_parse_token = Get_Valid_Token();
                     //end of enumeration, contains one identifier
                     if(Current_parse_token_type == T_RBRACE){
+                        Current_parse_token = Get_Valid_Token();
                         valid_parse = true;
                     }
                     //else at least 2 identifiers exist in the enum
@@ -565,6 +590,7 @@ bool parser::parse_type_mark(){
                                     Current_parse_token = Get_Valid_Token();
                                     //if the next token after the identifer is a RBRACE, it is valid and end of the parse 
                                     if(Next_parse_token_type == T_RBRACE){
+                                        Current_parse_token = Get_Valid_Token();
                                         Current_parse_token = Get_Valid_Token();
                                         return true;
                                     }
@@ -607,7 +633,7 @@ bool parser::parse_type_mark(){
                         }
                     }
                 }
-            }
+            //}
         }
     }
     else{
