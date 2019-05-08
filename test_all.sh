@@ -7,8 +7,16 @@ make
 sleep 1
 clear
 
+echo "Now creating unit tester"
+sleep 1
+make tester
+sleep 1
+yes | cp UnitTests testPgms/UnitTests
+clear
+
 #moves compiler binary to testPgms/correct and then starts testing
 yes | cp compiler testPgms/correct
+yes | cp compiler testPgms/custom
 cd testPgms/correct
 
 echo "Testing provided programs"
@@ -82,3 +90,6 @@ sleep 1
 clear
 
 echo "All 11 given tests have been tested"
+sleep 2
+clear
+
