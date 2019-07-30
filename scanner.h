@@ -12,20 +12,21 @@
 #include "CustomFunctions.h"
 #include <cstdio>
 
-
 // struct Line_struct{
 //     std::string line_string;
 //     int line_number;
 // };
-enum char_type{
+enum char_type
+{
     alpha_char = 1,
     number_char = 2,
     reserved_char = 3,
     invalid_char = 4
 };
 
-class scanner{
-    public:
+class scanner
+{
+public:
     //OBJECTS
     //used to hold the symbol table and character table
     SymbolTable symbol_table;
@@ -35,7 +36,6 @@ class scanner{
     //two constructors for the class, first one is unused
     scanner();
     scanner(std::string file);
-
 
     //METHODS:
 
@@ -84,6 +84,11 @@ class scanner{
     //will handle things relating to end lines
     void end_line_handler();
 
+    //copies a SymbolTable from a source and stores it in the current symbol table
+    void copy_SymbolTable(SymbolTable table_to_copy);
+
+    //To be called from the Lexer in the parser, will give it a SymbolTable to work with
+    void put_SymbolTable();
 
     //tracks the current line; increments at the end of the line
     int current_line = 1;
@@ -105,7 +110,6 @@ class scanner{
     bool quote_status = false;
     //tracks whether an error has occured
     bool error_detected = false;
-
 
     //used to trigger debug statements
     bool debug = false;
@@ -134,8 +138,6 @@ class scanner{
     token last_sent_token;
 
     int nested_comment_line;
-
 };
-
 
 #endif // !SCANNER_H

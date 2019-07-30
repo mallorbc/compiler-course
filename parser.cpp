@@ -280,11 +280,14 @@ bool parser::parse_program_body(){
 //ready to test
 //refactored 1 time
 bool parser::parse_base_declaration(){
+    //tracks whether base declaration is global or not
+    bool is_global_declaration = false;
     //this tracks the state of the parser
     parser_state state = S_BASE_DECLARATION;
     bool valid_parse;
     if(Current_parse_token_type == T_GLOBAL){
         //Do work for global declarations here
+        is_global_declaration = true;
         Current_parse_token = Get_Valid_Token();
 
         if(Current_parse_token_type == T_PROCEDURE){
