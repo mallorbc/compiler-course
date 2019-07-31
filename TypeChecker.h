@@ -27,6 +27,8 @@ public:
 
     //takes an map input and copies it over to the variable token_type_map
     bool copy_table(std::unordered_map<std::string, token> map_to_copy);
+
+    std::unordered_map<std::string, token> set_token_global(token token_to_set);
 };
 
 #endif // !TYPECHECKER_H

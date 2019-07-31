@@ -294,16 +294,16 @@ bool parser::parse_base_declaration(){
 
         if(Current_parse_token_type == T_PROCEDURE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration();
+            valid_parse = parse_procedure_declaration(is_global_declaration);
 
         }
         else if(Current_parse_token_type == T_VARIABLE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_variable_declaration();
+            valid_parse = parse_variable_declaration(is_global_declaration);
         }
         else if(Current_parse_token_type == T_TYPE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_type_declaration();
+            valid_parse = parse_type_declaration(is_global_declaration);
         }
         else{
             if(debugging){
@@ -317,16 +317,16 @@ bool parser::parse_base_declaration(){
     else{
         if(Current_parse_token_type == T_PROCEDURE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration();
+            valid_parse = parse_procedure_declaration(is_global_declaration);
 
         }
         else if(Current_parse_token_type == T_VARIABLE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_variable_declaration();
+            valid_parse = parse_variable_declaration(is_global_declaration);
         }
         else if(Current_parse_token_type == T_TYPE){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_type_declaration();
+            valid_parse = parse_type_declaration(is_global_declaration);
         }
         else{
             if(debugging){
@@ -343,7 +343,7 @@ bool parser::parse_base_declaration(){
 }
 
 
-bool parser::parse_procedure_declaration(){
+bool parser::parse_procedure_declaration(bool is_global){
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_DECLARATION;
     bool valid_parse;
@@ -690,7 +690,7 @@ bool parser::parse_parameter_list(){
 //variable token is consumed to enter this function
 //ready to test
 //refactored 1 time
-bool parser::parse_variable_declaration(){
+bool parser::parse_variable_declaration(bool is_global){
     //this tracks the state of the parser
     parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
@@ -757,7 +757,7 @@ bool parser::parse_bound(){
 //token type is consumed to enter this function
 //ready test
 //write test prog for
-bool parser::parse_type_declaration(){
+bool parser::parse_type_declaration(bool is_global){
     //this tracks the state of the parser
     parser_state state = S_TYPE_DECLARATION;
     bool valid_parse;
@@ -830,7 +830,7 @@ bool parser::parse_parameter(){
     //this tracks the state of the parser
     parser_state state = S_PARAMETER;
     bool valid_parse;
-    valid_parse = parse_variable_declaration();
+    valid_parse = parse_variable_declaration(false);
     return valid_parse;
 }
 
@@ -2009,7 +2009,7 @@ bool parser::resync_parser(parser_state state){
 
         //5
         case S_PROCEDURE_DECLARATION:
-        return_state = parse_procedure_declaration();
+        return_state = parse_procedure_declaration(false);
         if(return_state){
             if(Current_parse_token_type ==T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();
@@ -2055,7 +2055,7 @@ bool parser::resync_parser(parser_state state){
 
         //10
         case S_VARIABLE_DECLARATION:
-        return_state = parse_variable_declaration();
+        return_state = parse_variable_declaration(false);
         if(return_state){
             if(Current_parse_token_type ==T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();
@@ -2075,7 +2075,7 @@ bool parser::resync_parser(parser_state state){
 
         //11
         case S_TYPE_DECLARATION:
-        return_state = parse_type_declaration();
+        return_state = parse_type_declaration(false);
         if(return_state){
             if(Current_parse_token_type ==T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();

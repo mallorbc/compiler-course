@@ -74,11 +74,11 @@ public:
 
     //methods for parsing declarations
     bool parse_base_declaration();
-    bool parse_variable_declaration();
-    bool parse_type_declaration();
+    bool parse_variable_declaration(bool is_global);
+    bool parse_type_declaration(bool is_global);
 
     //methods for parsing part of the procedures
-    bool parse_procedure_declaration();
+    bool parse_procedure_declaration(bool is_global);
     bool parse_procedure_header();
     bool parse_procedure_body();
 

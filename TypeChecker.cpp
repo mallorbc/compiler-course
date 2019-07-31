@@ -27,3 +27,8 @@ bool TypeChecker::copy_table(std::unordered_map<std::string, token> map_to_copy)
     sucessful_copy = true;
     return sucessful_copy;
 }
+
+std::unordered_map<std::string, token> TypeChecker::set_token_global(token token_to_set)
+{
+    return token_type_map;
+}
