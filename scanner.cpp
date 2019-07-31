@@ -583,10 +583,14 @@ void scanner::end_line_handler()
     last_char_was_end_line = false;
 }
 
-void scanner::copy_SymbolTable(SymbolTable table_to_copy)
+void scanner::copy_SymbolTable_map(std::unordered_map<std::string, token> map_to_copy)
 {
+    symbol_table.map = map_to_copy;
 }
 
-void scanner::put_SymbolTable()
+std::unordered_map<std::string, token> scanner::get_SymbolTable_map()
 {
+    std::unordered_map<std::string, token> map_to_return;
+    map_to_return = symbol_table.map;
+    return map_to_return;
 }

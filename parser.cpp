@@ -6,6 +6,7 @@ parser::parser(std::string file_to_parse){
     bool valid_parse;
     parse_file = file_to_parse;
     Lexer = new scanner(parse_file);
+    type_checker = new TypeChecker(Lexer->get_SymbolTable_map());
     valid_parse = parse_program();
     if(valid_parse){
         if(errors_occured){
@@ -49,7 +50,8 @@ token parser::Get_Valid_Token(){
         Next_parse_token_type = Next_parse_token.type;
         }
     }
-
+    //each time we get a token we are potentially updating the symbol table so we need to make sure the typchecker shares that value
+    type_checker->copy_table(Lexer->get_SymbolTable_map());
     return Current_parse_token;
 }
 

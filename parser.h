@@ -5,42 +5,44 @@
 #include <string>
 #include <vector>
 #include "scanner.h"
+#include "TypeChecker.h"
 
 //this will be passed into the resyncer to know the state of the parser
-enum parser_state{
-S_PROGRAM = 1,
-S_PROGRAM_HEADER = 2,
-S_PROGRAM_BODY = 3,
-S_BASE_DECLARATION = 4,
-S_PROCEDURE_DECLARATION = 5,
-S_PROCEDURE_HEADER = 6,
-S_PARAMETER_LIST = 7,
-S_PARAMETER = 8,
-S_PROCEDURE_BODY = 9,
-S_VARIABLE_DECLARATION = 10,
-S_TYPE_DECLARATION = 11,
-S_TYPE_MARK = 12,
-S_BOUND = 13,
-S_BASE_STATEMENT = 14,
-S_PROCEDURE_CALL = 15,
-S_ASSIGNMENT_STATMENT = 16,
-S_ASSIGNMENT_DESTINATION = 17,
-S_IF_STATEMENT = 18,
-S_LOOP_STATEMENT = 19,
-S_RETURN_STATEMENT = 20,
-S_EXPRESSION = 21,
-S_ARITH_OP = 22,
-S_RELATION = 23,
-S_TERM = 24,
-S_FACTOR = 25,
-S_NAME = 26,
-S_ARGUMENT_LIST = 27,
-S_NUMBER = 28
+enum parser_state
+{
+    S_PROGRAM = 1,
+    S_PROGRAM_HEADER = 2,
+    S_PROGRAM_BODY = 3,
+    S_BASE_DECLARATION = 4,
+    S_PROCEDURE_DECLARATION = 5,
+    S_PROCEDURE_HEADER = 6,
+    S_PARAMETER_LIST = 7,
+    S_PARAMETER = 8,
+    S_PROCEDURE_BODY = 9,
+    S_VARIABLE_DECLARATION = 10,
+    S_TYPE_DECLARATION = 11,
+    S_TYPE_MARK = 12,
+    S_BOUND = 13,
+    S_BASE_STATEMENT = 14,
+    S_PROCEDURE_CALL = 15,
+    S_ASSIGNMENT_STATMENT = 16,
+    S_ASSIGNMENT_DESTINATION = 17,
+    S_IF_STATEMENT = 18,
+    S_LOOP_STATEMENT = 19,
+    S_RETURN_STATEMENT = 20,
+    S_EXPRESSION = 21,
+    S_ARITH_OP = 22,
+    S_RELATION = 23,
+    S_TERM = 24,
+    S_FACTOR = 25,
+    S_NAME = 26,
+    S_ARGUMENT_LIST = 27,
+    S_NUMBER = 28
 };
 
-
-class parser{
-    public:
+class parser
+{
+public:
     bool debugging = false;
     //constructors for the parser
     parser(std::string parse_file);
@@ -74,8 +76,6 @@ class parser{
     bool parse_base_declaration();
     bool parse_variable_declaration();
     bool parse_type_declaration();
-
-
 
     //methods for parsing part of the procedures
     bool parse_procedure_declaration();
@@ -123,9 +123,10 @@ class parser{
     bool parsing_statements = false;
 
     bool errors_occured = false;
+
+    //section for Typechecker
+
+    TypeChecker *type_checker;
 };
-
-
-
 
 #endif // !PARSER_H

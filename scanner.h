@@ -85,10 +85,10 @@ public:
     void end_line_handler();
 
     //copies a SymbolTable from a source and stores it in the current symbol table
-    void copy_SymbolTable(SymbolTable table_to_copy);
+    void copy_SymbolTable_map(std::unordered_map<std::string, token> map_to_copy);
 
     //To be called from the Lexer in the parser, will give it a SymbolTable to work with
-    void put_SymbolTable();
+    std::unordered_map<std::string, token> get_SymbolTable_map();
 
     //tracks the current line; increments at the end of the line
     int current_line = 1;
