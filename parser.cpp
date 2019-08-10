@@ -361,8 +361,15 @@ bool parser::parse_procedure_header(bool is_global){
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
         if(is_global){
-            //makes the current parse token global since the previous token was global
-            Lexer->symbol_table.make_token_global(Current_parse_token);
+            //checks to see if the token is already a global token
+            if(!Lexer->symbol_table.is_global_token(Current_parse_token)){
+                //makes the current parse token global since the previous token was global
+                Lexer->symbol_table.make_token_global(Current_parse_token);
+            }
+            //else it is global; can we redefine global?
+            else{
+
+            }
         }
         Current_parse_token = Get_Valid_Token();
     }
@@ -699,6 +706,19 @@ bool parser::parse_variable_declaration(bool is_global){
     parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
+        if (is_global)
+        {
+            //checks to see if the token is already a global token
+            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
+            {
+                //makes the current parse token global since the previous token was global
+                Lexer->symbol_table.make_token_global(Current_parse_token);
+            }
+            //else it is global; can we redefine global?
+            else
+            {
+            }
+        }
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -767,6 +787,19 @@ bool parser::parse_type_declaration(bool is_global){
     bool valid_parse;
     //T_TYPE has already been parsed;  May need changed in the future
     if(Current_parse_token_type == T_IDENTIFIER){
+        if (is_global)
+        {
+            //checks to see if the token is already a global token
+            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
+            {
+                //makes the current parse token global since the previous token was global
+                Lexer->symbol_table.make_token_global(Current_parse_token);
+            }
+            //else it is global; can we redefine global?
+            else
+            {
+            }
+        }
         Current_parse_token = Get_Valid_Token();
     }
     else{

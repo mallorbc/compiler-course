@@ -123,3 +123,10 @@ bool SymbolTable::make_token_global(token global_token)
     map[temp_token.stringValue] = temp_token;
     return true;
 }
+
+bool SymbolTable::is_global_token(token token_to_check)
+{
+    bool is_global;
+    is_global = token_to_check.global_scope;
+    return is_global;
+}

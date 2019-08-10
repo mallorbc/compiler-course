@@ -26,6 +26,7 @@ public:
     SymbolTable();
 
     bool make_token_global(token global_token);
+    bool is_global_token(token global_token);
 };
 
 #endif // !SYMBOLTABLE_H
