@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 #include "scanner.h"
-#include "TypeChecker.h"
+// #include "TypeChecker.h"
 
 //this will be passed into the resyncer to know the state of the parser
 enum parser_state
@@ -79,7 +79,7 @@ public:
 
     //methods for parsing part of the procedures
     bool parse_procedure_declaration(bool is_global);
-    bool parse_procedure_header();
+    bool parse_procedure_header(bool is_global);
     bool parse_procedure_body();
 
     //method for parsing type_mark which is used for type declarations
@@ -126,7 +126,7 @@ public:
 
     //section for Typechecker
 
-    TypeChecker *type_checker;
+    // TypeChecker *type_checker;
 };
 
 #endif // !PARSER_H

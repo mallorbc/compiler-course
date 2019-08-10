@@ -6,7 +6,7 @@ parser::parser(std::string file_to_parse){
     bool valid_parse;
     parse_file = file_to_parse;
     Lexer = new scanner(parse_file);
-    type_checker = new TypeChecker(Lexer->get_SymbolTable_map());
+    //type_checker = new TypeChecker(Lexer->get_SymbolTable_map());
     valid_parse = parse_program();
     if(valid_parse){
         if(errors_occured){
@@ -51,7 +51,7 @@ token parser::Get_Valid_Token(){
         }
     }
     //each time we get a token we are potentially updating the symbol table so we need to make sure the typchecker shares that value
-    type_checker->copy_table(Lexer->get_SymbolTable_map());
+    //type_checker->copy_table(Lexer->get_SymbolTable_map());
     return Current_parse_token;
 }
 
@@ -347,7 +347,7 @@ bool parser::parse_procedure_declaration(bool is_global){
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_DECLARATION;
     bool valid_parse;
-    valid_parse = parse_procedure_header();
+    valid_parse = parse_procedure_header(is_global);
     valid_parse = parse_procedure_body();
     return valid_parse;
 }
@@ -355,11 +355,15 @@ bool parser::parse_procedure_declaration(bool is_global){
 
 //ready to test
 //the token procedure is used to enter this function
-bool parser::parse_procedure_header(){
+bool parser::parse_procedure_header(bool is_global){
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_HEADER;
     bool valid_parse;
     if(Current_parse_token_type == T_IDENTIFIER){
+        if(is_global){
+            //makes the current parse token global since the previous token was global
+            Lexer->symbol_table.make_token_global(Current_parse_token);
+        }
         Current_parse_token = Get_Valid_Token();
     }
     else{
