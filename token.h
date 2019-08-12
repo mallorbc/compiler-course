@@ -71,7 +71,7 @@ public:
         this->line_found = 0;
         this->column_found = 0;
         this->global_scope = false;
-        this->scope_id = 1;
+        this->scope_id = 0;
 
         this->intValue = 0;
         this->stringValue = "";
@@ -84,7 +84,7 @@ public:
     int line_found;
     int column_found;
     bool global_scope;
-    //scope id of 0 is global, 1 is normal
+    //scope id of 0 is the outermost scope, the other scopes will increment by 1
     int scope_id;
     int intValue;
     std::string stringValue;

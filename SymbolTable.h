@@ -1,6 +1,7 @@
 #ifndef SYMBOLTABLE_H
 #define SYMBOLTABLE_H
 #include "token.h"
+#include "ScopeTable.h"
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -9,6 +10,7 @@
 class SymbolTable
 {
 public:
+    std::unordered_map<int, ScopeTable> scope_table;
     //hash map with a integer key and a string combo
     //std::unordered_map<int,std::string> map;
 
@@ -27,6 +29,10 @@ public:
 
     bool make_token_global(token global_token);
     bool is_global_token(token global_token);
+    bool update_token_scope_id(token token_to_update, int scope_id);
+    bool scope_map_exists(int scope_id);
+    bool create_new_scope_table(int scope_id);
+    bool resync_tables(int scope_id, token token_to_sync);
 };
 
 #endif // !SYMBOLTABLE_H

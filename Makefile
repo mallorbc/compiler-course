@@ -3,8 +3,8 @@
 
 # tester: UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o
 # 	g++ UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o -o UnitTests -g
-compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o
-	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o -o compiler -g
+compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o
+	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o -o compiler -g
 
 tester: UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o
 	g++ UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o  -o UnitTests -g
@@ -27,6 +27,9 @@ SymbolTable.o: SymbolTable.cpp SymbolTable.h token.h
 
 CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h
 	g++ -c CustomFunctions.cpp -g
+
+ScopeTable.o: ScopeTable.h ScopeTable.cpp token.h
+	g++ -c ScopeTable.cpp -g
 
 # TypeChecker.o: TypeChecker.cpp SymbolTable.cpp token.h
 # 	g++ -c TypeChecker.cpp -g

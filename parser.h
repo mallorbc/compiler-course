@@ -115,14 +115,20 @@ public:
 
     bool resync_parser(parser_state state);
 
+    void update_scopes(bool increment_scope_id);
+
     token prev_token;
     int prev_token_type;
-
+    //tracks whether or not the parser is resyncing, is used for breaking out of infinite loops
     bool resync_status = false;
-
+    //not sure if this does anything anymore; big oof
     bool parsing_statements = false;
-
+    //tracks whether an error has occured
     bool errors_occured = false;
+    //tracks the current scope the parser is in, 0 is the outermost scope
+    int current_scope_id = 0;
+    //tracks the total number of scopes that have been made, will be used for the id
+    int number_of_scopes = 0;
 
     //section for Typechecker
 

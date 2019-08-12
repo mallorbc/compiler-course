@@ -52,6 +52,7 @@ token parser::Get_Valid_Token(){
     }
     //each time we get a token we are potentially updating the symbol table so we need to make sure the typchecker shares that value
     //type_checker->copy_table(Lexer->get_SymbolTable_map());
+    Lexer->symbol_table.update_token_scope_id(Current_parse_token,current_scope_id);
     return Current_parse_token;
 }
 
@@ -316,6 +317,8 @@ bool parser::parse_base_declaration(){
     }
     else{
         if(Current_parse_token_type == T_PROCEDURE){
+            //increments the scope id
+            update_scopes(true);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_declaration(is_global_declaration);
 
@@ -532,6 +535,8 @@ bool parser::parse_procedure_body(){
 
     }
     if(Current_parse_token_type == T_PROCEDURE){
+        //updates the scope id 
+        update_scopes(false);
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -2233,4 +2238,14 @@ bool parser::resync_parser(parser_state state){
     }
     resync_status = false;
     return return_state;
+}
+
+void parser::update_scopes(bool increment_scope_id){
+    if(increment_scope_id){
+        current_scope_id = number_of_scopes + 1;
+        number_of_scopes++;
+    }
+    else{
+        current_scope_id--;
+    }
 }
