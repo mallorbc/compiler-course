@@ -22,7 +22,7 @@ bool ScopeTable::insert_stringValue(std::string stringValue, token_type type_of_
 
 bool ScopeTable::insert_string_token(token new_token)
 {
-    //adds only identifers as we only car about them
+    //adds only identifers as we only care about them
     if (new_token.type == T_IDENTIFIER)
     {
         std::string key_value = new_token.stringValue;

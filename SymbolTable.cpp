@@ -156,11 +156,11 @@ bool SymbolTable::scope_map_exists(int scope_id)
     //checks if a scope table of that id exists
     if (scope_table.find(scope_id) == scope_table.end())
     {
-        return 0;
+        return false;
     }
     else
     {
-        return 1;
+        return true;
     }
 }
 
@@ -200,4 +200,17 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
         return true;
     }
     return false;
+}
+
+bool SymbolTable::remove_scope(int scope_id)
+{
+    if (scope_map_exists(scope_id))
+    {
+        scope_table.erase(scope_id);
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }

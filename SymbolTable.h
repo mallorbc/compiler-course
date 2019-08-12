@@ -33,6 +33,7 @@ public:
     bool scope_map_exists(int scope_id);
     bool create_new_scope_table(int scope_id);
     bool resync_tables(int scope_id, token token_to_sync);
+    bool remove_scope(int scope_id);
 };
 
 #endif // !SYMBOLTABLE_H

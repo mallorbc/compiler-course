@@ -2246,6 +2246,8 @@ void parser::update_scopes(bool increment_scope_id){
         number_of_scopes++;
     }
     else{
+        Lexer->symbol_table.remove_scope(current_scope_id);
         current_scope_id--;
+        number_of_scopes--;
     }
 }
