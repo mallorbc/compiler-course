@@ -1,6 +1,7 @@
 #ifndef TOKEN_H
 #define TOKEN_H
 #include <string>
+#include <vector>
 
 enum token_type
 {
@@ -68,10 +69,21 @@ enum identifier_types
     I_PROGRAM_NAME = 4
 };
 
+enum data_types
+{
+    TYPE_NONE = 0,
+    TYPE_INT = 1,
+    TYPE_FLOAT = 2,
+    TYPE_STRING = 3,
+    TYPE_BOOL = 4
+};
+
 class token
 {
 public:
-    //token(){};
+    // token(){
+    //     this->
+    // };
 
     //cleans up token object
     ~token()
@@ -102,8 +114,10 @@ public:
     char charValue;
 
     bool first_token_on_line;
+
     //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
     identifier_types identifer_type = I_NONE;
+    std::vector<data_types> procedure_params;
     // union value{
     //     int intValue;
     //     std::string stringValue;
