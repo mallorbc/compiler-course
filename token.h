@@ -59,6 +59,15 @@ enum token_type
 
 };
 
+enum identifier_types
+{
+    I_NONE = 0,
+    I_PROCEDURE = 1,
+    I_VARIABLE = 2,
+    I_TYPE = 3,
+    I_PROGRAM_NAME = 4
+};
+
 class token
 {
 public:
@@ -93,6 +102,8 @@ public:
     char charValue;
 
     bool first_token_on_line;
+    //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
+    identifier_types identifer_type = I_NONE;
     // union value{
     //     int intValue;
     //     std::string stringValue;

@@ -133,24 +133,6 @@ bool SymbolTable::is_global_token(token token_to_check)
     return is_global;
 }
 
-bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
-{
-    bool return_value;
-    //used as the temporary hold value
-    token temp_token;
-    //finds the token value using the string key
-    temp_token = map[token_to_update.stringValue];
-    temp_token.scope_id = scope_id;
-    map[token_to_update.stringValue] = temp_token;
-    //creates a hash entry for the new scope if it doesn't already exist
-    if (!scope_map_exists(scope_id))
-    {
-        create_new_scope_table(scope_id);
-    }
-    bool resync_status = resync_tables(scope_id, temp_token);
-    return resync_status;
-}
-
 bool SymbolTable::scope_map_exists(int scope_id)
 {
     //checks if a scope table of that id exists
@@ -213,4 +195,31 @@ bool SymbolTable::remove_scope(int scope_id)
     {
         return false;
     }
+}
+
+bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
+{
+    bool return_value;
+    //used as the temporary hold value
+    token temp_token;
+    //finds the token value using the string key
+    temp_token = map[token_to_update.stringValue];
+    temp_token.scope_id = scope_id;
+    map[token_to_update.stringValue] = temp_token;
+    //creates a hash entry for the new scope if it doesn't already exist
+    if (!scope_map_exists(scope_id))
+    {
+        create_new_scope_table(scope_id);
+    }
+    bool resync_status = resync_tables(scope_id, temp_token);
+    return resync_status;
+}
+
+bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
+{
+    //updates the token
+    map[token_to_update.stringValue] = token_to_update;
+    //updates the token on the scope maps
+    bool resync_status = resync_tables(scope_id, token_to_update);
+    return resync_status;
 }

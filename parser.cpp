@@ -131,6 +131,10 @@ bool parser::parse_program_header(){
         return false;
     }
     if(Current_parse_token_type == T_IDENTIFIER){
+        //this identifier is a program name
+        Current_parse_token.identifer_type = I_PROGRAM_NAME;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token,current_scope_id);
         valid_parse = true;
         Current_parse_token = Get_Valid_Token();
     }
@@ -189,6 +193,7 @@ bool parser::parse_program_body(){
                         return false;
                     }
                 }
+            //happens after trying to resync
             if(valid_parse){
                 //breaks out on tokens indicating begin was aborbed
                 //these all indicate statements or eof
@@ -374,6 +379,10 @@ bool parser::parse_procedure_header(bool is_global){
 
             }
         }
+        //marks this identifier as a procedure
+        Current_parse_token.identifer_type = I_PROCEDURE;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -577,6 +586,10 @@ bool parser::parse_type_mark(){
     }
     //I think this means that the this will be the same type as the identifier
     else if(Current_parse_token_type == T_IDENTIFIER){
+        //marks this identifier as a type
+        Current_parse_token.identifer_type = I_TYPE;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
@@ -595,6 +608,10 @@ bool parser::parse_type_mark(){
                     return false;
                 }
                 else{
+                    //it is an enum which is a type mark
+                    Current_parse_token.identifer_type = I_TYPE;
+                    //updates the token in the symbol tables
+                    Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
                     Current_parse_token = Get_Valid_Token();
                     //end of enumeration, contains one identifier
                     if(Current_parse_token_type == T_RBRACE){
@@ -609,6 +626,10 @@ bool parser::parse_type_mark(){
                             if(Next_parse_token_type == T_IDENTIFIER){
                                 while(true){
                                     Current_parse_token = Get_Valid_Token();
+                                    //Current token is an identifier in an enum
+                                    Current_parse_token.identifer_type = I_TYPE;
+                                    //updates the token in the symbol tables
+                                    Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
                                     //if the next token after the identifer is a RBRACE, it is valid and end of the parse 
                                     if(Next_parse_token_type == T_RBRACE){
                                         Current_parse_token = Get_Valid_Token();
@@ -724,6 +745,10 @@ bool parser::parse_variable_declaration(bool is_global){
             {
             }
         }
+        //this means that the identifer is a variable
+        Current_parse_token.identifer_type = I_VARIABLE;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
     }
     else{
@@ -805,6 +830,10 @@ bool parser::parse_type_declaration(bool is_global){
             {
             }
         }
+        //this identifier is a type
+        Current_parse_token.identifer_type = I_TYPE;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
     }
     else{
