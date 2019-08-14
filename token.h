@@ -101,19 +101,19 @@ public:
         this->boolValue = false;
         this->first_token_on_line = false;
     };
-    int type;
-    int line_found;
-    int column_found;
-    bool global_scope;
+    int type = 0;
+    int line_found = 0;
+    int column_found = 0;
+    bool global_scope = false;
     //scope id of 0 is the outermost scope, the other scopes will increment by 1
-    int scope_id;
-    int intValue;
-    std::string stringValue;
-    bool boolValue;
-    float floatValue;
-    char charValue;
+    int scope_id = 0;
+    int intValue = 0;
+    std::string stringValue = "";
+    bool boolValue = false;
+    float floatValue = 0.0;
+    char charValue = 0;
 
-    bool first_token_on_line;
+    bool first_token_on_line = false;
 
     //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
     identifier_types identifer_type = I_NONE;

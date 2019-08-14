@@ -156,6 +156,15 @@ bool SymbolTable::create_new_scope_table(int scope_id)
 
 bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
 {
+    bool token_is_procedure_identifier;
+    //this array will hold at least one scope id, more will be added in some cases
+    std::vector<int> list_of_scopes;
+    //adds the first scope id
+    list_of_scopes.push_back(scope_id);
+    //if the identifer is a procedure, it is visible on its own scope as well as the one above
+    if (token_to_sync.identifer_type == I_PROCEDURE)
+    {
+    }
     //temp variableused to update the values of the tokens and map
     std::unordered_map<std::string, token> temp_map;
     //creates scope table if it doesnt exist

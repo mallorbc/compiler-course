@@ -1,16 +1,5 @@
-# compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o
-# 	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o -o compiler -g
-
-# tester: UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o
-# 	g++ UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o TypeChecker.o -o UnitTests -g
 compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o
 	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o -o compiler -g
-
-tester: UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o
-	g++ UnitTests.o scanner.o parser.o SymbolTable.o CustomFunctions.o  -o UnitTests -g
-
-UnitTests.o: UnitTests.cpp token.h
-	g++ -c UnitTests.cpp -g
 
 main.o: main.cpp token.h
 	g++ -c main.cpp -g
@@ -31,8 +20,5 @@ CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h
 ScopeTable.o: ScopeTable.h ScopeTable.cpp token.h
 	g++ -c ScopeTable.cpp -g
 
-# TypeChecker.o: TypeChecker.cpp SymbolTable.cpp token.h
-# 	g++ -c TypeChecker.cpp -g
-
 clean:
-	rm *.o compiler UnitTests
+	rm *.o compiler
