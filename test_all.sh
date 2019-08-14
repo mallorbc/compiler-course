@@ -7,12 +7,6 @@ make
 sleep 1
 clear
 
-echo "Now creating unit tester"
-sleep 1
-make tester
-sleep 1
-yes | cp UnitTests testPgms/UnitTests
-clear
 
 #moves compiler binary to testPgms/correct and then starts testing
 yes | cp compiler testPgms/correct
