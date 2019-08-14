@@ -117,6 +117,7 @@ public:
 
     //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
     identifier_types identifer_type = I_NONE;
+    //this will need to be added to the procedure identifiers
     std::vector<data_types> procedure_params;
     // union value{
     //     int intValue;

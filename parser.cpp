@@ -364,6 +364,8 @@ bool parser::parse_procedure_declaration(bool is_global){
 //ready to test
 //the token procedure is used to enter this function
 bool parser::parse_procedure_header(bool is_global){
+    //this variable will hold the string of the procedure name, this will be used to later add the valid parameters of the procedure
+    std::string procedure_name="";
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_HEADER;
     bool valid_parse;
@@ -381,6 +383,8 @@ bool parser::parse_procedure_header(bool is_global){
         }
         //marks this identifier as a procedure
         Current_parse_token.identifer_type = I_PROCEDURE;
+        //saves the procedure name
+        procedure_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -416,7 +420,7 @@ bool parser::parse_procedure_header(bool is_global){
         //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed. Or errors which will be detected later
         else{
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_parameter_list();
+        valid_parse = parse_parameter_list(procedure_name);
         }
 
     }
@@ -690,19 +694,20 @@ bool parser::parse_type_mark(){
 //ready to test
 //refactored 2 time
 //consumes variable token first
-bool parser::parse_parameter_list(){
+//tracks the procedure name so that valid inputs of this procedure can be tracked
+bool parser::parse_parameter_list(std::string procedure_name){
     //this tracks the state of the parser
     parser_state state = S_PARAMETER_LIST;
     bool valid_parse;
     //gets identifier token since it must be a variable, then parses variable
     Current_parse_token = Get_Valid_Token();
-    valid_parse = parse_parameter();
+    valid_parse = parse_parameter(procedure_name);
     //if no errors from parsing the parameter
     if(valid_parse){
         ///meaning that there are more parameters
         if(Current_parse_token_type == T_COMMA){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_parameter_list();
+            valid_parse = parse_parameter_list(procedure_name);
 
         }
         //there are no more parameters to parse
@@ -793,6 +798,81 @@ bool parser::parse_variable_declaration(bool is_global){
 
 }
 
+//this is the same as the regular parse_variable_declaration, though it allows tracking of the procedure name
+bool parser::parse_variable_declaration(bool is_global,std::string procedure_name)
+{
+    //this tracks the state of the parser
+    parser_state state = S_VARIABLE_DECLARATION;
+    bool valid_parse;
+    if (Current_parse_token_type == T_IDENTIFIER)
+    {
+        if (is_global)
+        {
+            //checks to see if the token is already a global token
+            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
+            {
+                //makes the current parse token global since the previous token was global
+                Lexer->symbol_table.make_token_global(Current_parse_token);
+            }
+            //else it is global; can we redefine global?
+            else
+            {
+            }
+        }
+        //this means that the identifer is a variable
+        Current_parse_token.identifer_type = I_VARIABLE;
+        //updates the token in the symbol tables
+        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
+        Current_parse_token = Get_Valid_Token();
+    }
+    else
+    {
+        if (debugging)
+        {
+            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
+        }
+        generate_error_report("Missing identifier for variable declaration");
+        errors_occured = true;
+        return false;
+    }
+    if (Current_parse_token_type == T_COLON)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_type_mark();
+        if (valid_parse)
+        {
+            //checks for optional bracket to declare an array
+            if (Current_parse_token_type == T_LBRACKET)
+            {
+                Current_parse_token = Get_Valid_Token();
+                valid_parse = parse_bound();
+                if (Current_parse_token_type == T_RBRACKET)
+                {
+                    Current_parse_token = Get_Valid_Token();
+                }
+                //must have closing right bracket
+                else
+                {
+                    generate_error_report("Missing \"]\" to close the array declaration");
+                    errors_occured = true;
+                    return false;
+                }
+            }
+        }
+    }
+    else
+    {
+        if (debugging)
+        {
+            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
+        }
+        generate_error_report("Missing colon for delcaration of variable type");
+        errors_occured = true;
+        return false;
+    }
+
+    return valid_parse;
+}
 
 //ready to test
 //refactored 1 time
@@ -897,11 +977,11 @@ bool parser::parse_base_statement(){
 }
 
 //ready to test
-bool parser::parse_parameter(){
+bool parser::parse_parameter(std::string procedure_name){
     //this tracks the state of the parser
     parser_state state = S_PARAMETER;
     bool valid_parse;
-    valid_parse = parse_variable_declaration(false);
+    valid_parse = parse_variable_declaration(false,procedure_name);
     return valid_parse;
 }
 
@@ -2109,7 +2189,7 @@ bool parser::resync_parser(parser_state state){
         //7
         case S_PARAMETER_LIST:
         //THESE USED STILL?
-        return_state = parse_parameter_list();
+        return_state = parse_parameter_list("ERROR");
         return_state = parse_procedure_body();
 
         break;
