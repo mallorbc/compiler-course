@@ -164,33 +164,41 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
     //if the identifer is a procedure, it is visible on its own scope as well as the one above
     if (token_to_sync.identifer_type == I_PROCEDURE)
     {
+        list_of_scopes.push_back(scope_id - 1);
     }
-    //temp variableused to update the values of the tokens and map
-    std::unordered_map<std::string, token> temp_map;
-    //creates scope table if it doesnt exist
-    if (!scope_map_exists(scope_id))
+    //holds the id of the current scope in the case we need to add multiple scopes
+    int current_scope;
+    for (int i = 0; i < list_of_scopes.size(); i++)
     {
-        create_new_scope_table(scope_id);
-    }
+        current_scope = list_of_scopes[i];
+        //temp variableused to update the values of the tokens and map
+        std::unordered_map<std::string, token> temp_map;
+        //creates scope table if it doesnt exist
+        if (!scope_map_exists(current_scope))
+        {
+            create_new_scope_table(current_scope);
+        }
 
-    //checks if the token is not in the scope table
-    if (!scope_table[scope_id].is_in_table(token_to_sync.stringValue))
-    {
-        //creates the token if it isn't in the table
-        scope_table[scope_id].insert_string_token(token_to_sync);
-        return true;
+        //checks if the token is not in the scope table
+        if (!scope_table[current_scope].is_in_table(token_to_sync.stringValue))
+        {
+            //creates the token if it isn't in the table
+            scope_table[current_scope].insert_string_token(token_to_sync);
+            return true;
+        }
+        else
+        {
+            //finds the appropriate map based on the scope id
+            temp_map = scope_table[current_scope].scope_map;
+            //the new token will have the same string value but different properties that will be synced
+            temp_map[token_to_sync.stringValue] = token_to_sync;
+            //writes the changes back
+            scope_table[current_scope].scope_map = temp_map;
+            //return true;
+        }
     }
-    else
-    {
-        //finds the appropriate map based on the scope id
-        temp_map = scope_table[scope_id].scope_map;
-        //the new token will have the same string value but different properties that will be synced
-        temp_map[token_to_sync.stringValue] = token_to_sync;
-        //writes the changes back
-        scope_table[scope_id].scope_map = temp_map;
-        return true;
-    }
-    return false;
+    return true;
+    //return false;
 }
 
 bool SymbolTable::remove_scope(int scope_id)
