@@ -35,6 +35,8 @@ public:
     bool create_new_scope_table(int scope_id);
     bool resync_tables(int scope_id, token token_to_sync);
     bool remove_scope(int scope_id);
+
+    bool add_procedure_valid_inputs(std::string procedure_name, data_types input_data_type);
 };
 
 #endif // !SYMBOLTABLE_H

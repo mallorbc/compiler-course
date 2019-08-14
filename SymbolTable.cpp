@@ -240,3 +240,20 @@ bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
     bool resync_status = resync_tables(scope_id, token_to_update);
     return resync_status;
 }
+
+bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_types valid_input_type)
+{
+    //temporary token to help change us change the map
+    token procedure_identifier_token;
+    int procedure_scope_id;
+    //grads the token based on the name of the procedure
+    procedure_identifier_token = map[procedure_name];
+    procedure_scope_id = procedure_identifier_token.scope_id;
+    //adds the valid type to the procedure identifier
+    procedure_identifier_token.procedure_params.push_back(valid_input_type);
+    //adds the modified value back to the map
+    map[procedure_name] = procedure_identifier_token;
+    //we need to resync this change to the scope tables
+    resync_tables(procedure_scope_id, procedure_identifier_token);
+    return true;
+}
