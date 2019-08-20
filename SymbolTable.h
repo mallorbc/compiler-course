@@ -31,6 +31,7 @@ public:
     bool is_global_token(token global_token);
     bool update_token_scope_id(token token_to_update, int scope_id);
     bool update_identifier_type(token token_to_update, int scope_id);
+    bool update_identifier_data_type(token token_to_update);
     bool scope_map_exists(int scope_id);
     bool create_new_scope_table(int scope_id);
     bool resync_tables(int scope_id, token token_to_sync);

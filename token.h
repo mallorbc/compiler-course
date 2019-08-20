@@ -119,6 +119,8 @@ public:
     identifier_types identifer_type = I_NONE;
     //this will need to be added to the procedure identifiers
     std::vector<data_types> procedure_params;
+
+    data_types variable_type;
     // union value{
     //     int intValue;
     //     std::string stringValue;
