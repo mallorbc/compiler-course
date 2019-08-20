@@ -193,6 +193,8 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
         {
             //finds the appropriate map based on the scope id
             temp_map = scope_table[current_scope].scope_map;
+            //making sure to add context on what scope the token is in
+            token_to_sync.scope_id = current_scope;
             //the new token will have the same string value but different properties that will be synced
             temp_map[token_to_sync.stringValue] = token_to_sync;
             //writes the changes back
