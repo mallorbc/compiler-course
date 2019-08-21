@@ -691,7 +691,7 @@ bool parser::parse_type_mark(){
 }
 
 //parse_type_mark but for procedure headers
-bool parser::parse_type_mark(std::string procedure_name)
+bool parser::parse_type_mark(std::string identifier_name, int proc_or_var)
 {
     //this tracks the state of the parser
     parser_state state = S_TYPE_MARK;
@@ -700,28 +700,36 @@ bool parser::parse_type_mark(std::string procedure_name)
     //the procedure takes a integer input
     if (Current_parse_token_type == T_INTEGER_TYPE)
     {
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name,TYPE_INT);
+        if(proc_or_var == 0){
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name,TYPE_INT);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a float input
     else if (Current_parse_token_type == T_FLOAT_TYPE)
     {
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_FLOAT);
+        if(proc_or_var == 0){
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_FLOAT);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a string input
     else if (Current_parse_token_type == T_STRING_TYPE)
     {
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_STRING);
+        if(proc_or_var == 0){
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_STRING);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a bool input
     else if (Current_parse_token_type == T_BOOL_TYPE)
     {
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_BOOL);
+        if(proc_or_var == 0){
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_BOOL);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
@@ -887,6 +895,8 @@ bool parser::parse_parameter_list(std::string procedure_name){
 //ready to test
 //refactored 1 time
 bool parser::parse_variable_declaration(bool is_global){
+    //this tracks the name of the variable
+    std::string variable_name = "";
     //this tracks the state of the parser
     parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
@@ -992,7 +1002,7 @@ bool parser::parse_variable_declaration(bool is_global,std::string procedure_nam
     if (Current_parse_token_type == T_COLON)
     {
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark(procedure_name);
+        valid_parse = parse_type_mark(procedure_name,0);
         if (valid_parse)
         {
             //checks for optional bracket to declare an array

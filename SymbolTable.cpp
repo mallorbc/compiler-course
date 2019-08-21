@@ -270,7 +270,7 @@ bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_i
     //first makes sure that the scope of the token is updated
     token_to_update.scope_id = scope_id;
     //make sure that the data type of the token is updated
-    token_to_update.variable_type = data_type;
+    token_to_update.variable_data_type = data_type;
     //update the main map symboltable
     map[token_to_update.stringValue] = token_to_update;
     //grabs the appropriate scope table based on the

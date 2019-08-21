@@ -74,7 +74,9 @@ public:
 
     //methods for parsing declarations
     bool parse_base_declaration();
+    //for standard variables
     bool parse_variable_declaration(bool is_global);
+    //for procedure parameters in their declaration
     bool parse_variable_declaration(bool is_global, std::string procedure_name);
     bool parse_type_declaration(bool is_global);
 
@@ -85,9 +87,8 @@ public:
 
     //method for parsing type_mark which is used for type declarations
     bool parse_type_mark();
-    //same as parse_type_mark but only for procedure variables
-    bool parse_type_mark(std::string procedure_name);
-
+    //same as parse_type_mark but only for procedure variables and variables; 0 means procedure, 1 means var
+    bool parse_type_mark(std::string procedure_name, int proc_or_var);
     //methods used for parsing one or more parameters in a procedure declaration
     bool parse_parameter_list(std::string procedure_name);
     bool parse_parameter(std::string procedure_name);
