@@ -262,3 +262,23 @@ bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_ty
     resync_tables(procedure_scope_id, procedure_identifier_token);
     return true;
 }
+
+bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_id, data_types data_type)
+{
+    //used to hold the scope symbol table
+    std::unordered_map<std::string, token> temp_scope_map;
+    //first makes sure that the scope of the token is updated
+    token_to_update.scope_id = scope_id;
+    //make sure that the data type of the token is updated
+    token_to_update.variable_type = data_type;
+    //update the main map symboltable
+    map[token_to_update.stringValue] = token_to_update;
+    //grabs the appropriate scope table based on the
+    temp_scope_map = scope_table[token_to_update.scope_id].scope_map;
+    //changes the value in the scope map
+    temp_scope_map[token_to_update.stringValue] = token_to_update;
+    //writes the value back
+    scope_table[token_to_update.scope_id].scope_map = temp_scope_map;
+
+    return true;
+}
