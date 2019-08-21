@@ -1142,6 +1142,9 @@ bool parser::parse_base_statement(){
 
 //ready to test
 bool parser::parse_parameter(std::string procedure_name){
+    //pretty sure need to track the name of the variables
+    std::string variable_name = "";
+    variable_name = Current_parse_token.stringValue;
     //this tracks the state of the parser
     parser_state state = S_PARAMETER;
     bool valid_parse;
