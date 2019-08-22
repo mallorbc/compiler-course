@@ -297,9 +297,12 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     temp_token.procedure_return_type = return_type;
     //writes changes back
     map[procedure_name] = temp_token;
-    //grads the scope table
-    temp_scope_map = scope_table[temp_token.scope_id].scope_map;
-    //grabs the associated token in the scope map
+    //resyncs the tables
+    resync_tables(temp_token.scope_id, temp_token);
+
+    // //grads the scope table
+    // temp_scope_map = scope_table[temp_token.scope_id].scope_map;
+    // //grabs the associated token in the scope map
 
     return true;
 }
