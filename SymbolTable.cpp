@@ -282,3 +282,9 @@ bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_i
 
     return true;
 }
+
+bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id)
+{
+
+    return true;
+}

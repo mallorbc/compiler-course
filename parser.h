@@ -87,8 +87,8 @@ public:
 
     //method for parsing type_mark which is used for type declarations
     bool parse_type_mark();
-    //same as parse_type_mark but only for procedure variables and variables; 0 means procedure, 1 means var
-    bool parse_type_mark(std::string procedure_name, int proc_or_var);
+    //same as parse_type_mark but only for procedure variables and variables; 0 means procedure params, 1 means proc itself, 2 means vars
+    bool parse_type_mark(std::string procedure_name, int context);
     //methods used for parsing one or more parameters in a procedure declaration
     bool parse_parameter_list(std::string procedure_name);
     bool parse_parameter(std::string procedure_name);
