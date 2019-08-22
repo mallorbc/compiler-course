@@ -717,6 +717,10 @@ bool parser::parse_type_mark(std::string identifier_name, int context)
         if(context == 0){
             Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_FLOAT);
         }
+        if (context == 1)
+        {
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_INT, current_scope_id);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
@@ -726,6 +730,10 @@ bool parser::parse_type_mark(std::string identifier_name, int context)
         if(context == 0){
             Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_STRING);
         }
+        if (context == 1)
+        {
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_INT, current_scope_id);
+        }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
@@ -734,6 +742,10 @@ bool parser::parse_type_mark(std::string identifier_name, int context)
     {
         if(context == 0){
             Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_BOOL);
+        }
+        if (context == 1)
+        {
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_INT, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
