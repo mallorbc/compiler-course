@@ -276,13 +276,6 @@ bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_i
     //resyncs the tables
     resync_tables(token_to_update.scope_id, token_to_update);
 
-    // //grabs the appropriate scope table based on the
-    // temp_scope_map = scope_table[token_to_update.scope_id].scope_map;
-    // //changes the value in the scope map
-    // temp_scope_map[token_to_update.stringValue] = token_to_update;
-    // //writes the value back
-    // scope_table[token_to_update.scope_id].scope_map = temp_scope_map;
-
     return true;
 }
 
@@ -299,10 +292,6 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     map[procedure_name] = temp_token;
     //resyncs the tables
     resync_tables(temp_token.scope_id, temp_token);
-
-    // //grads the scope table
-    // temp_scope_map = scope_table[temp_token.scope_id].scope_map;
-    // //grabs the associated token in the scope map
 
     return true;
 }
