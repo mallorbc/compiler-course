@@ -263,14 +263,17 @@ bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_ty
     return true;
 }
 
-bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_id, data_types data_type)
+bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_types data_type, int scope_id)
 {
     //used to hold the scope symbol table
     std::unordered_map<std::string, token> temp_scope_map;
+    //grabs the token from the main table
+    token token_to_update;
+    token_to_update = map[identifier_name];
     //first makes sure that the scope of the token is updated
     token_to_update.scope_id = scope_id;
     //make sure that the data type of the token is updated
-    token_to_update.variable_data_type = data_type;
+    token_to_update.identifier_data_type = data_type;
     //update the main map symboltable
     map[token_to_update.stringValue] = token_to_update;
     //resyncs the tables
@@ -279,6 +282,7 @@ bool SymbolTable::update_identifier_data_type(token token_to_update, int scope_i
     return true;
 }
 
+//not needed?
 bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id)
 {
     //temp token for manipulation
@@ -287,7 +291,7 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     std::unordered_map<std::string, token> temp_scope_map;
     temp_token = map[procedure_name];
     temp_token.scope_id = scope_id;
-    temp_token.procedure_return_type = return_type;
+    temp_token.identifier_data_type = return_type;
     //writes changes back
     map[procedure_name] = temp_token;
     //resyncs the tables

@@ -38,8 +38,9 @@ public:
     bool add_procedure_valid_inputs(std::string procedure_name, data_types input_data_type);
     bool update_token_scope_id(token token_to_update, int scope_id);
     bool update_identifier_type(token token_to_update, int scope_id);
-    bool update_identifier_data_type(token token_to_update, int scope_id, data_types data_type);
+    bool update_identifier_data_type(std::string identifier_name, data_types data_type, int scope_id);
     bool update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id);
+    //bool update_variable_data_type(std::string var_name, data_types data_type, int scope_id)
 };
 
 #endif // !SYMBOLTABLE_H
