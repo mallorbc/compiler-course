@@ -77,7 +77,7 @@ public:
     //for standard variables
     bool parse_variable_declaration(bool is_global);
     //for procedure parameters in their declaration
-    bool parse_variable_declaration(bool is_global, std::string procedure_name);
+    // bool parse_variable_declaration(bool is_global, std::string procedure_name);
     bool parse_type_declaration(bool is_global);
 
     //methods for parsing part of the procedures

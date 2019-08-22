@@ -948,6 +948,8 @@ bool parser::parse_variable_declaration(bool is_global){
         }
         //this means that the identifer is a variable
         Current_parse_token.identifer_type = I_VARIABLE;
+        //stores the variable name
+        variable_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -962,7 +964,8 @@ bool parser::parse_variable_declaration(bool is_global){
     }
     if(Current_parse_token_type == T_COLON){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark();
+        //passes the variable name to later add context of what the variable is in the symbol table
+        valid_parse = parse_type_mark(variable_name,2);
         if(valid_parse){
             //checks for optional bracket to declare an array
             if(Current_parse_token_type == T_LBRACKET){
@@ -995,80 +998,83 @@ bool parser::parse_variable_declaration(bool is_global){
 }
 
 //this is the same as the regular parse_variable_declaration, though it allows tracking of the procedure name
-bool parser::parse_variable_declaration(bool is_global,std::string procedure_name)
-{
-    //this tracks the state of the parser
-    parser_state state = S_VARIABLE_DECLARATION;
-    bool valid_parse;
-    if (Current_parse_token_type == T_IDENTIFIER)
-    {
-        if (is_global)
-        {
-            //checks to see if the token is already a global token
-            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
-            {
-                //makes the current parse token global since the previous token was global
-                Lexer->symbol_table.make_token_global(Current_parse_token);
-            }
-            //else it is global; can we redefine global?
-            else
-            {
-            }
-        }
-        //this means that the identifer is a variable
-        Current_parse_token.identifer_type = I_VARIABLE;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report("Missing identifier for variable declaration");
-        errors_occured = true;
-        return false;
-    }
-    if (Current_parse_token_type == T_COLON)
-    {
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark(procedure_name,0);
-        if (valid_parse)
-        {
-            //checks for optional bracket to declare an array
-            if (Current_parse_token_type == T_LBRACKET)
-            {
-                Current_parse_token = Get_Valid_Token();
-                valid_parse = parse_bound();
-                if (Current_parse_token_type == T_RBRACKET)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                }
-                //must have closing right bracket
-                else
-                {
-                    generate_error_report("Missing \"]\" to close the array declaration");
-                    errors_occured = true;
-                    return false;
-                }
-            }
-        }
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report("Missing colon for delcaration of variable type");
-        errors_occured = true;
-        return false;
-    }
+// bool parser::parse_variable_declaration(bool is_global,std::string procedure_name)
+// {
+//     std::string identifier_name = "";
+//     //this tracks the state of the parser
+//     parser_state state = S_VARIABLE_DECLARATION;
+//     bool valid_parse;
+//     if (Current_parse_token_type == T_IDENTIFIER)
+//     {
+//         if (is_global)
+//         {
+//             //checks to see if the token is already a global token
+//             if (!Lexer->symbol_table.is_global_token(Current_parse_token))
+//             {
+//                 //makes the current parse token global since the previous token was global
+//                 Lexer->symbol_table.make_token_global(Current_parse_token);
+//             }
+//             //else it is global; can we redefine global?
+//             else
+//             {
+//             }
+//         }
+//         //this means that the identifer is a variable
+//         Current_parse_token.identifer_type = I_VARIABLE;
+//         //stores the name of the variable
+//         identifier_name = Current_parse_token.stringValue;
+//         //updates the token in the symbol tables
+//         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
+//         Current_parse_token = Get_Valid_Token();
+//     }
+//     else
+//     {
+//         if (debugging)
+//         {
+//             std::cout << "parser failed on parse_variable_declaration()" << std::endl;
+//         }
+//         generate_error_report("Missing identifier for variable declaration");
+//         errors_occured = true;
+//         return false;
+//     }
+//     if (Current_parse_token_type == T_COLON)
+//     {
+//         Current_parse_token = Get_Valid_Token();
+//         valid_parse = parse_type_mark(procedure_name,0);
+//         if (valid_parse)
+//         {
+//             //checks for optional bracket to declare an array
+//             if (Current_parse_token_type == T_LBRACKET)
+//             {
+//                 Current_parse_token = Get_Valid_Token();
+//                 valid_parse = parse_bound();
+//                 if (Current_parse_token_type == T_RBRACKET)
+//                 {
+//                     Current_parse_token = Get_Valid_Token();
+//                 }
+//                 //must have closing right bracket
+//                 else
+//                 {
+//                     generate_error_report("Missing \"]\" to close the array declaration");
+//                     errors_occured = true;
+//                     return false;
+//                 }
+//             }
+//         }
+//     }
+//     else
+//     {
+//         if (debugging)
+//         {
+//             std::cout << "parser failed on parse_variable_declaration()" << std::endl;
+//         }
+//         generate_error_report("Missing colon for delcaration of variable type");
+//         errors_occured = true;
+//         return false;
+//     }
 
-    return valid_parse;
-}
+//     return valid_parse;
+// }
 
 //ready to test
 //refactored 1 time
@@ -1088,6 +1094,8 @@ bool parser::parse_bound(){
 //ready test
 //write test prog for
 bool parser::parse_type_declaration(bool is_global){
+    //tracks the name of the identifier token
+    std::string identifier_name = "";
     //this tracks the state of the parser
     parser_state state = S_TYPE_DECLARATION;
     bool valid_parse;
@@ -1108,6 +1116,7 @@ bool parser::parse_type_declaration(bool is_global){
         }
         //this identifier is a type
         Current_parse_token.identifer_type = I_TYPE;
+        identifier_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -1131,7 +1140,8 @@ bool parser::parse_type_declaration(bool is_global){
         errors_occured = true;
         return false;
     }
-    valid_parse = parse_type_mark();
+    //COME BACK
+    valid_parse = parse_type_mark(identifier_name,2);
 
     return valid_parse;
 
@@ -1180,7 +1190,7 @@ bool parser::parse_parameter(std::string procedure_name){
     //this tracks the state of the parser
     parser_state state = S_PARAMETER;
     bool valid_parse;
-    valid_parse = parse_variable_declaration(false,procedure_name);
+    valid_parse = parse_variable_declaration(false);
     return valid_parse;
 }
 
