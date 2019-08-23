@@ -122,6 +122,8 @@ public:
     std::vector<data_types> procedure_params;
     //a variable can be of type string, bool, int, float, or none
     data_types identifier_data_type;
+
+    bool is_array = false;
     // union value{
     //     int intValue;
     //     std::string stringValue;

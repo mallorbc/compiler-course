@@ -99,14 +99,16 @@ public:
     //methods used for parsing statements
     bool parse_base_statement();
 
-    bool parse_assignment_statement(token token_for_context);
+    ///bool parse_assignment_statement(token token_for_context);
+    bool parse_assignment_statement();
+
     bool parse_assignment_destination();
 
     bool parse_if_statement();
     bool parse_loop_statement();
     bool parse_return_statement();
 
-    bool parse_expression(token token_for_context);
+    // bool parse_expression(token token_for_context);
     bool parse_expression();
     bool parse_arithOp();
     bool parse_arithOp(token token_for_context);

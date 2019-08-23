@@ -238,12 +238,15 @@ bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
 {
     identifier_types temp_identifier_type = I_NONE;
+    bool array_status = false;
     temp_identifier_type = token_to_update.identifer_type;
+    array_status = token_to_update.is_array;
     if (token_is_in_scope_table(token_to_update.stringValue, scope_id))
     {
         token_to_update = scope_table[scope_id].scope_map[token_to_update.stringValue];
         token_to_update.scope_id = scope_id;
         token_to_update.identifer_type = temp_identifier_type;
+        token_to_update.is_array = array_status;
     }
     //updates the token
     map[token_to_update.stringValue] = token_to_update;
