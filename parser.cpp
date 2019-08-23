@@ -1548,10 +1548,13 @@ bool parser::parse_assignment_statement(token destination_token)
 {
     token_and_status expression_parse;
     token_and_status destination_parse;
+    token destination_parse_token;
+    token expression_parse_token;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
     destination_parse = parse_assignment_destination(destination_token);
+    destination_parse_token = destination_parse.resolved_token;
     valid_parse = destination_parse.valid_parse;
     if (valid_parse)
     {
@@ -1572,7 +1575,10 @@ bool parser::parse_assignment_statement(token destination_token)
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             expression_parse = parse_expression();
+            expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
+            //clear the token, see if the destination and the resolved expression token are compatible
+            type_checker->clear_tokens();
         }
         else
         {
