@@ -25,7 +25,7 @@ public:
     bool set_statement_type(token statement_key_token);
     bool statement_is_finished();
     bool is_valid_relation();
-    bool first_to_second();
+    bool second_to_first();
     bool token_is_relationship(token token_to_check);
     bool second_relation_token_chains(token token_to_check);
     bool feed_in_tokens(token token_to_feed);

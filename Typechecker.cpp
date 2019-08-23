@@ -18,9 +18,12 @@ bool Typechecker::statement_is_finished()
     return true;
 }
 
-bool Typechecker::first_to_second()
+bool Typechecker::second_to_first()
 {
-
+    token temp_token;
+    temp_token = second_token;
+    clear_tokens();
+    first_token = second_token;
     return true;
 }
 
