@@ -41,6 +41,13 @@ enum parser_state
     S_NUMBER = 28
 };
 
+//we need to return both a token and a parse status; this struct will help with that
+struct token_and_status
+{
+    bool valid_parse = true;
+    token resolved_token;
+};
+
 class parser
 {
 public:
@@ -100,9 +107,9 @@ public:
     bool parse_base_statement();
 
     ///bool parse_assignment_statement(token token_for_context);
-    bool parse_assignment_statement();
+    bool parse_assignment_statement(token destination_token);
 
-    bool parse_assignment_destination();
+    bool parse_assignment_destination(token destination_token);
 
     bool parse_if_statement();
     bool parse_loop_statement();

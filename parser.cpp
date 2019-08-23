@@ -1460,7 +1460,7 @@ bool parser::parse_base_statement()
         Context_token = update_context_token();
         //       type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_assignment_statement();
+        valid_parse = parse_assignment_statement(Context_token);
     }
     else if (Current_parse_token_type == T_IF)
     {
@@ -1544,12 +1544,12 @@ bool parser::parse_number()
 //ready to test
 //consumes an identifer before parsing
 //refactored 1 time
-bool parser::parse_assignment_statement()
+bool parser::parse_assignment_statement(token destination_token)
 {
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
-    valid_parse = parse_assignment_destination();
+    valid_parse = parse_assignment_destination(destination_token);
     if (valid_parse)
     {
         //MAY BE A BUG HERE, SHOULD THROW ERROR?
@@ -1727,7 +1727,7 @@ bool parser::parse_loop_statement()
             //COME BACK
             Context_token = update_context_token();
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_assignment_statement();
+            valid_parse = parse_assignment_statement(Context_token);
             if (Current_parse_token_type == T_SEMICOLON)
             {
                 Current_parse_token = Get_Valid_Token();
@@ -1845,7 +1845,7 @@ bool parser::parse_return_statement()
 //ready to test
 //already consumes identifier before parsing
 //refactored 1 time
-bool parser::parse_assignment_destination()
+bool parser::parse_assignment_destination(token destination_token)
 {
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_DESTINATION;
@@ -1853,6 +1853,9 @@ bool parser::parse_assignment_destination()
     //this means that the optional bracketed expression should exist
     if (Current_parse_token_type == T_LBRACKET)
     {
+        //since there is a bracket, that means that this is an array and we need to mark it as such
+        destination_token.is_array = true;
+        Lexer->symbol_table.update_identifier_type(destination_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_expression();
         //after parsing the expression, it should have a right bracket
