@@ -1562,7 +1562,8 @@ bool parser::parse_assignment_statement(token destination_token)
         //MAY BE A BUG HERE, SHOULD THROW ERROR?
         if (Current_parse_token_type == T_COLON)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            //not needed because after resolving the token we do a direct comparison?
+            //type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
         }
         else
@@ -1573,7 +1574,8 @@ bool parser::parse_assignment_statement(token destination_token)
         }
         if (Current_parse_token_type == T_ASSIGN)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            //not needed because after resolving the token we do a direct comparison?
+            //type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             expression_parse = parse_expression();
             expression_parse_token = expression_parse.resolved_token;

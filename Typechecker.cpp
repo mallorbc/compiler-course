@@ -52,6 +52,7 @@ bool Typechecker::set_statement_type(token key_token)
 
 bool Typechecker::feed_in_tokens(token token_to_feed)
 {
+    bool return_value = false;
     //if nothing has been read in yet
     if (first_token.type == T_NULL)
     {
@@ -97,14 +98,17 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
     else if (second_token.type == T_NULL)
     {
         second_token = token_to_feed;
-        return true;
+        return_value = true;
     }
     else
     {
         //std::cout << "to many tokens" << std::endl;
     }
-
-    return true;
+    if (are_tokens_full())
+    {
+        is_valid_operation();
+    }
+    return return_value;
 }
 
 bool Typechecker::token_is_relationship(token token_to_check)
@@ -231,4 +235,16 @@ bool Typechecker::check_assignment_statement(token destination_token, token reso
 {
 
     return true;
+}
+
+bool Typechecker::are_tokens_full()
+{
+    if ((first_token.type != T_NULL) && (second_token.type != T_NULL) && (relation_tokens.size() > 0))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
