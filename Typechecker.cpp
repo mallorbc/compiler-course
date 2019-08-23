@@ -58,7 +58,7 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
         first_token = token_to_feed;
         return true;
     }
-    else if ((first_token.type != T_NULL) && second_token.type == T_NULL)
+    else if ((first_token.type != T_NULL) && (second_token.type == T_NULL) && token_is_relationship(token_to_feed))
     {
         //token must be either an arithop or a relation
         if (!token_is_relationship(token_to_feed))
