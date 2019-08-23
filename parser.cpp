@@ -1980,8 +1980,7 @@ token_and_status parser::parse_expression()
         errors_occured = true;
     }
     expression_parse.valid_parse = valid_parse;
-    //this will eventually come from arithop parse
-    //expression_parse.resolved_token
+    expression_parse.resolved_token = arithop_parse.resolved_token;
 
     return expression_parse;
 }
@@ -1992,6 +1991,7 @@ token_and_status parser::parse_expression()
 token_and_status parser::parse_arithOp()
 {
     token_and_status arithop_parse;
+    token_and_status relation_parse;
 
     //this tracks the state of the parser
     parser_state state = S_ARITH_OP;
@@ -2003,20 +2003,23 @@ token_and_status parser::parse_arithOp()
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_relation();
+        relation_parse = parse_relation();
+        valid_parse = relation_parse.valid_parse;
     }
     //meaning that this is <arithOp>-<relation> rather than just <relation>
     else if (Current_parse_token_type == T_MINUS)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_relation();
+        relation_parse = parse_relation();
+        valid_parse = relation_parse.valid_parse;
     }
     //else if was just a <relation>
     else
     {
         //Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_relation();
+        relation_parse = parse_relation();
+        valid_parse = relation_parse.valid_parse;
     }
     //allows parsing of relation again
     if (valid_parse)
@@ -2034,7 +2037,8 @@ token_and_status parser::parse_arithOp()
                 //code generation stuff here probably different than T_PLUS
             }
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_relation();
+            relation_parse = parse_relation();
+            valid_parse = relation_parse.valid_parse;
         }
         //else not adding or subtracting and is just a relation
         else
@@ -2049,8 +2053,9 @@ token_and_status parser::parse_arithOp()
 //ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with terms?
-bool parser::parse_relation()
+token_and_status parser::parse_relation()
 {
+    token_and_status relation_parse;
     //this tracks the state of the parser
     parser_state state = S_RELATION;
     bool valid_parse;
@@ -2107,7 +2112,9 @@ bool parser::parse_relation()
             //Current_parse_token = Get_Valid_Token();
             generate_error_report("\"=\" is not a valid relational operator, did you mean \"==\"");
             errors_occured = true;
-            return false;
+            valid_parse = false;
+            relation_parse.valid_parse = false;
+            return relation_parse;
         }
     }
     else if (Current_parse_token_type == T_EXCLAM)
@@ -2121,6 +2128,7 @@ bool parser::parse_relation()
             }
             generate_error_report("Invalid relational operator detected");
             errors_occured = true;
+            valid_parse = false;
         }
     }
     //else just a term
@@ -2160,7 +2168,8 @@ bool parser::parse_relation()
         }
     }
 
-    return valid_parse;
+    relation_parse.valid_parse = valid_parse;
+    return relation_parse;
 }
 
 //ready to test
