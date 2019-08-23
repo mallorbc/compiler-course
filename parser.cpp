@@ -6,7 +6,7 @@ parser::parser(std::string file_to_parse){
     bool valid_parse;
     parse_file = file_to_parse;
     Lexer = new scanner(parse_file);
-    //type_checker = new TypeChecker(Lexer->get_SymbolTable_map());
+    type_checker = new Typechecker();
     valid_parse = parse_program();
     if(valid_parse){
         if(errors_occured){
@@ -1322,7 +1322,9 @@ bool parser::parse_base_statement(){
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if(Current_parse_token_type == T_IDENTIFIER){
+        type_checker->set_statement_type(Current_parse_token);
         Context_token = update_context_token();
+        type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement(Context_token);
     }
@@ -1409,7 +1411,7 @@ bool parser::parse_assignment_statement(token token_for_context){
         }
         if(Current_parse_token_type == T_ASSIGN){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_expression(Context_token);
+            valid_parse = parse_expression(token_for_context);
         }
         else{
             generate_error_report("Missing \"=\" needed for assignment statement");
@@ -1689,12 +1691,12 @@ bool parser::parse_expression(token token_for_context){
 
     if(Current_parse_token_type == T_AMPERSAND){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        valid_parse = parse_arithOp(token_for_context);
     }
     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
     else if(Current_parse_token_type == T_VERTICAL_BAR){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        valid_parse = parse_arithOp(token_for_context);
     }
     //else it was just an <arithOp>
     else if(Current_parse_token_type == T_NOT){
@@ -1829,6 +1831,57 @@ bool parser::parse_arithOp(){
     }
 
     
+    return valid_parse;
+}
+
+bool parser::parse_arithOp(token token_for_context)
+{
+    //this tracks the state of the parser
+    parser_state state = S_ARITH_OP;
+    bool valid_parse;
+    //Current_parse_token = Get_Valid_Token();
+
+    //meaning that this is <arithOp>+<relation> rather than just <relation>
+    if (Current_parse_token_type == T_PLUS)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
+    }
+    //meaning that this is <arithOp>-<relation> rather than just <relation>
+    else if (Current_parse_token_type == T_MINUS)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
+    }
+    //else if was just a <relation>
+    else
+    {
+        //Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_relation();
+    }
+    //allows parsing of relation again
+    if (valid_parse)
+    {
+        if (Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS)
+        {
+            if (Current_parse_token_type == T_PLUS)
+            {
+                //code generation stuff here probably different than T_MINUS
+            }
+            else if (Current_parse_token_type == T_MINUS)
+            {
+                //code generation stuff here probably different than T_PLUS
+            }
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_relation();
+        }
+        //else not adding or subtracting and is just a relation
+        else
+        {
+            //nothing ever?
+        }
+    }
+
     return valid_parse;
 }
 

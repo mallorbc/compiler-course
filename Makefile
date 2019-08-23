@@ -1,5 +1,5 @@
-compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o
-	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o -o compiler -g
+compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o
+	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o -o compiler -g
 
 main.o: main.cpp token.h
 	g++ -c main.cpp -g
@@ -19,6 +19,9 @@ CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h
 
 ScopeTable.o: ScopeTable.h ScopeTable.cpp token.h
 	g++ -c ScopeTable.cpp -g
+
+Typechecker.o: Typechecker.h Typechecker.cpp token.h
+	g++ -c Typechecker.cpp -g
 
 clean:
 	rm *.o compiler

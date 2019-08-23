@@ -56,7 +56,8 @@ enum token_type
     T_FLOAT_VALUE = 280,
     T_STRING_VALUE = 281,
     T_BOOL_VALUE = 282,
-    T_INVALID = 283
+    T_INVALID = 283,
+    T_NULL = 999
 
 };
 

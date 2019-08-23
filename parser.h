@@ -1,6 +1,7 @@
 #ifndef PARSER_H
 #define PARSER_H
 #include "token.h"
+#include "Typechecker.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -108,6 +109,7 @@ public:
     bool parse_expression(token token_for_context);
     bool parse_expression();
     bool parse_arithOp();
+    bool parse_arithOp(token token_for_context);
     bool parse_relation();
     bool parse_term();
     bool parse_factor();
@@ -142,7 +144,7 @@ public:
     token Context_token;
     token update_context_token();
 
-    // TypeChecker *type_checker;
+    Typechecker *type_checker;
 };
 
 #endif // !PARSER_H
