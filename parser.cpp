@@ -2047,6 +2047,7 @@ token_and_status parser::parse_arithOp()
         }
     }
     arithop_parse.valid_parse = valid_parse;
+    arithop_parse.resolved_token = relation_parse.resolved_token;
     return arithop_parse;
 }
 
@@ -2056,6 +2057,7 @@ token_and_status parser::parse_arithOp()
 token_and_status parser::parse_relation()
 {
     token_and_status relation_parse;
+    token_and_status term_parse;
     //this tracks the state of the parser
     parser_state state = S_RELATION;
     bool valid_parse;
@@ -2069,12 +2071,14 @@ token_and_status parser::parse_relation()
         {
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_term();
+            term_parse = parse_term();
+            valid_parse = term_parse.valid_parse;
         }
         //else just less than
         else
         {
-            valid_parse = parse_term();
+            term_parse = parse_term();
+            valid_parse = term_parse.valid_parse;
         }
     }
     else if (Current_parse_token_type == T_GREATER)
@@ -2086,12 +2090,14 @@ token_and_status parser::parse_relation()
         {
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_term();
+            term_parse = parse_term();
+            valid_parse = term_parse.valid_parse;
         }
         //else just greateer than
         else
         {
-            valid_parse = parse_term();
+            term_parse = parse_term();
+            valid_parse = term_parse.valid_parse;
         }
     }
     else if (Current_parse_token_type == T_ASSIGN)
@@ -2101,7 +2107,8 @@ token_and_status parser::parse_relation()
         if (Current_parse_token_type == T_ASSIGN)
         {
             type_checker->feed_in_tokens(Current_parse_token);
-            valid_parse = parse_term();
+            term_parse = parse_term();
+            valid_parse = term_parse.valid_parse;
         }
         else
         {
@@ -2134,8 +2141,8 @@ token_and_status parser::parse_relation()
     //else just a term
     else
     {
-        valid_parse = parse_term();
-        //checks to see if are any more terms to parse
+        term_parse = parse_term();
+        valid_parse = term_parse.valid_parse; //checks to see if are any more terms to parse
         if (valid_parse)
         {
             if (Current_parse_token_type == T_ASSIGN)
@@ -2144,7 +2151,8 @@ token_and_status parser::parse_relation()
                 if (Current_parse_token_type == T_ASSIGN)
                 {
                     Current_parse_token = Get_Valid_Token();
-                    valid_parse = parse_term();
+                    term_parse = parse_term();
+                    valid_parse = term_parse.valid_parse;
                 }
                 else
                 {
@@ -2158,11 +2166,13 @@ token_and_status parser::parse_relation()
                 if (Current_parse_token_type == T_ASSIGN)
                 {
                     Current_parse_token = Get_Valid_Token();
-                    valid_parse = parse_term();
+                    term_parse = parse_term();
+                    valid_parse = term_parse.valid_parse;
                 }
                 else
                 {
-                    valid_parse = parse_term();
+                    term_parse = parse_term();
+                    valid_parse = term_parse.valid_parse;
                 }
             }
         }
@@ -2174,8 +2184,9 @@ token_and_status parser::parse_relation()
 
 //ready to test
 //already consumes a token before being parsed
-bool parser::parse_term()
+token_and_status parser::parse_term()
 {
+    token_and_status term_parse;
     //this tracks the state of the parser
     parser_state state = S_TERM;
     bool valid_parse;
@@ -2214,8 +2225,8 @@ bool parser::parse_term()
             }
         }
     }
-
-    return valid_parse;
+    term_parse.valid_parse = valid_parse;
+    return term_parse;
 }
 
 //ready to test

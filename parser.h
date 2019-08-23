@@ -119,7 +119,7 @@ public:
     token_and_status parse_expression();
     token_and_status parse_arithOp();
     token_and_status parse_relation();
-    bool parse_term();
+    token_and_status parse_term();
     bool parse_factor();
 
     bool parse_bound();
