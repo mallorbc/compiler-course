@@ -58,8 +58,7 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
         first_token = token_to_feed;
         return true;
     }
-    //one token has been read in
-    if ((!first_token.type == T_NULL) && (second_token.type == T_NULL))
+    else if ((first_token.type != T_NULL) && second_token.type == T_NULL)
     {
         //token must be either an arithop or a relation
         if (!token_is_relationship(token_to_feed))
@@ -70,10 +69,17 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
         {
             if (relation_tokens.size() < 2)
             {
-                //only some tokens can chain
-                if (second_relation_token_chains(token_to_feed))
+                //adds the token if it is valid and there are no other tokens
+                if (relation_tokens.size() == 0)
                 {
                     relation_tokens.push_back(token_to_feed);
+                    return true;
+                }
+                //only some tokens can chain
+                if ((second_relation_token_chains(token_to_feed)) && (relation_tokens.size() == 1))
+                {
+                    relation_tokens.push_back(token_to_feed);
+                    return true;
                 }
             }
             else
@@ -82,10 +88,10 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
             }
         }
     }
-
-    if (second_token.type == T_NULL)
+    else if (second_token.type == T_NULL)
     {
         second_token = token_to_feed;
+        return true;
     }
     else
     {
