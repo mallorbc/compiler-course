@@ -226,3 +226,9 @@ bool Typechecker::is_valid_operation()
 
     return true;
 }
+
+bool Typechecker::check_assignment_statement(token destination_token, token resolved_token)
+{
+
+    return true;
+}

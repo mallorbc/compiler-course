@@ -1577,8 +1577,8 @@ bool parser::parse_assignment_statement(token destination_token)
             expression_parse = parse_expression();
             expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
-            //clear the token, see if the destination and the resolved expression token are compatible
-            type_checker->clear_tokens();
+            //we know that this is an assignment statement and we are ending with 2 tokens so we should be good to directly compare here
+            type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
         }
         else
         {

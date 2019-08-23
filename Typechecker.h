@@ -32,6 +32,8 @@ public:
     bool clear_tokens();
     bool is_valid_operation();
 
+    bool check_assignment_statement(token destination_token, token resolved_token);
+
     bool debugger = false;
 };
 
