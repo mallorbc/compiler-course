@@ -118,7 +118,7 @@ public:
 
     bool parse_bound();
     bool parse_number();
-    bool parse_name();
+    bool parse_name(token identifier_token);
 
     bool parse_argument_list();
 

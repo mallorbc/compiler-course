@@ -1891,18 +1891,21 @@ bool parser::parse_expression()
 
     if (Current_parse_token_type == T_AMPERSAND)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_arithOp();
     }
     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
     else if (Current_parse_token_type == T_VERTICAL_BAR)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_arithOp();
     }
     //else it was just an <arithOp>
     else if (Current_parse_token_type == T_NOT)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_arithOp();
     }
@@ -1918,10 +1921,12 @@ bool parser::parse_expression()
         {
             if (Current_parse_token_type == T_AMPERSAND)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 //code generation different here than a pipe
             }
             else if (Current_parse_token_type == T_VERTICAL_BAR)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 //code generation different here thana pipe
             }
             else
@@ -2010,12 +2015,14 @@ bool parser::parse_arithOp()
     //meaning that this is <arithOp>+<relation> rather than just <relation>
     if (Current_parse_token_type == T_PLUS)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_relation();
     }
     //meaning that this is <arithOp>-<relation> rather than just <relation>
     else if (Current_parse_token_type == T_MINUS)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_relation();
     }
@@ -2032,10 +2039,12 @@ bool parser::parse_arithOp()
         {
             if (Current_parse_token_type == T_PLUS)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 //code generation stuff here probably different than T_MINUS
             }
             else if (Current_parse_token_type == T_MINUS)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 //code generation stuff here probably different than T_PLUS
             }
             Current_parse_token = Get_Valid_Token();
@@ -2113,10 +2122,12 @@ bool parser::parse_relation()
 
     if (Current_parse_token_type == T_LESS)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //meaning less than or equal to
         if (Current_parse_token_type == T_ASSIGN)
         {
+            type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_term();
         }
@@ -2128,10 +2139,12 @@ bool parser::parse_relation()
     }
     else if (Current_parse_token_type == T_GREATER)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //greater than or equal to
         if (Current_parse_token_type == T_ASSIGN)
         {
+            type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_term();
         }
@@ -2143,9 +2156,11 @@ bool parser::parse_relation()
     }
     else if (Current_parse_token_type == T_ASSIGN)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_ASSIGN)
         {
+            type_checker->feed_in_tokens(Current_parse_token);
             valid_parse = parse_term();
         }
         else
@@ -2222,11 +2237,13 @@ bool parser::parse_term()
     bool valid_parse;
     if (Current_parse_token_type == T_MULT)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_factor();
     }
     else if (Current_parse_token_type == T_SLASH)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_factor();
     }
@@ -2240,10 +2257,12 @@ bool parser::parse_term()
             {
                 if (Current_parse_token_type == T_MULT)
                 {
+                    type_checker->feed_in_tokens(Current_parse_token);
                     //code generation probaly different here than division
                 }
                 else if (Current_parse_token_type == T_SLASH)
                 {
+                    type_checker->feed_in_tokens(Current_parse_token);
                     //code generation probably different here than multiplication
                 }
                 Current_parse_token = Get_Valid_Token();
@@ -2259,11 +2278,16 @@ bool parser::parse_term()
 //already consumes a token before being parsed
 bool parser::parse_factor()
 {
+    token identifier_token;
     //this tracks the state of the parser
     parser_state state = S_FACTOR;
     bool valid_parse;
     if (Current_parse_token_type == T_LPARAM)
     {
+        //what to do here? COME BACK
+        //move the second token to first?
+        type_checker->second_to_first();
+        //maybe have parse_expression return a token of the type it resolves to?
         valid_parse = parse_expression();
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_RPARAM)
@@ -2287,6 +2311,7 @@ bool parser::parse_factor()
         //this means that it is a procedure call
         if (Next_parse_token_type == T_LPARAM)
         {
+            type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_call();
         }
@@ -2294,24 +2319,28 @@ bool parser::parse_factor()
         else
         {
             //COMMENTED OUT 4/22
+            identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name();
+            valid_parse = parse_name(identifier_token);
         }
     }
     //this means that it must be either a name or a number
     else if (Current_parse_token_type == T_MINUS)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //means that it isn't a name
         if (Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE)
         {
+            type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
         }
         //else it is a name
         else if (Current_parse_token_type == T_IDENTIFIER)
         {
+            identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name();
+            valid_parse = parse_name(identifier_token);
         }
         //else it had a negative sign, it isn't a number, and it isn't a name
         else
@@ -2328,24 +2357,28 @@ bool parser::parse_factor()
     //else is a non negative number
     else if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         return true;
     }
     else if (Current_parse_token_type == T_STRING_VALUE)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         return true;
     }
     else if (Current_parse_token_type == T_TRUE)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         return true;
     }
     else if (Current_parse_token_type == T_FALSE)
     {
+        type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         return true;
@@ -2367,17 +2400,22 @@ bool parser::parse_factor()
 
 //ready to test
 //already consumes indentifier token before being parsed
-bool parser::parse_name()
+bool parser::parse_name(token identifier_token)
 {
     //this tracks the state of the parser
     parser_state state = S_NAME;
     bool valid_parse;
     if (Current_parse_token_type == T_LBRACKET)
     {
+        identifier_token.is_array = true;
+        //marks the token as an array
+        Lexer->symbol_table.update_identifier_type(identifier_token, current_scope_id);
+        type_checker->feed_in_tokens(identifier_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_expression();
         if (Current_parse_token_type == T_RBRACKET)
         {
+
             Current_parse_token = Get_Valid_Token();
         }
         //missing right bracket for the end of an optional expression
