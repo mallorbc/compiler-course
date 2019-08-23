@@ -1324,7 +1324,7 @@ bool parser::parse_base_statement(){
     if(Current_parse_token_type == T_IDENTIFIER){
         Context_token = update_context_token();
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_assignment_statement();
+        valid_parse = parse_assignment_statement(Context_token);
     }
     else if(Current_parse_token_type == T_IF){
         Current_parse_token = Get_Valid_Token();
@@ -1392,7 +1392,7 @@ bool parser::parse_number(){
 //ready to test
 //consumes an identifer before parsing
 //refactored 1 time
-bool parser::parse_assignment_statement(){
+bool parser::parse_assignment_statement(token token_for_context){
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
@@ -1409,7 +1409,7 @@ bool parser::parse_assignment_statement(){
         }
         if(Current_parse_token_type == T_ASSIGN){
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_expression();
+            valid_parse = parse_expression(Context_token);
         }
         else{
             generate_error_report("Missing \"=\" needed for assignment statement");
@@ -1543,10 +1543,13 @@ bool parser::parse_loop_statement(){
         //grabs what should be an identifier
         Current_parse_token = Get_Valid_Token();  
         if(Current_parse_token_type == T_IDENTIFIER){
+            //COME BACK
+            Context_token = update_context_token();
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_assignment_statement();
+            valid_parse = parse_assignment_statement(Context_token);
             if(Current_parse_token_type == T_SEMICOLON){
                 Current_parse_token = Get_Valid_Token();
+                //COME BACK
                 valid_parse = parse_expression();
                 if(Current_parse_token_type == T_RPARAM){
                     Current_parse_token = Get_Valid_Token();
@@ -1652,7 +1655,7 @@ bool parser::parse_assignment_destination(){
     //this means that the optional bracketed expression should exist
     if(Current_parse_token_type == T_LBRACKET){
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_expression();
+        valid_parse = parse_expression(Context_token);
         //after parsing the expression, it should have a right bracket
         if(Current_parse_token_type == T_RBRACKET){
             Current_parse_token = Get_Valid_Token();
@@ -1679,7 +1682,7 @@ bool parser::parse_assignment_destination(){
 //ready to test
 //consumes a token before entering this function
 //all expressions start be thought to start with a ArithOp?
-bool parser::parse_expression(){
+bool parser::parse_expression(token token_for_context){
     //this tracks the state of the parser
     parser_state state = S_EXPRESSION;
     bool valid_parse;
@@ -1719,6 +1722,63 @@ bool parser::parse_expression(){
         }
     }
     else{
+        generate_error_report("Error in expression");
+        errors_occured = true;
+    }
+    return valid_parse;
+}
+
+bool parser::parse_expression()
+{
+    //this tracks the state of the parser
+    parser_state state = S_EXPRESSION;
+    bool valid_parse;
+
+    if (Current_parse_token_type == T_AMPERSAND)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    //meaning that this is <expression>|<arithOp> rather than just <arithOp>
+    else if (Current_parse_token_type == T_VERTICAL_BAR)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    //else it was just an <arithOp>
+    else if (Current_parse_token_type == T_NOT)
+    {
+        Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    else
+    {
+        //Current_parse_token = Get_Valid_Token();
+        valid_parse = parse_arithOp();
+    }
+    //check to see if expression continues with another Arithop
+    if (valid_parse)
+    {
+        if (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR)
+        {
+            if (Current_parse_token_type == T_AMPERSAND)
+            {
+                //code generation different here than a pipe
+            }
+            else if (Current_parse_token_type == T_VERTICAL_BAR)
+            {
+                //code generation different here thana pipe
+            }
+            else
+            {
+                //not valid ever?
+            }
+            Current_parse_token = Get_Valid_Token();
+            valid_parse = parse_arithOp();
+        }
+    }
+    else
+    {
         generate_error_report("Error in expression");
         errors_occured = true;
     }
