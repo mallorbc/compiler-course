@@ -1458,7 +1458,7 @@ bool parser::parse_base_statement()
     {
         type_checker->set_statement_type(Current_parse_token);
         Context_token = update_context_token();
-        type_checker->feed_in_tokens(Context_token);
+        //       type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
     }
@@ -2434,8 +2434,9 @@ bool parser::parse_name(token identifier_token)
     else
     {
         //Current_parse_token = Get_Valid_Token();
-        return true;
+        valid_parse = true;
     }
+    type_checker->feed_in_tokens(identifier_token);
 
     return valid_parse;
 }
