@@ -223,22 +223,40 @@ bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 {
     bool return_value;
     //used as the temporary hold value
-    token temp_token;
-    //finds the token value using the string key
-    temp_token = map[token_to_update.stringValue];
-    temp_token.scope_id = scope_id;
-    map[token_to_update.stringValue] = temp_token;
+    // token temp_token;
+    // if(!token_is_in_scope_table(token_to_update.stringValue,scope_id)){
+    //     //finds the token value using the string key
+    //     temp_token = map[token_to_update.stringValue];
+    //     temp_token.scope_id = scope_id;
+    //     map[token_to_update.stringValue] = temp_token;
+    // }
+    // //finds the token value using the string key
+    // temp_token = map[token_to_update.stringValue];
+    // temp_token.scope_id = scope_id;
+    // map[token_to_update.stringValue] = temp_token;
+
+    token_to_update.scope_id = scope_id;
+    token_to_update.procedure_params.clear();
+    map[token_to_update.stringValue] = token_to_update;
     //creates a hash entry for the new scope if it doesn't already exist
     if (!scope_map_exists(scope_id))
     {
         create_new_scope_table(scope_id);
     }
-    bool resync_status = resync_tables(scope_id, temp_token);
+    bool resync_status = resync_tables(scope_id, token_to_update);
     return resync_status;
 }
 
 bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
 {
+    identifier_types temp_identifier_type = I_NONE;
+    temp_identifier_type = token_to_update.identifer_type;
+    if (token_is_in_scope_table(token_to_update.stringValue, scope_id))
+    {
+        token_to_update = scope_table[scope_id].scope_map[token_to_update.stringValue];
+        token_to_update.scope_id = scope_id;
+        token_to_update.identifer_type = temp_identifier_type;
+    }
     //updates the token
     map[token_to_update.stringValue] = token_to_update;
     //updates the token on the scope maps
@@ -246,20 +264,33 @@ bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
     return resync_status;
 }
 
-bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_types valid_input_type)
+bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_types valid_input_type, int scope_id)
 {
+    //used to hold the scope symbol table
+    std::unordered_map<std::string, token> temp_scope_map;
     //temporary token to help change us change the map
     token procedure_identifier_token;
-    int procedure_scope_id;
-    //grads the token based on the name of the procedure
-    procedure_identifier_token = map[procedure_name];
-    procedure_scope_id = procedure_identifier_token.scope_id;
+    //checks to see if the procedure is already in the scope table, if it is we grab it, else its new and we wipe allowed inputs
+    if (!token_is_in_scope_table(procedure_name, scope_id))
+    {
+        //grads the token based on the name of the procedure
+        procedure_identifier_token = map[procedure_name];
+        procedure_identifier_token.scope_id = scope_id;
+        procedure_identifier_token.procedure_params.clear();
+    }
+    else
+    {
+        //grabs the already existing token in the appropriate scope
+        temp_scope_map = scope_table[scope_id].scope_map;
+        procedure_identifier_token = temp_scope_map[procedure_name];
+        procedure_identifier_token.scope_id = scope_id;
+    }
     //adds the valid type to the procedure identifier
     procedure_identifier_token.procedure_params.push_back(valid_input_type);
     //adds the modified value back to the map
     map[procedure_name] = procedure_identifier_token;
     //we need to resync this change to the scope tables
-    resync_tables(procedure_scope_id, procedure_identifier_token);
+    resync_tables(scope_id, procedure_identifier_token);
     return true;
 }
 
@@ -298,4 +329,19 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     resync_tables(temp_token.scope_id, temp_token);
 
     return true;
+}
+
+bool SymbolTable::token_is_in_scope_table(std::string token_string, int scope_id)
+{
+    std::unordered_map<std::string, token> temp_scope_map;
+    temp_scope_map = scope_table[scope_id].scope_map;
+
+    if (temp_scope_map.find(token_string) == temp_scope_map.end())
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
