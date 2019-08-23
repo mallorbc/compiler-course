@@ -1945,63 +1945,6 @@ bool parser::parse_expression()
     return valid_parse;
 }
 
-// bool parser::parse_expression()
-// {
-//     //this tracks the state of the parser
-//     parser_state state = S_EXPRESSION;
-//     bool valid_parse;
-
-//     if (Current_parse_token_type == T_AMPERSAND)
-//     {
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_arithOp();
-//     }
-//     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
-//     else if (Current_parse_token_type == T_VERTICAL_BAR)
-//     {
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_arithOp();
-//     }
-//     //else it was just an <arithOp>
-//     else if (Current_parse_token_type == T_NOT)
-//     {
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_arithOp();
-//     }
-//     else
-//     {
-//         //Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_arithOp();
-//     }
-//     //check to see if expression continues with another Arithop
-//     if (valid_parse)
-//     {
-//         if (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR)
-//         {
-//             if (Current_parse_token_type == T_AMPERSAND)
-//             {
-//                 //code generation different here than a pipe
-//             }
-//             else if (Current_parse_token_type == T_VERTICAL_BAR)
-//             {
-//                 //code generation different here thana pipe
-//             }
-//             else
-//             {
-//                 //not valid ever?
-//             }
-//             Current_parse_token = Get_Valid_Token();
-//             valid_parse = parse_arithOp();
-//         }
-//     }
-//     else
-//     {
-//         generate_error_report("Error in expression");
-//         errors_occured = true;
-//     }
-//     return valid_parse;
-// }
-
 //ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with relations?
@@ -2059,57 +2002,6 @@ bool parser::parse_arithOp()
 
     return valid_parse;
 }
-
-// bool parser::parse_arithOp(token token_for_context)
-// {
-//     //this tracks the state of the parser
-//     parser_state state = S_ARITH_OP;
-//     bool valid_parse;
-//     //Current_parse_token = Get_Valid_Token();
-
-//     //meaning that this is <arithOp>+<relation> rather than just <relation>
-//     if (Current_parse_token_type == T_PLUS)
-//     {
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_relation();
-//     }
-//     //meaning that this is <arithOp>-<relation> rather than just <relation>
-//     else if (Current_parse_token_type == T_MINUS)
-//     {
-//         Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_relation();
-//     }
-//     //else if was just a <relation>
-//     else
-//     {
-//         //Current_parse_token = Get_Valid_Token();
-//         valid_parse = parse_relation();
-//     }
-//     //allows parsing of relation again
-//     if (valid_parse)
-//     {
-//         if (Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS)
-//         {
-//             if (Current_parse_token_type == T_PLUS)
-//             {
-//                 //code generation stuff here probably different than T_MINUS
-//             }
-//             else if (Current_parse_token_type == T_MINUS)
-//             {
-//                 //code generation stuff here probably different than T_PLUS
-//             }
-//             Current_parse_token = Get_Valid_Token();
-//             valid_parse = parse_relation();
-//         }
-//         //else not adding or subtracting and is just a relation
-//         else
-//         {
-//             //nothing ever?
-//         }
-//     }
-
-//     return valid_parse;
-// }
 
 //ready to test
 //consumes a token before entering this function
