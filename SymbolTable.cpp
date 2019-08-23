@@ -122,7 +122,7 @@ bool SymbolTable::make_token_global(token global_token)
     //puts the modified value back in the map
     map[temp_token.stringValue] = temp_token;
     //resyncs the token
-    bool resync_status = resync_tables(0, global_token);
+    bool resync_status = resync_tables(-1, global_token);
     return resync_status;
 }
 
@@ -222,18 +222,6 @@ bool SymbolTable::remove_scope(int scope_id)
 bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 {
     bool return_value;
-    //used as the temporary hold value
-    // token temp_token;
-    // if(!token_is_in_scope_table(token_to_update.stringValue,scope_id)){
-    //     //finds the token value using the string key
-    //     temp_token = map[token_to_update.stringValue];
-    //     temp_token.scope_id = scope_id;
-    //     map[token_to_update.stringValue] = temp_token;
-    // }
-    // //finds the token value using the string key
-    // temp_token = map[token_to_update.stringValue];
-    // temp_token.scope_id = scope_id;
-    // map[token_to_update.stringValue] = temp_token;
 
     token_to_update.scope_id = scope_id;
     token_to_update.procedure_params.clear();
