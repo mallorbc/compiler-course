@@ -1546,6 +1546,7 @@ bool parser::parse_number()
 //refactored 1 time
 bool parser::parse_assignment_statement(token destination_token)
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
@@ -1568,7 +1569,8 @@ bool parser::parse_assignment_statement(token destination_token)
         {
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_expression();
+            expression_parse = parse_expression();
+            valid_parse = expression_parse.valid_parse;
         }
         else
         {
@@ -1592,13 +1594,15 @@ bool parser::parse_assignment_statement(token destination_token)
 //refactored 1 time
 bool parser::parse_if_statement()
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_IF_STATEMENT;
     bool valid_parse;
     if (Current_parse_token_type == T_LPARAM)
     {
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_expression();
+        expression_parse = parse_expression();
+        valid_parse = expression_parse.valid_parse;
         if (Current_parse_token_type == T_RPARAM)
         {
             Current_parse_token = Get_Valid_Token();
@@ -1717,6 +1721,7 @@ bool parser::parse_if_statement()
 //refactored 2 times
 bool parser::parse_loop_statement()
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
     bool valid_parse;
@@ -1734,7 +1739,8 @@ bool parser::parse_loop_statement()
             {
                 Current_parse_token = Get_Valid_Token();
                 //COME BACK
-                valid_parse = parse_expression();
+                expression_parse = parse_expression();
+                valid_parse = expression_parse.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
                     Current_parse_token = Get_Valid_Token();
@@ -1837,10 +1843,12 @@ bool parser::parse_loop_statement()
 //refactored 1 time
 bool parser::parse_return_statement()
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_RETURN_STATEMENT;
     bool valid_parse;
-    valid_parse = parse_expression();
+    expression_parse = parse_expression();
+    valid_parse = expression_parse.valid_parse;
     return valid_parse;
 }
 
@@ -1849,6 +1857,7 @@ bool parser::parse_return_statement()
 //refactored 1 time
 bool parser::parse_assignment_destination(token destination_token)
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_DESTINATION;
     bool valid_parse;
@@ -1859,7 +1868,8 @@ bool parser::parse_assignment_destination(token destination_token)
         destination_token.is_array = true;
         Lexer->symbol_table.update_identifier_type(destination_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_expression();
+        expression_parse = parse_expression();
+        valid_parse = expression_parse.valid_parse;
         //after parsing the expression, it should have a right bracket
         if (Current_parse_token_type == T_RBRACKET)
         {
@@ -1889,8 +1899,9 @@ bool parser::parse_assignment_destination(token destination_token)
 //ready to test
 //consumes a token before entering this function
 //all expressions start be thought to start with a ArithOp?
-bool parser::parse_expression()
+token_and_status parser::parse_expression()
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_EXPRESSION;
     bool valid_parse;
@@ -1948,7 +1959,11 @@ bool parser::parse_expression()
         generate_error_report("Error in expression");
         errors_occured = true;
     }
-    return valid_parse;
+    expression_parse.valid_parse = valid_parse;
+    //this will eventually come from arithop parse
+    //expression_parse.resolved_token
+
+    return expression_parse;
 }
 
 //ready to test
@@ -2176,6 +2191,7 @@ bool parser::parse_term()
 //already consumes a token before being parsed
 bool parser::parse_factor()
 {
+    token_and_status expression_parse;
     token identifier_token;
     //this tracks the state of the parser
     parser_state state = S_FACTOR;
@@ -2186,7 +2202,8 @@ bool parser::parse_factor()
         //move the second token to first?
         type_checker->second_to_first();
         //maybe have parse_expression return a token of the type it resolves to?
-        valid_parse = parse_expression();
+        expression_parse = parse_expression();
+        valid_parse = expression_parse.valid_parse;
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_RPARAM)
         {
@@ -2300,6 +2317,7 @@ bool parser::parse_factor()
 //already consumes indentifier token before being parsed
 bool parser::parse_name(token identifier_token)
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_NAME;
     bool valid_parse;
@@ -2310,7 +2328,8 @@ bool parser::parse_name(token identifier_token)
         Lexer->symbol_table.update_identifier_type(identifier_token, current_scope_id);
         type_checker->feed_in_tokens(identifier_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_expression();
+        expression_parse = parse_expression();
+        valid_parse = expression_parse.valid_parse;
         if (Current_parse_token_type == T_RBRACKET)
         {
 
@@ -2343,10 +2362,12 @@ bool parser::parse_name(token identifier_token)
 //consumes one token before starting
 bool parser::parse_argument_list()
 {
+    token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_ARGUMENT_LIST;
     bool valid_parse;
-    valid_parse = parse_expression();
+    expression_parse = parse_expression();
+    valid_parse = expression_parse.valid_parse;
     if (valid_parse)
     {
         if (Current_parse_token_type == T_COMMA)
