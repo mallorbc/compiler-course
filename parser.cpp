@@ -1547,10 +1547,12 @@ bool parser::parse_number()
 bool parser::parse_assignment_statement(token destination_token)
 {
     token_and_status expression_parse;
+    token_and_status destination_parse;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
-    valid_parse = parse_assignment_destination(destination_token);
+    destination_parse = parse_assignment_destination(destination_token);
+    valid_parse = destination_parse.valid_parse;
     if (valid_parse)
     {
         //MAY BE A BUG HERE, SHOULD THROW ERROR?
@@ -1855,8 +1857,9 @@ bool parser::parse_return_statement()
 //ready to test
 //already consumes identifier before parsing
 //refactored 1 time
-bool parser::parse_assignment_destination(token destination_token)
+token_and_status parser::parse_assignment_destination(token destination_token)
 {
+    token_and_status destination_parse;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_DESTINATION;
@@ -1869,6 +1872,7 @@ bool parser::parse_assignment_destination(token destination_token)
         Lexer->symbol_table.update_identifier_type(destination_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
+        //COME BACK will need to check that the resolved token is an integer
         valid_parse = expression_parse.valid_parse;
         //after parsing the expression, it should have a right bracket
         if (Current_parse_token_type == T_RBRACKET)
@@ -1884,7 +1888,8 @@ bool parser::parse_assignment_destination(token destination_token)
             }
             generate_error_report("Missing closing right bracket to the identifier expression");
             errors_occured = true;
-            return false;
+            destination_parse.valid_parse = false;
+            return destination_parse;
         }
     }
     //optional bracket not there
@@ -1892,8 +1897,10 @@ bool parser::parse_assignment_destination(token destination_token)
     {
         valid_parse = true;
     }
-    type_checker->feed_in_tokens(destination_token);
-    return valid_parse;
+    //type_checker->feed_in_tokens(destination_token);
+    destination_parse.valid_parse = valid_parse;
+    destination_parse.resolved_token = destination_token;
+    return destination_parse;
 }
 
 //ready to test

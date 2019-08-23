@@ -109,7 +109,7 @@ public:
     ///bool parse_assignment_statement(token token_for_context);
     bool parse_assignment_statement(token destination_token);
 
-    bool parse_assignment_destination(token destination_token);
+    token_and_status parse_assignment_destination(token destination_token);
 
     bool parse_if_statement();
     bool parse_loop_statement();
