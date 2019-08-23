@@ -31,6 +31,8 @@ public:
     bool feed_in_tokens(token token_to_feed);
     bool clear_tokens();
     bool is_valid_operation();
+
+    bool debugger = false;
 };
 
 #endif // !TYPECHECKER_H

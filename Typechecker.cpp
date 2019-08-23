@@ -63,7 +63,10 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
         //token must be either an arithop or a relation
         if (!token_is_relationship(token_to_feed))
         {
-            std::cout << "This is an error" << std::endl;
+            if (debugger)
+            {
+                std::cout << "This is an error" << std::endl;
+            }
         }
         else
         {
@@ -84,7 +87,10 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
             }
             else
             {
-                std::cout << "To many relation tokens" << std::endl;
+                if (debugger)
+                {
+                    std::cout << "To many relation tokens" << std::endl;
+                }
             }
         }
     }
