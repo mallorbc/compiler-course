@@ -1880,6 +1880,7 @@ bool parser::parse_assignment_destination(token destination_token)
     {
         valid_parse = true;
     }
+    type_checker->feed_in_tokens(destination_token);
     return valid_parse;
 }
 

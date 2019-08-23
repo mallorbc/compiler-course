@@ -118,6 +118,10 @@ bool Typechecker::token_is_relationship(token token_to_check)
 
         break;
 
+    case T_COLON:
+
+        break;
+
     case T_EXCLAM:
 
         break;
@@ -163,34 +167,41 @@ bool Typechecker::token_is_relationship(token token_to_check)
 
 bool Typechecker::second_relation_token_chains(token token_to_check)
 {
-    //the only valid token chain is where the second token is equals
+    //the only valid token chain is where the second token is equals or a colon
     if (token_to_check.type != T_ASSIGN)
     {
         return false;
     }
-    //only some tokens allow chains
-    int previous_token_type = relation_tokens[0].type;
-
-    bool return_value = true;
-    switch (previous_token_type)
+    else
     {
-    case T_ASSIGN:
+        //only some tokens allow chains
+        int previous_token_type = relation_tokens[0].type;
 
-        break;
+        bool return_value = true;
+        switch (previous_token_type)
+        {
+        case T_ASSIGN:
 
-    case T_EXCLAM:
-        break;
+            break;
 
-    case T_GREATER:
+        case T_COLON:
 
-        break;
+            break;
 
-    case T_LESS:
+        case T_EXCLAM:
+            break;
 
-        break;
+        case T_GREATER:
 
-    default:
-        return false;
+            break;
+
+        case T_LESS:
+
+            break;
+
+        default:
+            return false;
+        }
     }
 
     //return true;
