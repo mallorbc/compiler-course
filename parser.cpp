@@ -2179,6 +2179,7 @@ token_and_status parser::parse_relation()
     }
 
     relation_parse.valid_parse = valid_parse;
+    relation_parse.resolved_token = term_parse.resolved_token;
     return relation_parse;
 }
 
@@ -2231,6 +2232,7 @@ token_and_status parser::parse_term()
         }
     }
     term_parse.valid_parse = valid_parse;
+    term_parse.resolved_token = factor_parse.resolved_token;
     return term_parse;
 }
 
@@ -2285,6 +2287,8 @@ token_and_status parser::parse_factor()
         {
             //COMMENTED OUT 4/22
             identifier_token = Current_parse_token;
+            //COME BACK
+            factor_parse.resolved_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name(identifier_token);
         }
@@ -2297,12 +2301,15 @@ token_and_status parser::parse_factor()
         //means that it isn't a name
         if (Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE)
         {
+            factor_parse.resolved_token = Current_parse_token;
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
         }
         //else it is a name
         else if (Current_parse_token_type == T_IDENTIFIER)
         {
+            //COME BACK
+            factor_parse.resolved_token = Current_parse_token;
             identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name(identifier_token);
@@ -2324,6 +2331,7 @@ token_and_status parser::parse_factor()
     //else is a non negative number
     else if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
     {
+        factor_parse.resolved_token = Current_parse_token;
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
@@ -2333,6 +2341,7 @@ token_and_status parser::parse_factor()
     }
     else if (Current_parse_token_type == T_STRING_VALUE)
     {
+        factor_parse.resolved_token = Current_parse_token;
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
@@ -2342,6 +2351,7 @@ token_and_status parser::parse_factor()
     }
     else if (Current_parse_token_type == T_TRUE)
     {
+        factor_parse.resolved_token = Current_parse_token;
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
@@ -2351,6 +2361,7 @@ token_and_status parser::parse_factor()
     }
     else if (Current_parse_token_type == T_FALSE)
     {
+        factor_parse.resolved_token = Current_parse_token;
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
