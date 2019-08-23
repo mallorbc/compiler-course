@@ -2186,6 +2186,7 @@ token_and_status parser::parse_relation()
 //already consumes a token before being parsed
 token_and_status parser::parse_term()
 {
+    token_and_status factor_parse;
     token_and_status term_parse;
     //this tracks the state of the parser
     parser_state state = S_TERM;
@@ -2194,18 +2195,21 @@ token_and_status parser::parse_term()
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_factor();
+        factor_parse = parse_factor();
+        valid_parse = factor_parse.valid_parse;
     }
     else if (Current_parse_token_type == T_SLASH)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_factor();
+        factor_parse = parse_factor();
+        valid_parse = factor_parse.valid_parse;
     }
     //else is just a factor
     else
     {
-        valid_parse = parse_factor();
+        factor_parse = parse_factor();
+        valid_parse = factor_parse.valid_parse;
         if (valid_parse)
         {
             if (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH)
@@ -2221,7 +2225,8 @@ token_and_status parser::parse_term()
                     //code generation probably different here than multiplication
                 }
                 Current_parse_token = Get_Valid_Token();
-                valid_parse = parse_factor();
+                factor_parse = parse_factor();
+                valid_parse = factor_parse.valid_parse;
             }
         }
     }
@@ -2231,9 +2236,10 @@ token_and_status parser::parse_term()
 
 //ready to test
 //already consumes a token before being parsed
-bool parser::parse_factor()
+token_and_status parser::parse_factor()
 {
     token_and_status expression_parse;
+    token_and_status factor_parse;
     token identifier_token;
     //this tracks the state of the parser
     parser_state state = S_FACTOR;
@@ -2259,7 +2265,9 @@ bool parser::parse_factor()
             }
             generate_error_report("Missing \")\" to close expresssion factor");
             errors_occured = true;
-            return false;
+            valid_parse = false;
+            factor_parse.valid_parse = valid_parse;
+            return factor_parse;
         }
     }
     //This means that this is either a procedure call or a name
@@ -2308,7 +2316,9 @@ bool parser::parse_factor()
             }
             generate_error_report("Unexpected negative factor is not a name or a number");
             errors_occured = true;
-            return false;
+            valid_parse = false;
+            factor_parse.valid_parse = valid_parse;
+            return factor_parse;
         }
     }
     //else is a non negative number
@@ -2317,28 +2327,36 @@ bool parser::parse_factor()
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
-        return true;
+        valid_parse = true;
+        factor_parse.valid_parse = valid_parse;
+        return factor_parse;
     }
     else if (Current_parse_token_type == T_STRING_VALUE)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
-        return true;
+        valid_parse = true;
+        factor_parse.valid_parse = valid_parse;
+        return factor_parse;
     }
     else if (Current_parse_token_type == T_TRUE)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
-        return true;
+        valid_parse = true;
+        factor_parse.valid_parse = valid_parse;
+        return factor_parse;
     }
     else if (Current_parse_token_type == T_FALSE)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
-        return true;
+        valid_parse = true;
+        factor_parse.valid_parse = valid_parse;
+        return factor_parse;
     }
     //else nothing valid was seen
     else
@@ -2349,10 +2367,13 @@ bool parser::parse_factor()
         }
         generate_error_report("Invalid token for factor discovered");
         errors_occured = true;
-        return false;
+        valid_parse = false;
+        factor_parse.valid_parse = valid_parse;
+        return factor_parse;
     }
 
-    return valid_parse;
+    factor_parse.valid_parse = valid_parse;
+    return factor_parse;
 }
 
 //ready to test
