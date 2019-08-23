@@ -1322,6 +1322,7 @@ bool parser::parse_base_statement(){
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if(Current_parse_token_type == T_IDENTIFIER){
+        Context_token = update_context_token();
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement();
     }
@@ -2735,4 +2736,9 @@ void parser::update_scopes(bool increment_scope_id){
         current_scope_id--;
         number_of_scopes--;
     }
+}
+
+token parser::update_context_token(){
+    Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[Current_parse_token.stringValue];
+    return Context_token;
 }

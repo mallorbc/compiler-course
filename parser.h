@@ -137,6 +137,9 @@ public:
     int number_of_scopes = 0;
 
     //section for Typechecker
+    //token that is used for context
+    token Context_token;
+    token update_context_token();
 
     // TypeChecker *type_checker;
 };
