@@ -117,7 +117,7 @@ public:
 
     // bool parse_expression(token token_for_context);
     token_and_status parse_expression();
-    bool parse_arithOp();
+    token_and_status parse_arithOp();
     bool parse_arithOp(token token_for_context);
     bool parse_relation();
     bool parse_term();

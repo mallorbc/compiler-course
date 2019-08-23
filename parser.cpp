@@ -1550,6 +1550,7 @@ bool parser::parse_assignment_statement(token destination_token)
     token_and_status destination_parse;
     token destination_parse_token;
     token expression_parse_token;
+    bool types_match = true;
     //this tracks the state of the parser
     parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
@@ -1578,7 +1579,7 @@ bool parser::parse_assignment_statement(token destination_token)
             expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
             //we know that this is an assignment statement and we are ending with 2 tokens so we should be good to directly compare here
-            type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
+            types_match = type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
         }
         else
         {
@@ -1915,6 +1916,7 @@ token_and_status parser::parse_assignment_destination(token destination_token)
 token_and_status parser::parse_expression()
 {
     token_and_status expression_parse;
+    token_and_status arithop_parse;
     //this tracks the state of the parser
     parser_state state = S_EXPRESSION;
     bool valid_parse;
@@ -1923,26 +1925,30 @@ token_and_status parser::parse_expression()
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        arithop_parse = parse_arithOp();
+        valid_parse = arithop_parse.valid_parse;
     }
     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
     else if (Current_parse_token_type == T_VERTICAL_BAR)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        arithop_parse = parse_arithOp();
+        valid_parse = arithop_parse.valid_parse;
     }
     //else it was just an <arithOp>
     else if (Current_parse_token_type == T_NOT)
     {
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        arithop_parse = parse_arithOp();
+        valid_parse = arithop_parse.valid_parse;
     }
     else
     {
         //Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_arithOp();
+        arithop_parse = parse_arithOp();
+        valid_parse = arithop_parse.valid_parse;
     }
     //check to see if expression continues with another Arithop
     if (valid_parse)
@@ -1964,7 +1970,8 @@ token_and_status parser::parse_expression()
                 //not valid ever?
             }
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_arithOp();
+            arithop_parse = parse_arithOp();
+            valid_parse = arithop_parse.valid_parse;
         }
     }
     else
@@ -1982,8 +1989,10 @@ token_and_status parser::parse_expression()
 //ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with relations?
-bool parser::parse_arithOp()
+token_and_status parser::parse_arithOp()
 {
+    token_and_status arithop_parse;
+
     //this tracks the state of the parser
     parser_state state = S_ARITH_OP;
     bool valid_parse;
@@ -2033,8 +2042,8 @@ bool parser::parse_arithOp()
             //nothing ever?
         }
     }
-
-    return valid_parse;
+    arithop_parse.valid_parse = valid_parse;
+    return arithop_parse;
 }
 
 //ready to test
