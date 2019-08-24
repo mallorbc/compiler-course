@@ -248,3 +248,253 @@ bool Typechecker::are_tokens_full()
         return false;
     }
 }
+
+bool Typechecker::token_types_compatible_at_all()
+{
+    bool return_value = false;
+    bool first_token_is_identifer = false;
+    bool second_token_is_identifier = false;
+
+    //we store the data types in different locations depending on whether or not the token is an identifier
+    if (first_token.type == T_IDENTIFIER)
+    {
+        first_token_is_identifer = true;
+    }
+    if (second_token.type == T_IDENTIFIER)
+    {
+        second_token_is_identifier = true;
+    }
+
+    if ((first_token_is_identifer) && (second_token_is_identifier))
+    {
+        switch (first_token.identifier_data_type)
+        {
+        case TYPE_BOOL:
+            if (second_token.identifier_data_type == TYPE_INT)
+            {
+                return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_BOOL)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_FLOAT:
+            if (second_token.identifier_data_type == TYPE_FLOAT)
+            {
+                return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_INT)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_INT:
+            if (second_token.identifier_data_type == TYPE_FLOAT)
+            {
+                return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_BOOL)
+            {
+                return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_INT)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_STRING:
+            if (second_token.identifier_data_type == TYPE_STRING)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        default:
+            return_value = false;
+            break;
+        }
+    }
+
+    else if ((!first_token_is_identifer) && (second_token_is_identifier))
+    {
+        switch (second_token.identifier_data_type)
+        {
+        case TYPE_BOOL:
+            if (first_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+            if (first_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_FLOAT:
+            if (first_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (first_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_INT:
+            if (first_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (first_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+            if (first_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_STRING:
+            if (first_token.type == T_STRING_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        default:
+            return_value = false;
+            break;
+        }
+    }
+
+    else if ((first_token_is_identifer) && (!second_token_is_identifier))
+    {
+        switch (first_token.type)
+        {
+        case TYPE_BOOL:
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_FLOAT:
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_INT:
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_STRING:
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        default:
+            return_value = false;
+            break;
+        }
+    }
+
+    else if ((!first_token_is_identifer) && (!second_token_is_identifier))
+    {
+        switch (first_token.identifier_data_type)
+        {
+        case TYPE_BOOL:
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_FLOAT:
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_INT:
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_value = true;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        case TYPE_STRING:
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_value = true;
+            }
+
+            break;
+
+        default:
+            return_value = false;
+            break;
+        }
+    }
+    return return_value;
+}

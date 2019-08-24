@@ -34,6 +34,7 @@ public:
 
     bool check_assignment_statement(token destination_token, token resolved_token);
     bool are_tokens_full();
+    bool token_types_compatible_at_all();
 
     bool debugger = false;
 };
