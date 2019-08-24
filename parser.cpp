@@ -270,6 +270,8 @@ bool parser::parse_program_body()
         valid_parse = parse_base_statement();
         if (Current_parse_token_type == T_SEMICOLON)
         {
+            //clear out the tokens at the end of a statement
+            type_checker->clear_tokens();
             Current_parse_token = Get_Valid_Token();
         }
         else
@@ -586,6 +588,8 @@ bool parser::parse_procedure_body()
         valid_parse = parse_base_statement();
         if (Current_parse_token_type == T_SEMICOLON)
         {
+            //clear out the tokens at the end of a statement
+            type_checker->clear_tokens();
             Current_parse_token = Get_Valid_Token();
         }
         else
@@ -1649,6 +1653,8 @@ bool parser::parse_if_statement()
             valid_parse = parse_base_statement();
             if (Current_parse_token_type == T_SEMICOLON)
             {
+                //clear out the tokens at the end of a statement
+                type_checker->clear_tokens();
                 Current_parse_token = Get_Valid_Token();
             }
             else
@@ -1760,6 +1766,8 @@ bool parser::parse_loop_statement()
                         valid_parse = parse_base_statement();
                         if (Current_parse_token_type == T_SEMICOLON)
                         {
+                            //clear out the tokens at the end of a statement
+                            type_checker->clear_tokens();
                             Current_parse_token = Get_Valid_Token();
                         }
                         else

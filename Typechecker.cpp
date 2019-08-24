@@ -107,6 +107,7 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
     if (are_tokens_full())
     {
         is_valid_operation();
+        clear_tokens();
     }
     return return_value;
 }
