@@ -227,7 +227,10 @@ bool Typechecker::clear_tokens()
 
 bool Typechecker::is_valid_operation()
 {
-
+    if (!token_types_compatible_at_all())
+    {
+        return false;
+    }
     return true;
 }
 
@@ -383,7 +386,7 @@ bool Typechecker::token_types_compatible_at_all()
 
     else if ((first_token_is_identifer) && (!second_token_is_identifier))
     {
-        switch (first_token.type)
+        switch (first_token.identifier_data_type)
         {
         case TYPE_BOOL:
             if (second_token.type == T_INTEGER_VALUE)
@@ -441,9 +444,9 @@ bool Typechecker::token_types_compatible_at_all()
 
     else if ((!first_token_is_identifer) && (!second_token_is_identifier))
     {
-        switch (first_token.identifier_data_type)
+        switch (first_token.type)
         {
-        case TYPE_BOOL:
+        case T_BOOL_VALUE:
             if (second_token.type == T_INTEGER_VALUE)
             {
                 return_value = true;
@@ -455,7 +458,7 @@ bool Typechecker::token_types_compatible_at_all()
 
             break;
 
-        case TYPE_FLOAT:
+        case T_FLOAT_VALUE:
             if (second_token.type == T_FLOAT_VALUE)
             {
                 return_value = true;
@@ -467,7 +470,7 @@ bool Typechecker::token_types_compatible_at_all()
 
             break;
 
-        case TYPE_INT:
+        case T_INTEGER_VALUE:
             if (second_token.type == T_FLOAT_VALUE)
             {
                 return_value = true;
@@ -483,7 +486,7 @@ bool Typechecker::token_types_compatible_at_all()
 
             break;
 
-        case TYPE_STRING:
+        case T_STRING_VALUE:
             if (second_token.type == T_STRING_VALUE)
             {
                 return_value = true;
