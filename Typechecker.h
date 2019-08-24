@@ -29,7 +29,7 @@ public:
     bool token_is_relationship(token token_to_check);
     bool second_relation_token_chains(token token_to_check);
     bool feed_in_tokens(token token_to_feed);
-    bool clear_tokens();
+    bool clear_tokens(bool move_second_to_first);
     bool is_valid_operation();
 
     bool check_assignment_statement(token destination_token, token resolved_token);

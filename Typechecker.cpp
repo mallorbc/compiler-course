@@ -22,7 +22,7 @@ bool Typechecker::second_to_first()
 {
     token temp_token;
     temp_token = second_token;
-    clear_tokens();
+    //clear_tokens();
     first_token = second_token;
     return true;
 }
@@ -107,7 +107,7 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
     if (are_tokens_full())
     {
         is_valid_operation();
-        clear_tokens();
+        clear_tokens(true);
     }
     return return_value;
 }
@@ -218,7 +218,7 @@ bool Typechecker::second_relation_token_chains(token token_to_check)
     //return true;
 }
 
-bool Typechecker::clear_tokens()
+bool Typechecker::clear_tokens(bool move_second_to_first)
 {
     first_token.type = T_NULL;
     second_token.type = T_NULL;
