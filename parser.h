@@ -47,6 +47,7 @@ struct token_and_status
     bool valid_parse = true;
     token resolved_token;
 };
+class Typechecker;
 
 class parser
 {

@@ -4,6 +4,8 @@
 #include "token.h"
 #include <vector>
 #include <iostream>
+#include "parser.h"
+#include "scanner.h"
 
 enum type_of_statement
 {
@@ -29,6 +31,7 @@ struct token_types_and_status
     typechecker_types token_two_type = typechecker_null;
     bool compatible = false;
 };
+class parser;
 
 class Typechecker
 {
@@ -39,6 +42,7 @@ public:
     type_of_statement current_statement_type;
 
     Typechecker();
+    Typechecker(parser *parent);
     bool set_statement_type(token statement_key_token);
     bool statement_is_finished();
     bool is_valid_relation();
@@ -58,6 +62,8 @@ public:
     bool is_float_or_int(typechecker_types token_one, typechecker_types token_two);
 
     bool debugger = false;
+    parser *parser_parent;
+    //Typechecker(parser *parent_test);
 };
 
 #endif // !TYPECHECKER_H

@@ -6,6 +6,11 @@ Typechecker::Typechecker()
     second_token.type = T_NULL;
 }
 
+Typechecker::Typechecker(parser *parent)
+{
+    parser_parent = parent;
+}
+
 bool Typechecker::is_valid_relation()
 {
 
