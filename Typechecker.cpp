@@ -275,6 +275,8 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
+                parser_parent->errors_occured = true;
                 return false;
             }
 
@@ -288,6 +290,7 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
                 return false;
             }
 
@@ -309,6 +312,7 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
                 return false;
             }
             break;
@@ -320,6 +324,7 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
                 return false;
             }
 

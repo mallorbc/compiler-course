@@ -7,7 +7,7 @@ parser::parser(std::string file_to_parse)
     bool valid_parse;
     parse_file = file_to_parse;
     Lexer = new scanner(parse_file);
-    type_checker = new Typechecker();
+    type_checker = new Typechecker(this);
     valid_parse = parse_program();
     if (valid_parse)
     {
