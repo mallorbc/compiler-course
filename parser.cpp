@@ -2048,10 +2048,15 @@ token_and_status parser::parse_arithOp()
             }
             Current_parse_token = Get_Valid_Token();
             relation_parse = parse_relation();
-            if ((Current_parse_token_type != T_SEMICOLON) && (Current_parse_token_type != T_RPARAM))
+            valid_parse = relation_parse.valid_parse;
+            if (valid_parse)
             {
-                //               relation_parse = parse_arithOp();
-                relation_parse = parse_expression();
+                if ((Current_parse_token_type == T_PLUS) || Current_parse_token_type == T_MINUS)
+                {
+                    type_checker->feed_in_tokens(Current_parse_token);
+                    Current_parse_token = Get_Valid_Token();
+                    relation_parse = parse_relation();
+                }
             }
             valid_parse = relation_parse.valid_parse;
         }
@@ -2157,6 +2162,10 @@ token_and_status parser::parse_relation()
     else
     {
         term_parse = parse_term();
+        // if ((Current_parse_token_type != T_SEMICOLON) && (Current_parse_token_type != T_RPARAM))
+        // {
+        //     term_parse = parse_expression();
+        // }
         valid_parse = term_parse.valid_parse; //checks to see if are any more terms to parse
         if (valid_parse)
         {
@@ -2263,13 +2272,14 @@ token_and_status parser::parse_factor()
     bool valid_parse;
     if (Current_parse_token_type == T_LPARAM)
     {
+        Current_parse_token = Get_Valid_Token();
         //what to do here? COME BACK
         //move the second token to first?
-        type_checker->second_to_first();
+        //type_checker->second_to_first();
         //maybe have parse_expression return a token of the type it resolves to?
         expression_parse = parse_expression();
         valid_parse = expression_parse.valid_parse;
-        Current_parse_token = Get_Valid_Token();
+        //Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_RPARAM)
         {
             Current_parse_token = Get_Valid_Token();
