@@ -7,15 +7,16 @@
 #include "SymbolTable.h"
 #include "parser.h"
 
-
 int main(int argc, char *argv[])
 {
     //Makes sure that a file is passed to the compiler
-    if(argc==1){
-        std::cout<<"Error!\nUsage: "<<argv[0]<<" <file to compile>\n";
+    if (argc == 1)
+    {
+        std::cout << "Error!\nUsage: " << argv[0] << " <file to compile>\n";
         return 1;
     }
-    else{
+    else
+    {
         //converts the argument passed to a string for ease of use
         std::string string_arg = argv[1];
 
