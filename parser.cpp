@@ -2048,6 +2048,11 @@ token_and_status parser::parse_arithOp()
             }
             Current_parse_token = Get_Valid_Token();
             relation_parse = parse_relation();
+            if ((Current_parse_token_type != T_SEMICOLON) && (Current_parse_token_type != T_RPARAM))
+            {
+                //               relation_parse = parse_arithOp();
+                relation_parse = parse_expression();
+            }
             valid_parse = relation_parse.valid_parse;
         }
         //else not adding or subtracting and is just a relation
