@@ -220,18 +220,149 @@ bool Typechecker::second_relation_token_chains(token token_to_check)
 
 bool Typechecker::clear_tokens(bool move_second_to_first)
 {
+    token temp_token;
+    if (move_second_to_first)
+    {
+        temp_token = second_token;
+    }
     first_token.type = T_NULL;
     second_token.type = T_NULL;
     relation_tokens.clear();
+    if (move_second_to_first)
+    {
+        first_token = temp_token;
+    }
     return true;
 }
 
 bool Typechecker::is_valid_operation()
 {
-    if (!token_types_compatible_at_all())
+    //goes through a giant case statement and then converts the types into one single type for easy comparison
+    token_types_and_status checked_tokens;
+    typechecker_types token_one_type;
+    typechecker_types token_two_type;
+    checked_tokens = token_types_compatible_at_all();
+    token_one_type = checked_tokens.token_one_type;
+    token_two_type = checked_tokens.token_two_type;
+    bool compatible = checked_tokens.compatible;
+    if (!compatible)
+    {
+        //set error message?
+        return false;
+    }
+    //check the relation operators first
+    //no relation token, therfore an error occured
+    if (relation_tokens.size() == 0)
     {
         return false;
     }
+    //there is one relation
+    else if (relation_tokens.size() == 1)
+    {
+        //these are all the relation tokens that can be on there own
+        switch (relation_tokens[0].type)
+        {
+            //must be an iteger or float for both
+        case T_PLUS:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+
+            break;
+
+            //must be an iteger or float for both
+        case T_MINUS:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+
+            break;
+
+        case T_GREATER:
+
+            break;
+
+        case T_LESS:
+
+            break;
+
+            //must be an iteger or float for both
+        case T_MULT:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+            break;
+            //must be an iteger or float for both
+        case T_SLASH:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+
+            break;
+
+        default:
+            return false;
+        }
+    }
+    //there are two relation tokens in the relation
+    else if (relation_tokens.size() == 2)
+    {
+        //the second token when there are two tokens must be an equal
+        if (relation_tokens[1].type != T_ASSIGN)
+        {
+
+            return false;
+        }
+        else
+        {
+            if (!first_relation_token_is_valid())
+            {
+                return false;
+            }
+            switch (relation_tokens[0].type)
+            {
+
+            case T_GREATER:
+
+                break;
+
+            case T_LESS:
+
+                break;
+
+            case T_ASSIGN:
+                break;
+
+            case T_EXCLAM:
+                break;
+            }
+        }
+    }
+    else
+    {
+        //an error occured as it can't have more than 2
+    }
+
     return true;
 }
 
@@ -253,8 +384,9 @@ bool Typechecker::are_tokens_full()
     }
 }
 
-bool Typechecker::token_types_compatible_at_all()
+token_types_and_status Typechecker::token_types_compatible_at_all()
 {
+    token_types_and_status return_object;
     bool return_value = false;
     bool first_token_is_identifer = false;
     bool second_token_is_identifier = false;
@@ -274,48 +406,60 @@ bool Typechecker::token_types_compatible_at_all()
         switch (first_token.identifier_data_type)
         {
         case TYPE_BOOL:
+            return_object.token_one_type = typechecker_bool;
             if (second_token.identifier_data_type == TYPE_INT)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
             if (second_token.identifier_data_type == TYPE_BOOL)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
 
             break;
 
         case TYPE_FLOAT:
+            return_object.token_one_type = typechecker_float;
             if (second_token.identifier_data_type == TYPE_FLOAT)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.identifier_data_type == TYPE_INT)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_INT:
+            return_object.token_one_type = typechecker_int;
             if (second_token.identifier_data_type == TYPE_FLOAT)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.identifier_data_type == TYPE_BOOL)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
             if (second_token.identifier_data_type == TYPE_INT)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_STRING:
+            return_object.token_one_type = typechecker_string;
             if (second_token.identifier_data_type == TYPE_STRING)
             {
+                return_object.token_two_type = typechecker_string;
                 return_value = true;
             }
 
@@ -332,48 +476,60 @@ bool Typechecker::token_types_compatible_at_all()
         switch (second_token.identifier_data_type)
         {
         case TYPE_BOOL:
+            return_object.token_two_type = typechecker_bool;
             if (first_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
             if (first_token.type == T_BOOL_VALUE)
             {
+                return_object.token_one_type = typechecker_bool;
                 return_value = true;
             }
 
             break;
 
         case TYPE_FLOAT:
+            return_object.token_two_type = typechecker_float;
             if (first_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_one_type = typechecker_float;
                 return_value = true;
             }
             if (first_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_INT:
+            return_object.token_two_type = typechecker_int;
             if (first_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_one_type = typechecker_float;
                 return_value = true;
             }
             if (first_token.type == T_BOOL_VALUE)
             {
+                return_object.token_one_type = typechecker_bool;
                 return_value = true;
             }
             if (first_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_STRING:
+            return_object.token_two_type = typechecker_string;
             if (first_token.type == T_STRING_VALUE)
             {
+                return_object.token_one_type = typechecker_string;
                 return_value = true;
             }
 
@@ -390,48 +546,60 @@ bool Typechecker::token_types_compatible_at_all()
         switch (first_token.identifier_data_type)
         {
         case TYPE_BOOL:
+            return_object.token_one_type = typechecker_bool;
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
             if (second_token.type == T_BOOL_VALUE)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
 
             break;
 
         case TYPE_FLOAT:
+            return_object.token_one_type = typechecker_float;
             if (second_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_INT:
+            return_object.token_one_type = typechecker_int;
             if (second_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.type == T_BOOL_VALUE)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case TYPE_STRING:
+            return_object.token_one_type = typechecker_string;
             if (second_token.type == T_STRING_VALUE)
             {
+                return_object.token_two_type = typechecker_string;
                 return_value = true;
             }
 
@@ -448,48 +616,60 @@ bool Typechecker::token_types_compatible_at_all()
         switch (first_token.type)
         {
         case T_BOOL_VALUE:
+            return_object.token_one_type = typechecker_bool;
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
             if (second_token.type == T_BOOL_VALUE)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
 
             break;
 
         case T_FLOAT_VALUE:
+            return_object.token_one_type = typechecker_float;
             if (second_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case T_INTEGER_VALUE:
+            return_object.token_one_type = typechecker_int;
             if (second_token.type == T_FLOAT_VALUE)
             {
+                return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
             if (second_token.type == T_BOOL_VALUE)
             {
+                return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
             if (second_token.type == T_INTEGER_VALUE)
             {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
             break;
 
         case T_STRING_VALUE:
+            return_object.token_one_type = typechecker_string;
             if (second_token.type == T_STRING_VALUE)
             {
+                return_object.token_two_type = typechecker_string;
                 return_value = true;
             }
 
@@ -500,5 +680,44 @@ bool Typechecker::token_types_compatible_at_all()
             break;
         }
     }
+    return_object.compatible = return_value;
+    return return_object;
+}
+
+bool Typechecker::first_relation_token_is_valid()
+{
+    bool return_value = true;
+    switch (relation_tokens[0].type)
+    {
+
+    case T_GREATER:
+
+        break;
+
+    case T_LESS:
+
+        break;
+
+    case T_ASSIGN:
+        break;
+
+    case T_EXCLAM:
+        break;
+
+    default:
+        return_value = false;
+    }
     return return_value;
+}
+
+bool Typechecker::is_float_or_int(typechecker_types token_one, typechecker_types token_two)
+{
+    if (((token_one == typechecker_float) || (token_one == typechecker_int)) && ((token_two == typechecker_float) || (token_two == typechecker_int)))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }

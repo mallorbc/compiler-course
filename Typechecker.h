@@ -13,6 +13,23 @@ enum type_of_statement
     STATEMENT_RETURN = 3
 };
 
+enum typechecker_types
+{
+    typechecker_int = 100,
+    typechecker_bool = 101,
+    typechecker_float = 102,
+    typechecker_string = 103,
+    typechecker_null = 104
+};
+
+//this will be used to convert to a single type and for the base check
+struct token_types_and_status
+{
+    typechecker_types token_one_type = typechecker_null;
+    typechecker_types token_two_type = typechecker_null;
+    bool compatible = false;
+};
+
 class Typechecker
 {
 public:
@@ -34,7 +51,11 @@ public:
 
     bool check_assignment_statement(token destination_token, token resolved_token);
     bool are_tokens_full();
-    bool token_types_compatible_at_all();
+    token_types_and_status token_types_compatible_at_all();
+
+    bool first_relation_token_is_valid();
+
+    bool is_float_or_int(typechecker_types token_one, typechecker_types token_two);
 
     bool debugger = false;
 };
