@@ -302,7 +302,7 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
                 parser_parent->errors_occured = true;
                 return false;
             }
@@ -317,7 +317,7 @@ bool Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
                 return false;
             }
 
@@ -328,6 +328,14 @@ bool Typechecker::is_valid_operation()
             {
                 return true;
             }
+            else if (is_bool_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                parser_parent->generate_error_report("Greater than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+            }
 
             break;
 
@@ -335,6 +343,14 @@ bool Typechecker::is_valid_operation()
             if (is_float_or_int(token_one_type, token_two_type))
             {
                 return true;
+            }
+            else if (is_bool_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
+            else
+            {
+                parser_parent->generate_error_report("Less than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
             }
 
             break;
@@ -388,17 +404,73 @@ bool Typechecker::is_valid_operation()
             {
 
             case T_GREATER:
+                if (is_float_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (is_bool_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else
+                {
+                    parser_parent->generate_error_report("Greater than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                }
 
                 break;
 
             case T_LESS:
+                if (is_float_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (is_bool_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else
+                {
+                    parser_parent->generate_error_report("Less than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                }
 
                 break;
 
             case T_ASSIGN:
+                if (is_float_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (is_bool_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (both_are_strings(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else
+                {
+                    parser_parent->generate_error_report("Equality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                }
                 break;
 
             case T_EXCLAM:
+                if (is_float_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (is_bool_or_int(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else if (both_are_strings(token_one_type, token_two_type))
+                {
+                    return true;
+                }
+                else
+                {
+                    parser_parent->generate_error_report("Inequality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\", \"Floats with Floats\", or \"Strings with Strings\"", parser_parent->Lexer->current_line);
+                }
                 break;
             }
         }
@@ -930,6 +1002,18 @@ bool Typechecker::is_float_or_int(typechecker_types token_one, typechecker_types
 bool Typechecker::is_bool_or_int(typechecker_types token_one, typechecker_types token_two)
 {
     if (((token_one == typechecker_bool) || (token_one == typechecker_int)) && ((token_two == typechecker_bool) || (token_two == typechecker_int)))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool Typechecker::both_are_strings(typechecker_types token_one, typechecker_types token_two)
+{
+    if (token_one == typechecker_string && token_two == typechecker_string)
     {
         return true;
     }

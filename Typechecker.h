@@ -61,6 +61,7 @@ public:
 
     bool is_float_or_int(typechecker_types token_one, typechecker_types token_two);
     bool is_bool_or_int(typechecker_types token_one, typechecker_types token_two);
+    bool both_are_strings(typechecker_types token_one, typechecker_types token_two);
     std::string give_token_type_name(typechecker_types type_to_get);
     bool check_return_statement(token resolved_token, token procedure_token);
 
