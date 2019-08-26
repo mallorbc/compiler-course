@@ -9,6 +9,7 @@ class ScopeTable
 {
 public:
     int table_scope_id;
+    token procedure_token;
     std::unordered_map<std::string, token> scope_map;
 
     ScopeTable(int scope_id);

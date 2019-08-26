@@ -164,6 +164,7 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
     //if the identifer is a procedure, it is visible on its own scope as well as the one above
     if (token_to_sync.identifer_type == I_PROCEDURE)
     {
+        scope_table[scope_id].procedure_token = token_to_sync;
         if (scope_id > 0)
         {
             list_of_scopes.push_back(scope_id - 1);
