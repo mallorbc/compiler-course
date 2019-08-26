@@ -4,10 +4,10 @@ global variable y : integer;
 variable tmp : bool;
 
 procedure Proc1 : integer(variable val : integer)
-	procedure Proc2 : integer(variable val : bool)
-		procedure Proc1 : integer(variable val : bool)
+	procedure Proc2 : integer(variable val : integer)
+		procedure Proc1 : integer(variable val : float)
 			begin
-				val := val + 1;
+				val := val + 1 + 2 + 3.0;
                 return val;
 		end procedure;
 		begin
