@@ -60,11 +60,14 @@ public:
     bool first_relation_token_is_valid();
 
     bool is_float_or_int(typechecker_types token_one, typechecker_types token_two);
+    bool is_bool_or_int(typechecker_types token_one, typechecker_types token_two);
     std::string give_token_type_name(typechecker_types type_to_get);
     bool check_return_statement(token resolved_token, token procedure_token);
 
     bool debugger = false;
     parser *parser_parent;
+
+    bool type_error_occured = false;
     //Typechecker(parser *parent_test);
 };
 

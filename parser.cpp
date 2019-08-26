@@ -1897,7 +1897,14 @@ bool parser::parse_return_statement()
         Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
         updated_token = Context_token;
     }
-    type_checker->check_return_statement(updated_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
+    if (!type_checker->type_error_occured)
+    {
+        type_checker->check_return_statement(updated_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
+    }
+    else
+    {
+        type_checker->type_error_occured = false;
+    }
     valid_parse = expression_parse.valid_parse;
     return valid_parse;
 }

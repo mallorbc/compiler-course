@@ -278,6 +278,7 @@ bool Typechecker::is_valid_operation()
         parser_parent->errors_occured = true;
         parser_parent->generate_error_report(error_message, line_error);
         error_message = "";
+        type_error_occured = true;
         //set error message?
         return false;
     }
@@ -323,10 +324,18 @@ bool Typechecker::is_valid_operation()
             break;
 
         case T_GREATER:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
 
             break;
 
         case T_LESS:
+            if (is_float_or_int(token_one_type, token_two_type))
+            {
+                return true;
+            }
 
             break;
 
@@ -918,6 +927,18 @@ bool Typechecker::is_float_or_int(typechecker_types token_one, typechecker_types
     }
 }
 
+bool Typechecker::is_bool_or_int(typechecker_types token_one, typechecker_types token_two)
+{
+    if (((token_one == typechecker_bool) || (token_one == typechecker_int)) && ((token_two == typechecker_bool) || (token_two == typechecker_int)))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
 {
     std::string return_string;
@@ -971,5 +992,14 @@ bool Typechecker::check_return_statement(token resolved_token, token procedure_t
         error_message = "";
         //set error message?
         return false;
+    }
+    //it may be compatible, need to check
+    else
+    {
+        //the same types always work
+        if (token_one_type == token_two_type)
+        {
+            return true;
+        }
     }
 }
