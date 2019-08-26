@@ -273,7 +273,8 @@ bool Typechecker::is_valid_operation()
     if (!compatible)
     {
         error_message = "Type \"" + token_one_type_name + "\" and type \"" + token_two_type_name + "\" have no valid operations";
-        line_error = first_token.line_found;
+        // line_error = second_token.line_found;
+        line_error = parser_parent->Lexer->current_line;
         parser_parent->errors_occured = true;
         parser_parent->generate_error_report(error_message, line_error);
         error_message = "";
@@ -943,7 +944,32 @@ std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
 
 bool Typechecker::check_return_statement(token resolved_token, token procedure_token)
 {
-    bool return_value = false;
-
-    return return_value;
+    bool compatible = false;
+    token_types_and_status checked_tokens;
+    typechecker_types token_one_type;
+    typechecker_types token_two_type;
+    //these two strings will be used to build error messages
+    std::string token_one_type_name = "";
+    std::string token_two_type_name = "";
+    std::string error_message = "";
+    int line_error = 0;
+    clear_tokens(false);
+    first_token = resolved_token;
+    second_token = procedure_token;
+    checked_tokens = token_types_compatible_at_all();
+    token_one_type = checked_tokens.token_one_type;
+    token_two_type = checked_tokens.token_two_type;
+    compatible = checked_tokens.compatible;
+    token_one_type_name = give_token_type_name(token_one_type);
+    token_two_type_name = give_token_type_name(token_two_type);
+    if (!compatible)
+    {
+        error_message = "Procedure is of type \"" + token_one_type_name + "\" which is not compatible with return type of \"" + token_two_type_name + "\"";
+        line_error = parser_parent->Lexer->current_line;
+        parser_parent->errors_occured = true;
+        parser_parent->generate_error_report(error_message, line_error);
+        error_message = "";
+        //set error message?
+        return false;
+    }
 }

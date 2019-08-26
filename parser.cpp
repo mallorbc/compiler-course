@@ -1885,12 +1885,19 @@ bool parser::parse_loop_statement()
 //refactored 1 time
 bool parser::parse_return_statement()
 {
+    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_RETURN_STATEMENT;
     bool valid_parse;
     expression_parse = parse_expression();
-    type_checker->check_return_statement(expression_parse.resolved_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
+    updated_token = expression_parse.resolved_token;
+    if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
+    {
+        Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
+        updated_token = Context_token;
+    }
+    type_checker->check_return_statement(updated_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
     valid_parse = expression_parse.valid_parse;
     return valid_parse;
 }
