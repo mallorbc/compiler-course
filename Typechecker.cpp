@@ -252,8 +252,21 @@ bool Typechecker::is_valid_operation()
     token_one_type = checked_tokens.token_one_type;
     token_two_type = checked_tokens.token_two_type;
     bool compatible = checked_tokens.compatible;
+    //these two strings will be used to build error messages
+    std::string token_one_type_name = "";
+    std::string token_two_type_name = "";
+    std::string error_message = "";
+    int line_error = 0;
+    token_one_type_name = give_token_type_name(token_one_type);
+    token_two_type_name = give_token_type_name(token_two_type);
+    //this means they are never compatible
     if (!compatible)
     {
+        error_message = "Type \"" + token_one_type_name + "\" and type \"" + token_two_type_name + "\" have no valid operations";
+        line_error = first_token.line_found;
+        parser_parent->errors_occured = true;
+        parser_parent->generate_error_report(error_message, line_error);
+        error_message = "";
         //set error message?
         return false;
     }
@@ -892,4 +905,28 @@ bool Typechecker::is_float_or_int(typechecker_types token_one, typechecker_types
     {
         return false;
     }
+}
+
+std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
+{
+    std::string return_string;
+    switch (type_to_get)
+    {
+    case typechecker_bool:
+        return_string = "Bool";
+        break;
+
+    case typechecker_float:
+        return_string = "Float";
+        break;
+
+    case typechecker_int:
+        return_string = "Integer";
+        break;
+
+    case typechecker_string:
+        return_string = "String";
+        break;
+    }
+    return return_string;
 }

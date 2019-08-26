@@ -98,7 +98,7 @@ void parser::generate_error_report(std::string error_message, int line_number)
     {
         if (Lexer->is_nested_commented == false)
         {
-            full_error_message = "Error on line " + std::to_string(line_number) + ": " + error_message;
+            full_error_message = "Error on line " + std::to_string(line_number) + ": ";
         }
         else
         {
