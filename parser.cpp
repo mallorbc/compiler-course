@@ -1890,6 +1890,7 @@ bool parser::parse_return_statement()
     parser_state state = S_RETURN_STATEMENT;
     bool valid_parse;
     expression_parse = parse_expression();
+    type_checker->check_return_statement(expression_parse.resolved_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
     valid_parse = expression_parse.valid_parse;
     return valid_parse;
 }

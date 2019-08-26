@@ -61,63 +61,66 @@ bool Typechecker::set_statement_type(token key_token)
 bool Typechecker::feed_in_tokens(token token_to_feed)
 {
     bool return_value = false;
-    if (current_statement_type == STATEMENT_ASSIGN)
+    // if (current_statement_type == STATEMENT_ASSIGN)
+    // {
+    //if nothing has been read in yet
+    if (first_token.type == T_NULL)
     {
-        //if nothing has been read in yet
-        if (first_token.type == T_NULL)
+        first_token = token_to_feed;
+        return true;
+    }
+    else if ((first_token.type != T_NULL) && (second_token.type == T_NULL) && token_is_relationship(token_to_feed))
+    {
+        //token must be either an arithop or a relation
+        if (!token_is_relationship(token_to_feed))
         {
-            first_token = token_to_feed;
-            return true;
-        }
-        else if ((first_token.type != T_NULL) && (second_token.type == T_NULL) && token_is_relationship(token_to_feed))
-        {
-            //token must be either an arithop or a relation
-            if (!token_is_relationship(token_to_feed))
+            if (debugger)
             {
-                if (debugger)
+                std::cout << "This is an error" << std::endl;
+            }
+        }
+        else
+        {
+            if (relation_tokens.size() < 2)
+            {
+                //adds the token if it is valid and there are no other tokens
+                if (relation_tokens.size() == 0)
                 {
-                    std::cout << "This is an error" << std::endl;
+                    relation_tokens.push_back(token_to_feed);
+                    return true;
+                }
+                //only some tokens can chain
+                if ((second_relation_token_chains(token_to_feed)) && (relation_tokens.size() == 1))
+                {
+                    relation_tokens.push_back(token_to_feed);
+                    return true;
                 }
             }
             else
             {
-                if (relation_tokens.size() < 2)
+                if (debugger)
                 {
-                    //adds the token if it is valid and there are no other tokens
-                    if (relation_tokens.size() == 0)
-                    {
-                        relation_tokens.push_back(token_to_feed);
-                        return true;
-                    }
-                    //only some tokens can chain
-                    if ((second_relation_token_chains(token_to_feed)) && (relation_tokens.size() == 1))
-                    {
-                        relation_tokens.push_back(token_to_feed);
-                        return true;
-                    }
-                }
-                else
-                {
-                    if (debugger)
-                    {
-                        std::cout << "To many relation tokens" << std::endl;
-                    }
+                    std::cout << "To many relation tokens" << std::endl;
                 }
             }
         }
-        else if (second_token.type == T_NULL)
-        {
-            second_token = token_to_feed;
-            return_value = true;
-        }
-        else
-        {
-            //std::cout << "to many tokens" << std::endl;
-        }
     }
-    else if (current_statement_type == STATEMENT_RETURN)
+    else if (second_token.type == T_NULL)
     {
+        second_token = token_to_feed;
+        return_value = true;
     }
+    else
+    {
+        //std::cout << "to many tokens" << std::endl;
+    }
+    // }
+    // else if (current_statement_type == STATEMENT_RETURN)
+    // {
+    //     if (are_tokens_full())
+    //     {
+    //     }
+    // }
     if (are_tokens_full())
     {
         is_valid_operation();
@@ -936,4 +939,11 @@ std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
         break;
     }
     return return_string;
+}
+
+bool Typechecker::check_return_statement(token resolved_token, token procedure_token)
+{
+    bool return_value = false;
+
+    return return_value;
 }
