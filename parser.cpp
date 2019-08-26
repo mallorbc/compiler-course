@@ -2047,7 +2047,7 @@ token_and_status parser::parse_arithOp()
                 //code generation stuff here probably different than T_PLUS
             }
             Current_parse_token = Get_Valid_Token();
-            relation_parse = parse_relation();
+            relation_parse = parse_arithOp();
             valid_parse = relation_parse.valid_parse;
             if (valid_parse)
             {
