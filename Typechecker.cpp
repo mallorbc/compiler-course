@@ -429,6 +429,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
+            if (second_token.identifier_data_type == TYPE_FLOAT)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = false;
+            }
+            if (second_token.identifier_data_type == TYPE_STRING)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -443,6 +453,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_STRING)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
+            if (second_token.identifier_data_type == TYPE_BOOL)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = false;
             }
 
             break;
@@ -464,6 +484,11 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
+            if (second_token.identifier_data_type == TYPE_STRING)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -473,6 +498,21 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_two_type = typechecker_string;
                 return_value = true;
+            }
+            if (second_token.identifier_data_type == TYPE_FLOAT)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = false;
+            }
+            if (second_token.identifier_data_type == TYPE_BOOL)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = false;
+            }
+            if (second_token.identifier_data_type == TYPE_INT)
+            {
+                return_object.token_two_type = typechecker_int;
+                return_value = false;
             }
 
             break;
@@ -499,6 +539,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_bool;
                 return_value = true;
             }
+            if (first_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_one_type = typechecker_float;
+                return_value = false;
+            }
+            if (first_token.type == T_STRING_VALUE)
+            {
+                return_object.token_one_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -513,6 +563,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_one_type = typechecker_int;
                 return_value = true;
+            }
+            if (first_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_one_type = typechecker_bool;
+                return_value = false;
+            }
+            if (first_token.type == T_STRING_VALUE)
+            {
+                return_object.token_one_type = typechecker_string;
+                return_value = false;
             }
 
             break;
@@ -534,6 +594,11 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
+            if (first_token.type == T_STRING_VALUE)
+            {
+                return_object.token_one_type = typechecker_int;
+                return_value = false;
+            }
 
             break;
 
@@ -543,6 +608,21 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_one_type = typechecker_string;
                 return_value = true;
+            }
+            if (first_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_one_type = typechecker_float;
+                return_value = false;
+            }
+            if (first_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_one_type = typechecker_bool;
+                return_value = false;
+            }
+            if (first_token.type == T_INTEGER_VALUE)
+            {
+                return_object.token_one_type = typechecker_int;
+                return_value = false;
             }
 
             break;
@@ -569,6 +649,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = false;
+            }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -582,6 +672,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             if (second_token.type == T_INTEGER_VALUE)
             {
                 return_object.token_two_type = typechecker_int;
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = true;
+            }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
                 return_value = true;
             }
 
@@ -604,6 +704,11 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -613,6 +718,21 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_two_type = typechecker_string;
                 return_value = true;
+            }
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = false;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = false;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_object.token_two_type = typechecker_int;
+                return_value = false;
             }
 
             break;
@@ -639,6 +759,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
             }
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = false;
+            }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -653,6 +783,16 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             {
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = false;
+            }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
             }
 
             break;
@@ -674,6 +814,11 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
+            if (second_token.type == T_STRING_VALUE)
+            {
+                return_object.token_two_type = typechecker_string;
+                return_value = false;
+            }
 
             break;
 
@@ -682,6 +827,21 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
             if (second_token.type == T_STRING_VALUE)
             {
                 return_object.token_two_type = typechecker_string;
+                return_value = true;
+            }
+            if (second_token.type == T_FLOAT_VALUE)
+            {
+                return_object.token_two_type = typechecker_float;
+                return_value = true;
+            }
+            if (second_token.type == T_BOOL_VALUE)
+            {
+                return_object.token_two_type = typechecker_bool;
+                return_value = true;
+            }
+            if (second_token.type == T_INTEGER_VALUE)
+            {
+                return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
 
