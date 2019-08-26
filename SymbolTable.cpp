@@ -337,16 +337,30 @@ bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_
 bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id)
 {
     //temp token for manipulation
-    token temp_token;
-    //used to hold the scope symbol table
-    std::unordered_map<std::string, token> temp_scope_map;
-    temp_token = map[procedure_name];
-    temp_token.scope_id = scope_id;
-    temp_token.identifier_data_type = return_type;
-    //writes changes back
-    map[procedure_name] = temp_token;
+    token token_to_update;
+    // //used to hold the scope symbol table
+    // std::unordered_map<std::string, token> temp_scope_map;
+    // temp_token = map[procedure_name];
+    // temp_token.scope_id = scope_id;
+    // temp_token.identifier_data_type = return_type;
+    // //writes changes back
+    // map[procedure_name] = temp_token;
+
+    if (scope_table[scope_id].is_in_table(procedure_name))
+    {
+        token_to_update = scope_table[scope_id].scope_map[procedure_name];
+        token_to_update.scope_id = scope_id;
+        token_to_update.identifier_data_type = return_type;
+        scope_table[scope_id].scope_map[procedure_name] = token_to_update;
+    }
+    else
+    {
+        token_to_update.scope_id = scope_id;
+        token_to_update.identifier_data_type = return_type;
+        scope_table[scope_id].insert_string_token(token_to_update);
+    }
     //resyncs the tables
-    resync_tables(temp_token.scope_id, temp_token);
+    resync_tables(token_to_update.scope_id, token_to_update);
 
     return true;
 }
