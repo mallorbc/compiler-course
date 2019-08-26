@@ -282,7 +282,7 @@ bool SymbolTable::add_procedure_valid_inputs(token procedure_name_token, data_ty
     //temporary token to help change us change the map
     token procedure_identifier_token;
     //checks to see if the procedure is already in the scope table, if it is we grab it, else its new and we wipe allowed inputs
-    if (!scope_table[scope_id].is_in_table(procedure_name_token.stringValue))
+    if (scope_table[scope_id].is_in_table(procedure_name_token.stringValue))
     {
         //grads the token based on the name of the procedure
         //procedure_identifier_token = map[procedure_name];
