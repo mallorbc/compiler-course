@@ -74,6 +74,8 @@ public:
     std::vector<std::string> error_reports;
     void add_error_report(std::string error_report);
     void generate_error_report(std::string error_message);
+    void generate_error_report(std::string error_message, int line_number);
+    void clear_error_reports();
     void print_errors();
 
     //parsing parts of the program

@@ -91,6 +91,29 @@ void parser::generate_error_report(std::string error_message)
     }
 }
 
+void parser::generate_error_report(std::string error_message, int line_number)
+{
+    std::string full_error_message = "";
+    if (!resync_status)
+    {
+        if (Lexer->is_nested_commented == false)
+        {
+            full_error_message = "Error on line " + std::to_string(line_number) + ": " + error_message;
+        }
+        else
+        {
+            full_error_message = "Error on line " + std::to_string(Lexer->nested_comment_line) + ": ";
+        }
+        full_error_message = full_error_message + error_message;
+        add_error_report(full_error_message);
+    }
+}
+
+void parser::clear_error_reports()
+{
+    error_reports.clear();
+}
+
 //ready for testing
 void parser::print_errors()
 {
@@ -2366,6 +2389,12 @@ token_and_status parser::parse_factor()
     }
     else if (Current_parse_token_type == T_STRING_VALUE)
     {
+        //means there was never a closing quote
+        if (Lexer->quote_status)
+        {
+            clear_error_reports();
+            generate_error_report("quotation left open", Lexer->quote_opener);
+        }
         factor_parse.resolved_token = Current_parse_token;
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();

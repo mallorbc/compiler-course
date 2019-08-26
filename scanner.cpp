@@ -494,6 +494,7 @@ void scanner::invalid_char_test()
 void scanner::string_value_builder()
 {
     quote_status = true;
+    quote_opener = current_line;
     while (true)
     {
         build_string = build_string + current_char;

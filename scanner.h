@@ -108,6 +108,8 @@ public:
     int char_status;
     //tracks whether the program has an open quoation
     bool quote_status = false;
+    //used to track the starting quote line
+    int quote_opener = 0;
     //tracks whether an error has occured
     bool error_detected = false;
 
