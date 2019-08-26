@@ -4,8 +4,8 @@ global variable y : integer;
 variable tmp : bool;
 
 procedure Proc1 : integer(variable val : integer)
-	procedure Proc2 : integer(variable val : integer)
-		procedure Proc1 : integer(variable val : integer)
+	procedure Proc2 : integer(variable val : bool)
+		procedure Proc1 : integer(variable val : bool)
 			begin
 				val := val + 1;
                 return val;

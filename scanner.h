@@ -97,11 +97,11 @@ public:
     //Creates an text input stream
     std::ifstream source;
     //used to check the next char; so to make sure that it isn't the end of the line, a space, of the EOF
-    char next_char;
+    char next_char = 0;
     //used to store the current character
-    char current_char;
+    char current_char = 0;
     //used to build a string from the characters after checking them.  Ease of use
-    std::string build_string;
+    std::string build_string = "";
     //pointer for current token
     token *Current_token;
     //used for lexer to switch case on based on char
@@ -128,7 +128,7 @@ public:
     //tracks whether or not the status of a nest comment changed
     bool nested_comment_stat_change = false;
     //char to hold the previous char; Probably not needed but no need to remove
-    char previous_char;
+    char previous_char = 0;
     //tracks the previous line, will be different from current line when the line changes; probably not needed
     int prev_line;
     //tracks what line the double slash comment is on

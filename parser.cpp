@@ -55,7 +55,7 @@ token parser::Get_Valid_Token()
             Next_parse_token_type = Next_parse_token.type;
         }
     }
-    Lexer->symbol_table.update_token_scope_id(Current_parse_token, current_scope_id);
+    // Lexer->symbol_table.update_token_scope_id(Current_parse_token, current_scope_id);
     return Current_parse_token;
 }
 
@@ -425,13 +425,13 @@ bool parser::parse_procedure_declaration(bool is_global)
 bool parser::parse_procedure_header(bool is_global)
 {
     //this variable will hold the string of the procedure name, this will be used to later add the valid parameters of the procedure
-    token procedure_name_token;
+    std::string procedure_name = "";
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_HEADER;
     bool valid_parse;
     if (Current_parse_token_type == T_IDENTIFIER)
     {
-        procedure_name_token = Current_parse_token;
+        procedure_name = Current_parse_token.stringValue;
         if (is_global)
         {
             //checks to see if the token is already a global token
@@ -448,7 +448,7 @@ bool parser::parse_procedure_header(bool is_global)
         //marks this identifier as a procedure
         Current_parse_token.identifer_type = I_PROCEDURE;
         //saves the procedure name
-        procedure_name_token = Current_parse_token;
+        procedure_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -474,7 +474,7 @@ bool parser::parse_procedure_header(bool is_global)
         generate_error_report("Expected \":\" before type mark declaration");
         errors_occured = true;
     }
-    valid_parse = parse_type_mark(procedure_name_token, 1);
+    valid_parse = parse_type_mark(procedure_name, 1);
     //must have left and right paretheses, parameters are optional
     if (Current_parse_token_type == T_LPARAM)
     {
@@ -490,7 +490,7 @@ bool parser::parse_procedure_header(bool is_global)
         else
         {
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_parameter_list(procedure_name_token);
+            valid_parse = parse_parameter_list(procedure_name);
         }
     }
     //must have left and right paretheses, parameters are optional
@@ -802,7 +802,7 @@ bool parser::parse_type_mark()
 }
 
 //parse_type_mark but for procedure headers
-bool parser::parse_type_mark(token identifier_name_token, int context)
+bool parser::parse_type_mark(std::string identifier_name, int context)
 {
     //this tracks the state of the parser
     parser_state state = S_TYPE_MARK;
@@ -811,18 +811,17 @@ bool parser::parse_type_mark(token identifier_name_token, int context)
     //the procedure takes a integer input
     if (Current_parse_token_type == T_INTEGER_TYPE)
     {
-        identifier_name_token.identifier_data_type = TYPE_INT;
         if (context == 0)
         {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name_token, TYPE_INT, current_scope_id);
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_INT, current_scope_id);
         }
         if (context == 1)
         {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_INT, current_scope_id);
         }
         if (context == 2)
         {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_INT, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
@@ -830,18 +829,17 @@ bool parser::parse_type_mark(token identifier_name_token, int context)
     //the procedure takes a float input
     else if (Current_parse_token_type == T_FLOAT_TYPE)
     {
-        identifier_name_token.identifier_data_type = TYPE_INT;
         if (context == 0)
         {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name_token, TYPE_FLOAT, current_scope_id);
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_FLOAT, current_scope_id);
         }
         if (context == 1)
         {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_FLOAT, current_scope_id);
         }
         if (context == 2)
         {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_FLOAT, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
@@ -849,18 +847,17 @@ bool parser::parse_type_mark(token identifier_name_token, int context)
     //the procedure takes a string input
     else if (Current_parse_token_type == T_STRING_TYPE)
     {
-        identifier_name_token.identifier_data_type = TYPE_STRING;
         if (context == 0)
         {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name_token, TYPE_STRING, current_scope_id);
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_STRING, current_scope_id);
         }
         if (context == 1)
         {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_STRING, current_scope_id);
         }
         if (context == 2)
         {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_STRING, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
@@ -868,18 +865,17 @@ bool parser::parse_type_mark(token identifier_name_token, int context)
     //the procedure takes a bool input
     else if (Current_parse_token_type == T_BOOL_TYPE)
     {
-        identifier_name_token.identifier_data_type = TYPE_BOOL;
         if (context == 0)
         {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name_token, TYPE_BOOL, current_scope_id);
+            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_BOOL, current_scope_id);
         }
         if (context == 1)
         {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_BOOL, current_scope_id);
         }
         if (context == 2)
         {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name_token, current_scope_id);
+            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_INT, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
@@ -1005,7 +1001,7 @@ bool parser::parse_type_mark(token identifier_name_token, int context)
 }
 
 //by calling this function, by definition we are parsing a parameter and need to add context to the var as well as the procedure
-bool parser::parse_type_mark(token procedure_name_token, token variable_name_token)
+bool parser::parse_type_mark(std::string procedure_name, std::string variable_name)
 {
     //this tracks the state of the parser
     parser_state state = S_TYPE_MARK;
@@ -1014,44 +1010,40 @@ bool parser::parse_type_mark(token procedure_name_token, token variable_name_tok
     //the procedure takes a integer input
     if (Current_parse_token_type == T_INTEGER_TYPE)
     {
-        variable_name_token.identifier_data_type = TYPE_INT;
         //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name_token, TYPE_INT, current_scope_id);
+        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_INT, current_scope_id);
         //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name_token, current_scope_id);
+        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_INT, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a float input
     else if (Current_parse_token_type == T_FLOAT_TYPE)
     {
-        variable_name_token.identifier_data_type = TYPE_FLOAT;
         //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name_token, TYPE_FLOAT, current_scope_id);
+        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_FLOAT, current_scope_id);
         //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name_token, current_scope_id);
+        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_FLOAT, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a string input
     else if (Current_parse_token_type == T_STRING_TYPE)
     {
-        variable_name_token.identifier_data_type = TYPE_STRING;
         //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name_token, TYPE_STRING, current_scope_id);
+        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_STRING, current_scope_id);
         //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name_token, current_scope_id);
+        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_STRING, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
     //the procedure takes a bool input
     else if (Current_parse_token_type == T_BOOL_TYPE)
     {
-        variable_name_token.identifier_data_type = TYPE_BOOL;
         //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name_token, TYPE_BOOL, current_scope_id);
+        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_BOOL, current_scope_id);
         //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name_token, current_scope_id);
+        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_BOOL, current_scope_id);
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
@@ -1179,14 +1171,14 @@ bool parser::parse_type_mark(token procedure_name_token, token variable_name_tok
 //refactored 2 time
 //consumes variable token first
 //tracks the procedure name so that valid inputs of this procedure can be tracked
-bool parser::parse_parameter_list(token procedure_name_token)
+bool parser::parse_parameter_list(std::string procedure_name)
 {
     //this tracks the state of the parser
     parser_state state = S_PARAMETER_LIST;
     bool valid_parse;
     //gets identifier token since it must be a variable, then parses variable
     Current_parse_token = Get_Valid_Token();
-    valid_parse = parse_parameter(procedure_name_token);
+    valid_parse = parse_parameter(procedure_name);
     //if no errors from parsing the parameter
     if (valid_parse)
     {
@@ -1194,7 +1186,7 @@ bool parser::parse_parameter_list(token procedure_name_token)
         if (Current_parse_token_type == T_COMMA)
         {
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_parameter_list(procedure_name_token);
+            valid_parse = parse_parameter_list(procedure_name);
         }
         //there are no more parameters to parse
         if (Current_parse_token_type == T_RPARAM)
@@ -1223,7 +1215,7 @@ bool parser::parse_parameter_list(token procedure_name_token)
 bool parser::parse_variable_declaration(bool is_global)
 {
     //this tracks the name of the variable
-    token variable_name_token;
+    std::string variable_name = "";
     //this tracks the state of the parser
     parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
@@ -1245,7 +1237,7 @@ bool parser::parse_variable_declaration(bool is_global)
         //this means that the identifer is a variable
         Current_parse_token.identifer_type = I_VARIABLE;
         //stores the variable name
-        variable_name_token = Current_parse_token;
+        variable_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -1264,7 +1256,7 @@ bool parser::parse_variable_declaration(bool is_global)
     {
         Current_parse_token = Get_Valid_Token();
         //passes the variable name to later add context of what the variable is in the symbol table
-        valid_parse = parse_type_mark(variable_name_token, 2);
+        valid_parse = parse_type_mark(variable_name, 2);
         if (valid_parse)
         {
             //checks for optional bracket to declare an array
@@ -1301,9 +1293,9 @@ bool parser::parse_variable_declaration(bool is_global)
 }
 
 //this is the same as the regular parse_variable_declaration, though it allows tracking of the procedure name
-bool parser::parse_variable_declaration(bool is_global, token procedure_name_token)
+bool parser::parse_variable_declaration(bool is_global, std::string procedure_name)
 {
-    token identifier_name_token;
+    std::string identifier_name = "";
     //this tracks the state of the parser
     parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
@@ -1325,7 +1317,7 @@ bool parser::parse_variable_declaration(bool is_global, token procedure_name_tok
         //this means that the identifer is a variable
         Current_parse_token.identifer_type = I_VARIABLE;
         //stores the name of the variable
-        identifier_name_token = Current_parse_token;
+        identifier_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -1343,7 +1335,7 @@ bool parser::parse_variable_declaration(bool is_global, token procedure_name_tok
     if (Current_parse_token_type == T_COLON)
     {
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark(procedure_name_token, identifier_name_token);
+        valid_parse = parse_type_mark(procedure_name, identifier_name);
         if (valid_parse)
         {
             //checks for optional bracket to declare an array
@@ -1401,7 +1393,7 @@ bool parser::parse_bound()
 bool parser::parse_type_declaration(bool is_global)
 {
     //tracks the name of the identifier token
-    token identifier_name_token;
+    std::string identifier_name = "";
     //this tracks the state of the parser
     parser_state state = S_TYPE_DECLARATION;
     bool valid_parse;
@@ -1423,7 +1415,7 @@ bool parser::parse_type_declaration(bool is_global)
         }
         //this identifier is a type
         Current_parse_token.identifer_type = I_TYPE;
-        identifier_name_token = Current_parse_token;
+        identifier_name = Current_parse_token.stringValue;
         //updates the token in the symbol tables
         Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
         Current_parse_token = Get_Valid_Token();
@@ -1453,7 +1445,7 @@ bool parser::parse_type_declaration(bool is_global)
         return false;
     }
     //COME BACK
-    valid_parse = parse_type_mark(identifier_name_token, 2);
+    valid_parse = parse_type_mark(identifier_name, 2);
 
     return valid_parse;
 }
@@ -1469,7 +1461,7 @@ bool parser::parse_base_statement()
     if (Current_parse_token_type == T_IDENTIFIER)
     {
         type_checker->set_statement_type(Current_parse_token);
-        Context_token = update_context_token();
+        //Context_token = update_context_token(Current_parse_token);
         //       type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement(Context_token);
@@ -1510,7 +1502,7 @@ bool parser::parse_base_statement()
 }
 
 //ready to test
-bool parser::parse_parameter(token procedure_name_token)
+bool parser::parse_parameter(std::string procedure_name)
 {
     //pretty sure need to track the name of the variables
     std::string variable_name = "";
@@ -1518,7 +1510,7 @@ bool parser::parse_parameter(token procedure_name_token)
     //this tracks the state of the parser
     parser_state state = S_PARAMETER;
     bool valid_parse;
-    valid_parse = parse_variable_declaration(false, procedure_name_token);
+    valid_parse = parse_variable_declaration(false, procedure_name);
     return valid_parse;
 }
 
@@ -1757,7 +1749,7 @@ bool parser::parse_loop_statement()
         if (Current_parse_token_type == T_IDENTIFIER)
         {
             //COME BACK
-            Context_token = update_context_token();
+            Context_token = update_context_token(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_assignment_statement(Context_token);
             if (Current_parse_token_type == T_SEMICOLON)
@@ -2433,7 +2425,9 @@ bool parser::parse_name(token identifier_token)
         identifier_token.is_array = true;
         //marks the token as an array
         Lexer->symbol_table.update_identifier_type(identifier_token, current_scope_id);
-        type_checker->feed_in_tokens(identifier_token);
+        //COME BACK
+        Context_token = update_context_token(identifier_token);
+        type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         valid_parse = expression_parse.valid_parse;
@@ -2460,7 +2454,8 @@ bool parser::parse_name(token identifier_token)
         //Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
-    type_checker->feed_in_tokens(identifier_token);
+    Context_token = update_context_token(identifier_token);
+    type_checker->feed_in_tokens(Context_token);
 
     return valid_parse;
 }
@@ -2539,7 +2534,6 @@ bool parser::parse_procedure_call()
 
 bool parser::resync_parser(parser_state state)
 {
-    token empty_token;
     int temp_token_type;
     resync_status = true;
     //state to return
@@ -3040,7 +3034,7 @@ bool parser::resync_parser(parser_state state)
     //7
     case S_PARAMETER_LIST:
         //THESE USED STILL?
-        return_state = parse_parameter_list(empty_token);
+        return_state = parse_parameter_list("ERROR");
         return_state = parse_procedure_body();
 
         break;
@@ -3222,8 +3216,8 @@ void parser::update_scopes(bool increment_scope_id)
     }
 }
 
-token parser::update_context_token()
+token parser::update_context_token(token token_to_get_context)
 {
-    Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[Current_parse_token.stringValue];
+    Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[token_to_get_context.stringValue];
     return Context_token;
 }
