@@ -133,6 +133,23 @@ bool SymbolTable::is_global_token(token token_to_check)
     return is_global;
 }
 
+bool SymbolTable::token_is_in_global_scope(token token_to_check, int scope_id)
+{
+    bool is_global_scoped = false;
+    if (scope_table[-1].is_in_table(token_to_check.stringValue))
+    {
+        is_global_scoped = true;
+    }
+    return is_global_scoped;
+}
+
+token SymbolTable::get_globabl_token(token token_to_get)
+{
+    token return_token;
+    return_token = scope_table[-1].scope_map[token_to_get.stringValue];
+    return return_token;
+}
+
 bool SymbolTable::scope_map_exists(int scope_id)
 {
     //checks if a scope table of that id exists
@@ -241,7 +258,12 @@ bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
     identifier_types temp_identifier_type = I_NONE;
     token temp_token = token_to_update;
     bool array_status = false;
-    if (scope_table[scope_id].is_in_table(token_to_update.stringValue))
+    if (token_is_in_global_scope(token_to_update, scope_id))
+    {
+        token_to_update = get_globabl_token(token_to_update);
+        token_to_update.scope_id = scope_id;
+    }
+    else if (scope_table[scope_id].is_in_table(token_to_update.stringValue))
     {
         token_to_update.scope_id = scope_id;
         scope_table[scope_id].scope_map[token_to_update.stringValue] = token_to_update;
@@ -269,12 +291,19 @@ bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
 
 bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_types valid_input_type, int scope_id)
 {
+    token test_token;
+    test_token.stringValue = procedure_name;
     //used to hold the scope symbol table
     std::unordered_map<std::string, token> temp_scope_map;
     //temporary token to help change us change the map
     token procedure_identifier_token;
+    if (token_is_in_global_scope(test_token, scope_id))
+    {
+        procedure_identifier_token = get_globabl_token(test_token);
+        procedure_identifier_token.scope_id = scope_id;
+    }
     //checks to see if the procedure is already in the scope table, if it is we grab it, else its new and we wipe allowed inputs
-    if (!token_is_in_scope_table(procedure_name, scope_id))
+    else if (!token_is_in_scope_table(procedure_name, scope_id))
     {
         //grads the token based on the name of the procedure
         procedure_identifier_token = map[procedure_name];
@@ -303,6 +332,8 @@ bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_
     // std::unordered_map<std::string, token> temp_scope_map;
     // //grabs the token from the main table
     token token_to_update;
+    token test_token;
+    test_token.stringValue = identifier_name;
     // token_to_update = map[identifier_name];
     // //first makes sure that the scope of the token is updated
     // token_to_update.scope_id = scope_id;
@@ -310,8 +341,12 @@ bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_
     // token_to_update.identifier_data_type = data_type;
     // //update the main map symboltable
     // map[token_to_update.stringValue] = token_to_update;
-
-    if (scope_table[scope_id].is_in_table(identifier_name))
+    if (token_is_in_global_scope(test_token, scope_id))
+    {
+        token_to_update = get_globabl_token(test_token);
+        token_to_update.scope_id = scope_id;
+    }
+    else if (scope_table[scope_id].is_in_table(identifier_name))
     {
         token_to_update = scope_table[scope_id].scope_map[identifier_name];
         token_to_update.scope_id = scope_id;
@@ -338,6 +373,8 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
 {
     //temp token for manipulation
     token token_to_update;
+    token test_token;
+    test_token.stringValue = procedure_name;
     // //used to hold the scope symbol table
     // std::unordered_map<std::string, token> temp_scope_map;
     // temp_token = map[procedure_name];
@@ -345,8 +382,12 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     // temp_token.identifier_data_type = return_type;
     // //writes changes back
     // map[procedure_name] = temp_token;
-
-    if (scope_table[scope_id].is_in_table(procedure_name))
+    if (token_is_in_global_scope(test_token, scope_id))
+    {
+        token_to_update = get_globabl_token(test_token);
+        token_to_update.scope_id = scope_id;
+    }
+    else if (scope_table[scope_id].is_in_table(procedure_name))
     {
         token_to_update = scope_table[scope_id].scope_map[procedure_name];
         token_to_update.scope_id = scope_id;

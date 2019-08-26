@@ -42,6 +42,8 @@ public:
     bool update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id);
 
     bool token_is_in_scope_table(std::string token_string, int scope_id);
+    bool token_is_in_global_scope(token token_to_test, int scope_id);
+    token get_globabl_token(token token_to_get);
     //bool update_variable_data_type(std::string var_name, data_types data_type, int scope_id)
 };
 
