@@ -222,7 +222,10 @@ bool SymbolTable::remove_scope(int scope_id)
 bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 {
     bool return_value;
-
+    if (token_is_in_scope_table(token_to_update.stringValue, token_to_update.scope_id))
+    {
+        token_to_update = scope_table[scope_id].scope_map[token_to_update.stringValue];
+    }
     token_to_update.scope_id = scope_id;
     token_to_update.procedure_params.clear();
     map[token_to_update.stringValue] = token_to_update;
@@ -291,13 +294,26 @@ bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_
     std::unordered_map<std::string, token> temp_scope_map;
     //grabs the token from the main table
     token token_to_update;
-    token_to_update = map[identifier_name];
+    if (token_is_in_scope_table(identifier_name, scope_id))
+    {
+        token_to_update = scope_table[scope_id].scope_map[identifier_name];
+        token_to_update.identifier_data_type = data_type;
+    }
+    else
+    {
+        token_to_update = map[identifier_name];
+        token_to_update.identifier_data_type = data_type;
+        token_to_update.scope_id = scope_id;
+    }
+
+    // token_to_update = scope_table[scope_id].scope_map[identifier_name];
+    //token_to_update = map[identifier_name];
     //first makes sure that the scope of the token is updated
-    token_to_update.scope_id = scope_id;
+    //token_to_update.scope_id = scope_id;
     //make sure that the data type of the token is updated
-    token_to_update.identifier_data_type = data_type;
+    // token_to_update.identifier_data_type = data_type;
     //update the main map symboltable
-    map[token_to_update.stringValue] = token_to_update;
+    //map[token_to_update.stringValue] = token_to_update;
     //resyncs the tables
     resync_tables(token_to_update.scope_id, token_to_update);
 

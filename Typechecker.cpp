@@ -9,6 +9,8 @@ Typechecker::Typechecker()
 Typechecker::Typechecker(parser *parent)
 {
     parser_parent = parent;
+    first_token.type = T_NULL;
+    second_token.type = T_NULL;
 }
 
 bool Typechecker::is_valid_relation()
