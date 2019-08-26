@@ -1980,7 +1980,7 @@ token_and_status parser::parse_expression()
                 //not valid ever?
             }
             Current_parse_token = Get_Valid_Token();
-            arithop_parse = parse_arithOp();
+            arithop_parse = parse_expression();
             valid_parse = arithop_parse.valid_parse;
         }
     }
@@ -2049,16 +2049,16 @@ token_and_status parser::parse_arithOp()
             Current_parse_token = Get_Valid_Token();
             relation_parse = parse_arithOp();
             valid_parse = relation_parse.valid_parse;
-            if (valid_parse)
-            {
-                if ((Current_parse_token_type == T_PLUS) || Current_parse_token_type == T_MINUS)
-                {
-                    type_checker->feed_in_tokens(Current_parse_token);
-                    Current_parse_token = Get_Valid_Token();
-                    relation_parse = parse_relation();
-                }
-            }
-            valid_parse = relation_parse.valid_parse;
+            // if (valid_parse)
+            // {
+            //     if ((Current_parse_token_type == T_PLUS) || Current_parse_token_type == T_MINUS)
+            //     {
+            //         type_checker->feed_in_tokens(Current_parse_token);
+            //         Current_parse_token = Get_Valid_Token();
+            //         relation_parse = parse_relation();
+            //     }
+            // }
+            //valid_parse = relation_parse.valid_parse;
         }
         //else not adding or subtracting and is just a relation
         else
