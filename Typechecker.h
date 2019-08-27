@@ -72,6 +72,8 @@ public:
     bool check_return_statement(token resolved_token, token procedure_token);
     bool check_if_statement(token token_to_check);
 
+    bool check_loop_statement(token token_to_check);
+
     typechecker_types convert_to_typechecker_types(token token_to_convert);
 
     bool debugger = false;

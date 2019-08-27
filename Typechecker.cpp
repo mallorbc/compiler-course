@@ -1293,3 +1293,23 @@ typechecker_types Typechecker::convert_to_typechecker_types(token token_to_conve
     }
     return return_conversion;
 }
+
+bool Typechecker::check_loop_statement(token token_to_check)
+{
+    bool return_value = false;
+    typechecker_types type_to_check;
+    type_to_check = convert_to_typechecker_types(token_to_check);
+    //first check if it is an identifier
+    if (type_to_check != typechecker_bool && type_to_check != typechecker_int)
+    {
+        parser_parent->generate_error_report("Loop statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
+        return_value = false;
+        type_error_occured = true;
+    }
+    else
+    {
+        return_value = true;
+    }
+
+    return return_value;
+}

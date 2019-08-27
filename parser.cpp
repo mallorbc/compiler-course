@@ -1777,6 +1777,7 @@ bool parser::parse_if_statement()
 //refactored 2 times
 bool parser::parse_loop_statement()
 {
+    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
@@ -1796,6 +1797,20 @@ bool parser::parse_loop_statement()
                 Current_parse_token = Get_Valid_Token();
                 //COME BACK
                 expression_parse = parse_expression();
+                updated_token = expression_parse.resolved_token;
+                if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
+                {
+                    Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
+                    updated_token = Context_token;
+                }
+                if (!type_checker->type_error_occured)
+                {
+                    type_checker->check_if_statement(updated_token);
+                }
+                else
+                {
+                    type_checker->type_error_occured = false;
+                }
                 valid_parse = expression_parse.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
@@ -2322,6 +2337,7 @@ token_and_status parser::parse_term()
 //already consumes a token before being parsed
 token_and_status parser::parse_factor()
 {
+    token_and_status handler;
     token_and_status expression_parse;
     token_and_status factor_parse;
     token identifier_token;
@@ -2431,7 +2447,12 @@ token_and_status parser::parse_factor()
             generate_error_report("quotation left open", Lexer->quote_opener);
         }
         factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        handler = type_checker->feed_in_tokens(Current_parse_token);
+        if (handler.valid_parse)
+        {
+            factor_parse.resolved_token = handler.resolved_token;
+        }
+
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         valid_parse = true;
