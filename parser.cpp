@@ -2225,9 +2225,11 @@ token_and_status parser::parse_relation()
         {
             if (Current_parse_token_type == T_ASSIGN)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 Current_parse_token = Get_Valid_Token();
                 if (Current_parse_token_type == T_ASSIGN)
                 {
+                    type_checker->feed_in_tokens(Current_parse_token);
                     Current_parse_token = Get_Valid_Token();
                     term_parse = parse_term();
                     valid_parse = term_parse.valid_parse;
@@ -2240,9 +2242,11 @@ token_and_status parser::parse_relation()
             }
             else if (Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER || Current_parse_token_type == T_EXCLAM)
             {
+                type_checker->feed_in_tokens(Current_parse_token);
                 Current_parse_token = Get_Valid_Token();
                 if (Current_parse_token_type == T_ASSIGN)
                 {
+                    type_checker->feed_in_tokens(Current_parse_token);
                     Current_parse_token = Get_Valid_Token();
                     term_parse = parse_term();
                     valid_parse = term_parse.valid_parse;
