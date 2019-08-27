@@ -7,6 +7,12 @@
 #include "parser.h"
 #include "scanner.h"
 
+// struct token_and_status
+// {
+//     bool valid_parse = true;
+//     token resolved_token;
+// };
+
 enum type_of_statement
 {
     STATEMENT_ASSIGN = 0,
@@ -49,9 +55,9 @@ public:
     bool second_to_first();
     bool token_is_relationship(token token_to_check);
     bool second_relation_token_chains(token token_to_check);
-    bool feed_in_tokens(token token_to_feed);
+    token_and_status feed_in_tokens(token token_to_feed);
     bool clear_tokens(bool move_second_to_first);
-    bool is_valid_operation();
+    token_and_status is_valid_operation();
 
     bool check_assignment_statement(token destination_token, token resolved_token);
     bool are_tokens_full();

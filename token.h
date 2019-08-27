@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+//we need to return both a token and a parse status; this struct will help with that
+
 enum token_type
 {
     //should ! be its own token?
@@ -131,5 +133,11 @@ public:
     //     float floatValue;
     //     char charValue;
     // };
+};
+
+struct token_and_status
+{
+    bool valid_parse = true;
+    token resolved_token;
 };
 #endif // !TOKEN_H

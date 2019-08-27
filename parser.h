@@ -42,11 +42,11 @@ enum parser_state
 };
 
 //we need to return both a token and a parse status; this struct will help with that
-struct token_and_status
-{
-    bool valid_parse = true;
-    token resolved_token;
-};
+// struct token_and_status
+// {
+//     bool valid_parse = true;
+//     token resolved_token;
+// };
 class Typechecker;
 
 class parser

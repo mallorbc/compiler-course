@@ -58,8 +58,9 @@ bool Typechecker::set_statement_type(token key_token)
     return true;
 }
 
-bool Typechecker::feed_in_tokens(token token_to_feed)
+token_and_status Typechecker::feed_in_tokens(token token_to_feed)
 {
+    token_and_status return_object;
     bool return_value = false;
     // if (current_statement_type == STATEMENT_ASSIGN)
     // {
@@ -67,7 +68,9 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
     if (first_token.type == T_NULL)
     {
         first_token = token_to_feed;
-        return true;
+        return_value = false;
+        return_object.valid_parse = return_value;
+        return return_object;
     }
     else if ((first_token.type != T_NULL) && (second_token.type == T_NULL) && token_is_relationship(token_to_feed))
     {
@@ -87,13 +90,17 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
                 if (relation_tokens.size() == 0)
                 {
                     relation_tokens.push_back(token_to_feed);
-                    return true;
+                    return_value = false;
+                    return_object.valid_parse = return_value;
+                    return return_object;
                 }
                 //only some tokens can chain
                 if ((second_relation_token_chains(token_to_feed)) && (relation_tokens.size() == 1))
                 {
                     relation_tokens.push_back(token_to_feed);
-                    return true;
+                    return_value = false;
+                    return_object.valid_parse = return_value;
+                    return return_object;
                 }
             }
             else
@@ -123,10 +130,10 @@ bool Typechecker::feed_in_tokens(token token_to_feed)
     // }
     if (are_tokens_full())
     {
-        is_valid_operation();
+        return_object = is_valid_operation();
         clear_tokens(true);
     }
-    return return_value;
+    return return_object;
 }
 
 bool Typechecker::token_is_relationship(token token_to_check)
@@ -252,8 +259,10 @@ bool Typechecker::clear_tokens(bool move_second_to_first)
     return true;
 }
 
-bool Typechecker::is_valid_operation()
+token_and_status Typechecker::is_valid_operation()
 {
+    token_and_status return_object;
+    bool return_value = false;
     //goes through a giant case statement and then converts the types into one single type for easy comparison
     token_types_and_status checked_tokens;
     typechecker_types token_one_type;
@@ -280,13 +289,17 @@ bool Typechecker::is_valid_operation()
         error_message = "";
         type_error_occured = true;
         //set error message?
-        return false;
+        return_value = false;
+        return_object.valid_parse = return_value;
+        return return_object;
     }
     //check the relation operators first
     //no relation token, therfore an error occured
     if (relation_tokens.size() == 0)
     {
-        return false;
+        return_value = false;
+        return_object.valid_parse = return_value;
+        return return_object;
     }
     //there is one relation
     else if (relation_tokens.size() == 1)
@@ -298,13 +311,28 @@ bool Typechecker::is_valid_operation()
         case T_PLUS:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                if (token_two_type == typechecker_int)
+                {
+                    return_object.resolved_token.type = T_INTEGER_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_INT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
+                else
+                {
+                    return_object.resolved_token.type = T_FLOAT_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_FLOAT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
             }
             else
             {
                 parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
                 parser_parent->errors_occured = true;
-                return false;
+                return_value = false;
+                return_object.valid_parse = return_value;
+                return return_object;
             }
 
             break;
@@ -313,12 +341,27 @@ bool Typechecker::is_valid_operation()
         case T_MINUS:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                if (token_two_type == typechecker_int)
+                {
+                    return_object.resolved_token.type = T_INTEGER_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_INT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
+                else
+                {
+                    return_object.resolved_token.type = T_FLOAT_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_FLOAT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
             }
             else
             {
                 parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
-                return false;
+                return_value = false;
+                return_object.valid_parse = return_value;
+                return return_object;
             }
 
             break;
@@ -326,11 +369,17 @@ bool Typechecker::is_valid_operation()
         case T_GREATER:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
             }
             else if (is_bool_or_int(token_one_type, token_two_type))
             {
-                return true;
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
             }
             else
             {
@@ -342,11 +391,17 @@ bool Typechecker::is_valid_operation()
         case T_LESS:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
             }
             else if (is_bool_or_int(token_one_type, token_two_type))
             {
-                return true;
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
             }
             else
             {
@@ -359,30 +414,62 @@ bool Typechecker::is_valid_operation()
         case T_MULT:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                if (token_two_type == typechecker_int)
+                {
+                    return_object.resolved_token.type = T_INTEGER_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_INT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
+                else
+                {
+                    return_object.resolved_token.type = T_FLOAT_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_FLOAT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
             }
             else
             {
                 parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
-                return false;
+                return_value = false;
+                return_object.valid_parse = return_value;
+                return return_object;
             }
             break;
             //must be an iteger or float for both
         case T_SLASH:
             if (is_float_or_int(token_one_type, token_two_type))
             {
-                return true;
+                if (token_two_type == typechecker_int)
+                {
+                    return_object.resolved_token.type = T_INTEGER_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_INT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
+                else
+                {
+                    return_object.resolved_token.type = T_FLOAT_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_FLOAT;
+                    return_object.valid_parse = true;
+                    return return_object;
+                }
             }
             else
             {
                 parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
-                return false;
+                return_value = false;
+                return_object.valid_parse = return_value;
+                return return_object;
             }
 
             break;
 
         default:
-            return false;
+            return_value = false;
+            return_object.valid_parse = return_value;
+            return return_object;
         }
     }
     //there are two relation tokens in the relation
@@ -392,13 +479,17 @@ bool Typechecker::is_valid_operation()
         if (relation_tokens[1].type != T_ASSIGN)
         {
 
-            return false;
+            return_value = false;
+            return_object.valid_parse = return_value;
+            return return_object;
         }
         else
         {
             if (!first_relation_token_is_valid())
             {
-                return false;
+                return_value = false;
+                return_object.valid_parse = return_value;
+                return return_object;
             }
             switch (relation_tokens[0].type)
             {
@@ -406,11 +497,17 @@ bool Typechecker::is_valid_operation()
             case T_GREATER:
                 if (is_float_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (is_bool_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else
                 {
@@ -422,11 +519,17 @@ bool Typechecker::is_valid_operation()
             case T_LESS:
                 if (is_float_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (is_bool_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else
                 {
@@ -438,15 +541,24 @@ bool Typechecker::is_valid_operation()
             case T_ASSIGN:
                 if (is_float_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (is_bool_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (both_are_strings(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else
                 {
@@ -457,15 +569,24 @@ bool Typechecker::is_valid_operation()
             case T_EXCLAM:
                 if (is_float_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (is_bool_or_int(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else if (both_are_strings(token_one_type, token_two_type))
                 {
-                    return true;
+                    return_object.resolved_token.type = T_BOOL_TYPE;
+                    return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                    return_object.valid_parse = true;
+                    return return_object;
                 }
                 else
                 {
@@ -480,7 +601,8 @@ bool Typechecker::is_valid_operation()
         //an error occured as it can't have more than 2
     }
 
-    return true;
+    return_object.valid_parse = false;
+    return return_object;
 }
 
 bool Typechecker::check_assignment_statement(token destination_token, token resolved_token)
