@@ -64,6 +64,9 @@ public:
     bool both_are_strings(typechecker_types token_one, typechecker_types token_two);
     std::string give_token_type_name(typechecker_types type_to_get);
     bool check_return_statement(token resolved_token, token procedure_token);
+    bool check_if_statement(token token_to_check);
+
+    typechecker_types convert_to_typechecker_types(token token_to_convert);
 
     bool debugger = false;
     parser *parser_parent;

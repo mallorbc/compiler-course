@@ -122,7 +122,7 @@ bool SymbolTable::make_token_global(token global_token)
     //puts the modified value back in the map
     map[temp_token.stringValue] = temp_token;
     //resyncs the token
-    bool resync_status = resync_tables(-1, global_token);
+    bool resync_status = resync_tables(-1, temp_token);
     return resync_status;
 }
 
@@ -220,6 +220,10 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
             //return true;
         }
     }
+    if (token_to_sync.global_scope)
+    {
+        scope_table[-1].scope_map[token_to_sync.stringValue] = token_to_sync;
+    }
     return true;
     //return false;
 }
@@ -301,6 +305,7 @@ bool SymbolTable::add_procedure_valid_inputs(std::string procedure_name, data_ty
     {
         procedure_identifier_token = get_globabl_token(test_token);
         procedure_identifier_token.scope_id = scope_id;
+        procedure_identifier_token.global_scope = true;
     }
     //checks to see if the procedure is already in the scope table, if it is we grab it, else its new and we wipe allowed inputs
     else if (!token_is_in_scope_table(procedure_name, scope_id))
@@ -345,6 +350,8 @@ bool SymbolTable::update_identifier_data_type(std::string identifier_name, data_
     {
         token_to_update = get_globabl_token(test_token);
         token_to_update.scope_id = scope_id;
+        token_to_update.identifier_data_type = data_type;
+        token_to_update.global_scope = true;
     }
     else if (scope_table[scope_id].is_in_table(identifier_name))
     {
@@ -386,6 +393,7 @@ bool SymbolTable::update_procedure_return_type(std::string procedure_name, data_
     {
         token_to_update = get_globabl_token(test_token);
         token_to_update.scope_id = scope_id;
+        token_to_update.global_scope = true;
     }
     else if (scope_table[scope_id].is_in_table(procedure_name))
     {

@@ -1484,7 +1484,7 @@ bool parser::parse_base_statement()
     if (Current_parse_token_type == T_IDENTIFIER)
     {
         type_checker->set_statement_type(Current_parse_token);
-        //Context_token = update_context_token(Current_parse_token);
+        Context_token = update_context_token(Current_parse_token);
         //       type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement(Context_token);
@@ -1632,6 +1632,7 @@ bool parser::parse_assignment_statement(token destination_token)
 //refactored 1 time
 bool parser::parse_if_statement()
 {
+    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_IF_STATEMENT;
@@ -1640,6 +1641,21 @@ bool parser::parse_if_statement()
     {
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
+        updated_token = expression_parse.resolved_token;
+        if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
+        {
+            Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
+            updated_token = Context_token;
+        }
+        if (!type_checker->type_error_occured)
+        {
+            type_checker->check_if_statement(updated_token);
+        }
+        else
+        {
+            type_checker->type_error_occured = false;
+        }
+        type_checker->clear_tokens(false);
         valid_parse = expression_parse.valid_parse;
         if (Current_parse_token_type == T_RPARAM)
         {
@@ -3262,6 +3278,14 @@ void parser::update_scopes(bool increment_scope_id)
 
 token parser::update_context_token(token token_to_get_context)
 {
-    Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[token_to_get_context.stringValue];
+    if (!token_to_get_context.global_scope)
+    {
+        Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[token_to_get_context.stringValue];
+    }
+    else
+    {
+        Context_token = Lexer->symbol_table.scope_table[-1].scope_map[token_to_get_context.stringValue];
+    }
+
     return Context_token;
 }

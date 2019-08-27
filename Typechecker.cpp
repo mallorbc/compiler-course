@@ -1087,3 +1087,87 @@ bool Typechecker::check_return_statement(token resolved_token, token procedure_t
         }
     }
 }
+
+bool Typechecker::check_if_statement(token token_to_check)
+{
+    bool return_value = false;
+    typechecker_types type_to_check;
+    type_to_check = convert_to_typechecker_types(token_to_check);
+    //first check if it is an identifier
+    if (type_to_check != typechecker_bool && type_to_check != typechecker_int)
+    {
+        parser_parent->generate_error_report("If statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
+        return_value = false;
+        type_error_occured = true;
+    }
+    else
+    {
+        return_value = true;
+    }
+    // if (token_to_check.type == T_IDENTIFIER)
+    // {
+    //     //has to be either an integer or a bool
+    //     if (token_to_check.identifier_data_type == TYPE_BOOL || token_to_check.identifier_data_type == TYPE_INT)
+    //     {
+    //         return_value = true;
+    //     }
+    // }
+    // //if it isn't an identifier the resolved token needs to be resolved from bool or an int
+    // else if (token_to_check.type == T_BOOL_VALUE || token_to_check.type == T_INTEGER_VALUE)
+    // {
+    //     return_value = true;
+    // }
+    // else
+    // {
+    // parser_parent->generate_error_report("If statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
+    // return_value = false;
+    // type_error_occured = true;
+    // }
+    return return_value;
+}
+
+typechecker_types Typechecker::convert_to_typechecker_types(token token_to_convert)
+{
+    typechecker_types return_conversion;
+    if (token_to_convert.type == T_IDENTIFIER)
+    {
+        switch (token_to_convert.identifier_data_type)
+        {
+        case TYPE_BOOL:
+            return_conversion = typechecker_bool;
+            break;
+
+        case TYPE_FLOAT:
+            return_conversion = typechecker_float;
+
+            break;
+
+        case TYPE_INT:
+            return_conversion = typechecker_int;
+
+            break;
+
+        case TYPE_STRING:
+            return_conversion = typechecker_string;
+
+            break;
+        }
+    }
+    else if (token_to_convert.type == T_INTEGER_VALUE)
+    {
+        return_conversion = typechecker_int;
+    }
+    else if (token_to_convert.type == T_FLOAT_VALUE)
+    {
+        return_conversion = typechecker_float;
+    }
+    else if (token_to_convert.type == T_STRING_TYPE)
+    {
+        return_conversion = typechecker_string;
+    }
+    else if (token_to_convert.type == T_BOOL_VALUE || token_to_convert.type == T_TRUE || token_to_convert.type == T_FALSE)
+    {
+        return_conversion = typechecker_bool;
+    }
+    return return_conversion;
+}
