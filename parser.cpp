@@ -1485,7 +1485,7 @@ bool parser::parse_base_statement()
     {
         type_checker->set_statement_type(Current_parse_token);
         Context_token = update_context_token(Current_parse_token);
-        //       type_checker->feed_in_tokens(Context_token);
+        //      helper_object = type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         valid_parse = parse_assignment_statement(Context_token);
     }
@@ -1979,6 +1979,8 @@ token_and_status parser::parse_assignment_destination(token destination_token)
 //all expressions start be thought to start with a ArithOp?
 token_and_status parser::parse_expression()
 {
+    token_and_status helper_object;
+    bool pass_resolve_up = false;
     token_and_status expression_parse;
     token_and_status arithop_parse;
     //this tracks the state of the parser
@@ -1987,7 +1989,11 @@ token_and_status parser::parse_expression()
 
     if (Current_parse_token_type == T_AMPERSAND)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            arithop_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         arithop_parse = parse_arithOp();
         valid_parse = arithop_parse.valid_parse;
@@ -1995,7 +2001,11 @@ token_and_status parser::parse_expression()
     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
     else if (Current_parse_token_type == T_VERTICAL_BAR)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            arithop_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         arithop_parse = parse_arithOp();
         valid_parse = arithop_parse.valid_parse;
@@ -2003,7 +2013,11 @@ token_and_status parser::parse_expression()
     //else it was just an <arithOp>
     else if (Current_parse_token_type == T_NOT)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            arithop_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         arithop_parse = parse_arithOp();
         valid_parse = arithop_parse.valid_parse;
@@ -2021,12 +2035,20 @@ token_and_status parser::parse_expression()
         {
             if (Current_parse_token_type == T_AMPERSAND)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    arithop_parse.resolved_token = helper_object.resolved_token;
+                }
                 //code generation different here than a pipe
             }
             else if (Current_parse_token_type == T_VERTICAL_BAR)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    arithop_parse.resolved_token = helper_object.resolved_token;
+                }
                 //code generation different here thana pipe
             }
             else
@@ -2054,6 +2076,8 @@ token_and_status parser::parse_expression()
 //all arithOps can be thought to starts with relations?
 token_and_status parser::parse_arithOp()
 {
+    token_and_status helper_object;
+    bool pass_resolve_up = false;
     token_and_status arithop_parse;
     token_and_status relation_parse;
 
@@ -2065,7 +2089,11 @@ token_and_status parser::parse_arithOp()
     //meaning that this is <arithOp>+<relation> rather than just <relation>
     if (Current_parse_token_type == T_PLUS)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            relation_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         relation_parse = parse_relation();
         valid_parse = relation_parse.valid_parse;
@@ -2073,7 +2101,11 @@ token_and_status parser::parse_arithOp()
     //meaning that this is <arithOp>-<relation> rather than just <relation>
     else if (Current_parse_token_type == T_MINUS)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            relation_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         relation_parse = parse_relation();
         valid_parse = relation_parse.valid_parse;
@@ -2092,12 +2124,20 @@ token_and_status parser::parse_arithOp()
         {
             if (Current_parse_token_type == T_PLUS)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    relation_parse.resolved_token = helper_object.resolved_token;
+                }
                 //code generation stuff here probably different than T_MINUS
             }
             else if (Current_parse_token_type == T_MINUS)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    relation_parse.resolved_token = helper_object.resolved_token;
+                }
                 //code generation stuff here probably different than T_PLUS
             }
             Current_parse_token = Get_Valid_Token();
@@ -2107,7 +2147,7 @@ token_and_status parser::parse_arithOp()
             // {
             //     if ((Current_parse_token_type == T_PLUS) || Current_parse_token_type == T_MINUS)
             //     {
-            //         type_checker->feed_in_tokens(Current_parse_token);
+            //         helper_object = type_checker->feed_in_tokens(Current_parse_token);
             //         Current_parse_token = Get_Valid_Token();
             //         relation_parse = parse_relation();
             //     }
@@ -2130,6 +2170,8 @@ token_and_status parser::parse_arithOp()
 //all arithOps can be thought to starts with terms?
 token_and_status parser::parse_relation()
 {
+    token_and_status helper_object;
+    bool pass_resolve_up = false;
     token_and_status relation_parse;
     token_and_status term_parse;
     //this tracks the state of the parser
@@ -2138,12 +2180,20 @@ token_and_status parser::parse_relation()
 
     if (Current_parse_token_type == T_LESS)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            term_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //meaning less than or equal to
         if (Current_parse_token_type == T_ASSIGN)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            helper_object = type_checker->feed_in_tokens(Current_parse_token);
+            if (helper_object.valid_parse)
+            {
+                term_parse.resolved_token = helper_object.resolved_token;
+            }
             Current_parse_token = Get_Valid_Token();
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
@@ -2157,12 +2207,20 @@ token_and_status parser::parse_relation()
     }
     else if (Current_parse_token_type == T_GREATER)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            term_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //greater than or equal to
         if (Current_parse_token_type == T_ASSIGN)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            helper_object = type_checker->feed_in_tokens(Current_parse_token);
+            if (helper_object.valid_parse)
+            {
+                term_parse.resolved_token = helper_object.resolved_token;
+            }
             Current_parse_token = Get_Valid_Token();
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
@@ -2176,11 +2234,15 @@ token_and_status parser::parse_relation()
     }
     else if (Current_parse_token_type == T_ASSIGN)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            term_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_ASSIGN)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            helper_object = type_checker->feed_in_tokens(Current_parse_token);
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
         }
@@ -2200,6 +2262,11 @@ token_and_status parser::parse_relation()
     }
     else if (Current_parse_token_type == T_EXCLAM)
     {
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            term_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type != T_ASSIGN)
         {
@@ -2225,11 +2292,19 @@ token_and_status parser::parse_relation()
         {
             if (Current_parse_token_type == T_ASSIGN)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    term_parse.resolved_token = helper_object.resolved_token;
+                }
                 Current_parse_token = Get_Valid_Token();
                 if (Current_parse_token_type == T_ASSIGN)
                 {
-                    type_checker->feed_in_tokens(Current_parse_token);
+                    helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                    if (helper_object.valid_parse)
+                    {
+                        term_parse.resolved_token = helper_object.resolved_token;
+                    }
                     Current_parse_token = Get_Valid_Token();
                     term_parse = parse_term();
                     valid_parse = term_parse.valid_parse;
@@ -2242,11 +2317,19 @@ token_and_status parser::parse_relation()
             }
             else if (Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER || Current_parse_token_type == T_EXCLAM)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
+                helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                if (helper_object.valid_parse)
+                {
+                    term_parse.resolved_token = helper_object.resolved_token;
+                }
                 Current_parse_token = Get_Valid_Token();
                 if (Current_parse_token_type == T_ASSIGN)
                 {
-                    type_checker->feed_in_tokens(Current_parse_token);
+                    helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                    if (helper_object.valid_parse)
+                    {
+                        term_parse.resolved_token = helper_object.resolved_token;
+                    }
                     Current_parse_token = Get_Valid_Token();
                     term_parse = parse_term();
                     valid_parse = term_parse.valid_parse;
@@ -2269,6 +2352,8 @@ token_and_status parser::parse_relation()
 //already consumes a token before being parsed
 token_and_status parser::parse_term()
 {
+    token_and_status helper_object;
+    bool pass_resolve_up = false;
     token_and_status factor_parse;
     token_and_status term_parse;
     //this tracks the state of the parser
@@ -2276,14 +2361,22 @@ token_and_status parser::parse_term()
     bool valid_parse;
     if (Current_parse_token_type == T_MULT)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         factor_parse = parse_factor();
         valid_parse = factor_parse.valid_parse;
     }
     else if (Current_parse_token_type == T_SLASH)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         factor_parse = parse_factor();
         valid_parse = factor_parse.valid_parse;
@@ -2299,12 +2392,20 @@ token_and_status parser::parse_term()
             {
                 if (Current_parse_token_type == T_MULT)
                 {
-                    type_checker->feed_in_tokens(Current_parse_token);
+                    helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                    if (helper_object.valid_parse)
+                    {
+                        factor_parse.resolved_token = helper_object.resolved_token;
+                    }
                     //code generation probaly different here than division
                 }
                 else if (Current_parse_token_type == T_SLASH)
                 {
-                    type_checker->feed_in_tokens(Current_parse_token);
+                    helper_object = type_checker->feed_in_tokens(Current_parse_token);
+                    if (helper_object.valid_parse)
+                    {
+                        factor_parse.resolved_token = helper_object.resolved_token;
+                    }
                     //code generation probably different here than multiplication
                 }
                 Current_parse_token = Get_Valid_Token();
@@ -2322,6 +2423,9 @@ token_and_status parser::parse_term()
 //already consumes a token before being parsed
 token_and_status parser::parse_factor()
 {
+    token_and_status helper_object;
+    token_and_status name_parse;
+    bool pass_resolve_up = false;
     token_and_status expression_parse;
     token_and_status factor_parse;
     token identifier_token;
@@ -2361,7 +2465,7 @@ token_and_status parser::parse_factor()
         //this means that it is a procedure call
         if (Next_parse_token_type == T_LPARAM)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            helper_object = type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_call();
         }
@@ -2373,19 +2477,25 @@ token_and_status parser::parse_factor()
             //COME BACK
             factor_parse.resolved_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name(identifier_token);
+            name_parse = parse_name(identifier_token);
+            factor_parse.resolved_token = name_parse.resolved_token;
+            valid_parse = name_parse.valid_parse;
         }
     }
     //this means that it must be either a name or a number
     else if (Current_parse_token_type == T_MINUS)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //means that it isn't a name
         if (Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE)
         {
             factor_parse.resolved_token = Current_parse_token;
-            type_checker->feed_in_tokens(Current_parse_token);
+            helper_object = type_checker->feed_in_tokens(Current_parse_token);
+            if (helper_object.valid_parse)
+            {
+                factor_parse.resolved_token = helper_object.resolved_token;
+            }
             Current_parse_token = Get_Valid_Token();
         }
         //else it is a name
@@ -2395,7 +2505,9 @@ token_and_status parser::parse_factor()
             factor_parse.resolved_token = Current_parse_token;
             identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name(identifier_token);
+            name_parse = parse_name(identifier_token);
+            factor_parse.resolved_token = name_parse.resolved_token;
+            valid_parse = name_parse.valid_parse;
         }
         //else it had a negative sign, it isn't a number, and it isn't a name
         else
@@ -2415,7 +2527,11 @@ token_and_status parser::parse_factor()
     else if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
     {
         factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         valid_parse = true;
@@ -2431,7 +2547,11 @@ token_and_status parser::parse_factor()
             generate_error_report("quotation left open", Lexer->quote_opener);
         }
         factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         valid_parse = true;
@@ -2441,7 +2561,11 @@ token_and_status parser::parse_factor()
     else if (Current_parse_token_type == T_TRUE)
     {
         factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         valid_parse = true;
@@ -2451,7 +2575,11 @@ token_and_status parser::parse_factor()
     else if (Current_parse_token_type == T_FALSE)
     {
         factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        helper_object = type_checker->feed_in_tokens(Current_parse_token);
+        if (helper_object.valid_parse)
+        {
+            factor_parse.resolved_token = helper_object.resolved_token;
+        }
         Current_parse_token = Get_Valid_Token();
         //type checking will need to be done here?
         valid_parse = true;
@@ -2478,8 +2606,11 @@ token_and_status parser::parse_factor()
 
 //ready to test
 //already consumes indentifier token before being parsed
-bool parser::parse_name(token identifier_token)
+token_and_status parser::parse_name(token identifier_token)
 {
+    token_and_status parse_name;
+    token_and_status helper_object;
+    bool pass_resolve_up = false;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_NAME;
@@ -2491,7 +2622,7 @@ bool parser::parse_name(token identifier_token)
         Lexer->symbol_table.update_identifier_type(identifier_token, current_scope_id);
         //COME BACK
         Context_token = update_context_token(identifier_token);
-        type_checker->feed_in_tokens(Context_token);
+        helper_object = type_checker->feed_in_tokens(Context_token);
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         valid_parse = expression_parse.valid_parse;
@@ -2509,7 +2640,9 @@ bool parser::parse_name(token identifier_token)
             }
             generate_error_report("Missing require \"]\" for the end of optional expression for name");
             errors_occured = true;
-            return false;
+            valid_parse = false;
+            parse_name.valid_parse = valid_parse;
+            return parse_name;
         }
     }
     //the optional expression does not exist do nothing
@@ -2519,9 +2652,9 @@ bool parser::parse_name(token identifier_token)
         valid_parse = true;
     }
     Context_token = update_context_token(identifier_token);
-    type_checker->feed_in_tokens(Context_token);
-
-    return valid_parse;
+    helper_object = type_checker->feed_in_tokens(Context_token);
+    parse_name.valid_parse = valid_parse;
+    return parse_name;
 }
 
 //ready to test
