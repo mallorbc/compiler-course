@@ -4,6 +4,9 @@ Repository for EECS 6083.
 In this project I was tasked with writing a complete compiler for a custom language spec without using any compiler tools. 
 The compiler will compile the custom language to C or LLVM.  I was allowed to use any language of my choice and chose C++. 
 
+## Assignment Documents
+The assignment PDFs were never committed while I was taking the class (~2019). They were recovered from the web in July 2026: the professor's course page is still live, and the Wayback Machine holds pre-2024 snapshots. See [docs/assignment/](docs/assignment/) for the language specification (`projectLanguage.pdf`), the project description (`project.pdf`), and [PROVENANCE.md](docs/assignment/PROVENANCE.md) for where each copy came from and how close it is to the 2019 original.
+
 ## Compiling the Compiler
 Compiling this compiler uses g++.
 
