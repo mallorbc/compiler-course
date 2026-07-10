@@ -1,0 +1,6 @@
+program p is
+    variable a : integer;
+    variable b : integer;
+begin
+    a := b & & 5;
+end program.

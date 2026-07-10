@@ -1,0 +1,9 @@
+program p is
+variable a : integer;
+variable b : integer;
+variable r : bool;
+begin
+if (a < b) then
+r := putBool(true);
+end if;
+end program.

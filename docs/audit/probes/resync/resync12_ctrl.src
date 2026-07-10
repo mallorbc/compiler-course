@@ -1,0 +1,7 @@
+program test is
+    variable x : integer;
+begin
+  if (true) then
+    x := 1;
+  end if;
+end program.

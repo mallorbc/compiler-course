@@ -1,0 +1,13 @@
+program P11D is
+variable result : integer;
+procedure Inner : integer()
+    begin
+        return 1;
+    end procedure;
+procedure Outer : integer()
+    begin
+        return Inner();
+    end procedure;
+begin
+result := Outer();
+end program.

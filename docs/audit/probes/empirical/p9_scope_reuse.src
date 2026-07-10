@@ -1,0 +1,20 @@
+program P9 is
+variable result : integer;
+procedure Outer : integer()
+    procedure Inner : integer()
+        variable innerVal : integer;
+        begin
+            innerVal := 1;
+            return innerVal;
+        end procedure;
+    begin
+        return Inner();
+    end procedure;
+procedure Sibling : integer()
+    begin
+        return innerVal;
+    end procedure;
+begin
+result := Outer();
+result := Sibling();
+end program.

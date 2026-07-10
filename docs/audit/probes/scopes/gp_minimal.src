@@ -1,0 +1,7 @@
+program test is
+global procedure p : integer(variable a : integer)
+begin
+    return 0;
+end procedure;
+begin
+end program.

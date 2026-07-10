@@ -1,0 +1,6 @@
+program p is
+variable n : integer;
+variable s : string;
+begin
+n := s;
+end program.

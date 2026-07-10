@@ -1,0 +1,6 @@
+program test is
+procedure : integer ()
+begin
+end procedure;
+begin
+end program.

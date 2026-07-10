@@ -1,0 +1,7 @@
+program test is
+    variable i : integer;
+    variable s : string;
+begin
+    i := s;
+    s := i;
+end program.

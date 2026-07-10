@@ -1,0 +1,8 @@
+program p is
+    variable x : integer;
+    variable a : bool;
+begin
+    if ((x > 3)) then
+        a := true;
+    end if;
+end program.

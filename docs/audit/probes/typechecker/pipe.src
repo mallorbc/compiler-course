@@ -1,0 +1,7 @@
+program p is
+variable a : float;
+variable b : float;
+variable r : integer;
+begin
+r := a | b;
+end program.

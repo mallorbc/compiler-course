@@ -1,0 +1,5 @@
+program P3 is
+variable a : integer;
+begin
+a := doesNotExist(1);
+end program.

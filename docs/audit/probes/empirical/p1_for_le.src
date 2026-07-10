@@ -1,0 +1,10 @@
+program P1 is
+variable a : integer;
+variable b : integer;
+begin
+a := 1;
+b := 5;
+for(a := 0; a <= b)
+    a := a + 1;
+end for;
+end program.

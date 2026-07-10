@@ -1,0 +1,11 @@
+program p is
+procedure G : bool(variable dummy : integer)
+variable localFlag : bool;
+begin
+localFlag := true;
+return localFlag;
+end procedure;
+variable r : bool;
+begin
+r := G(1);
+end program.

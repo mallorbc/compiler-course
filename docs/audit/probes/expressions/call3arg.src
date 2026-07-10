@@ -1,0 +1,9 @@
+program p is
+    procedure foo : integer(variable a : integer)
+    begin
+        return a;
+    end procedure;
+    variable x : integer;
+begin
+    x := foo(1, 2, 3);
+end program.

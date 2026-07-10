@@ -1,0 +1,7 @@
+program test is
+    variable b : bool;
+    variable i : integer;
+begin
+    b := true;
+    i := 5;
+end program.

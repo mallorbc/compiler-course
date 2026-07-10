@@ -1,0 +1,8 @@
+program test is
+    variable x : integer;
+    variable s : string;
+begin
+  x := 2
+  x := 3
+  s := "hello";
+end program.

@@ -1,0 +1,5 @@
+program test is
+global variable myglobal : integer;
+begin
+    myglobal := 5;
+end program.

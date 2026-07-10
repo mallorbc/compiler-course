@@ -1,0 +1,8 @@
+program p is
+variable i : integer;
+variable limit : integer;
+begin
+for (i := 0; i <= limit)
+i := i + 1;
+end for;
+end program.

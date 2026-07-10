@@ -1,0 +1,11 @@
+program p is
+    variable a : bool;
+    procedure isPos : bool (variable p : integer)
+    begin
+        return true;
+    end procedure;
+begin
+    if (isPos(5)) then
+        a := true;
+    end if;
+end program.

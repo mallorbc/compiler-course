@@ -1,0 +1,11 @@
+program P11B is
+variable result : integer;
+procedure GetFive : integer()
+    variable v : integer;
+begin
+    v := 5;
+    return v;
+end procedure;
+begin
+result := GetFive();
+end program.

@@ -1,0 +1,6 @@
+program p is
+variable arr : integer[5];
+variable x : integer;
+begin
+x := arr;
+end program.

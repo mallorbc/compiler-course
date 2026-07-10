@@ -1,0 +1,11 @@
+program test is
+global variable x : float;
+procedure foo : integer ()
+    variable y : integer;
+begin
+    y := 5;
+    return 0;
+end procedure;
+begin
+    x := 314;
+end program.

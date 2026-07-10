@@ -1,0 +1,4 @@
+program test is
+begin
+    undeclared_var := 5;
+end program.

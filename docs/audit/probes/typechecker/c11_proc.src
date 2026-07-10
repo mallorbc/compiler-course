@@ -1,0 +1,11 @@
+program p is
+procedure foo : integer()
+variable q : integer;
+begin
+q := 1;
+return q;
+end procedure;
+variable r : integer;
+begin
+r := foo + 1;
+end program.

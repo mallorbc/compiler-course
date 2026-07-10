@@ -1,0 +1,431 @@
+{
+ "items": [
+  {
+   "feature": "Whitespace skipping (space, newline, tab)",
+   "spec_ref": "project2023.txt:198 'The scanner must skip white-space, newlines, tabs, and comments'",
+   "status": "implemented",
+   "evidence": "scanner.cpp:462-492 invalid_char_test() treats '\\n' and isspace() chars as non-tokens and just advances; verified with casetest.src (tabs/newlines used freely, no errors)."
+  },
+  {
+   "feature": "Single-line // comments",
+   "spec_ref": "spec2023.txt:6-9 'C++ short comment style that start with the string \"//\" and continue to the next newline'",
+   "status": "implemented",
+   "evidence": "scanner.cpp:539-548 comment_handler() sets is_slash_comment on '//' and scanner.cpp:210-216/581-585 end_line_handler() clears it at the next newline; confirmed comment_invalid.src (a '//' line) produced no tokens/errors."
+  },
+  {
+   "feature": "Nested block comments /* ... */",
+   "spec_ref": "spec2023.txt:10-11 'block comments of the form \"/* .... */\". Block comments can be nested.'",
+   "status": "implemented",
+   "evidence": "scanner.cpp:550-573 comment_handler() maintains nested_comment_counter, incrementing on '/*' and decrementing on '*/', only clearing is_nested_commented when counter<=0. testPgms/correct/test1.src opens with a nested comment and parses without a scanner error."
+  },
+  {
+   "feature": "Illegal characters treated as whitespace and reported as errors",
+   "spec_ref": "project2023.txt:201-203 'Illegal characters should be treated as white-space separators and reported as errors.'",
+   "status": "buggy",
+   "evidence": "scanner.cpp:114 declares `bool error_detected` and sets it true at scanner.cpp:373,489,520, but it is never read anywhere else in the codebase (grep across all .cpp/.h shows only assignments, no consumer). Confirmed empirically: compiling a file with a stray '$' (illegal_char.src) produces no 'illegal character' diagnostic at all -- only a downstream, misleading 'Missing \":\" needed for assignment statement' / 'Invalid statement' cascade. The 'treated as whitespace' half works (char is silently dropped) but the 'reported as errors' half is entirely dead code."
+  },
+  {
+   "feature": "Identifier token: [a-zA-Z][a-zA-Z0-9_]*, case-insensitive",
+   "spec_ref": "spec2023.txt:80 '<identifier> ::= [a-zA-Z][a-zA-Z0-9_]*'; spec2023.txt:109-114 case-insensitivity",
+   "status": "implemented",
+   "evidence": "scanner.cpp:31-49 what_is_char() only enters build_string_token via isalpha(); scanner.cpp:419-460 build_string_token() accepts alnum/'_' and lower-cases via Tolower_string() (CustomFunctions.cpp:3-7) before symbol-table lookup. Verified casetest.src: 'Tmp'/'tmp'/'TMP' and 'PROGRAM'/'BEGIN' mixed case all resolved correctly with no errors."
+  },
+  {
+   "feature": "Number token: [0-9][0-9_]*[.[0-9_]*] including underscore digit separators",
+   "spec_ref": "spec2023.txt:98 '<number> ::= [0-9][0-9_]*[.[0-9_]*]'",
+   "status": "buggy",
+   "evidence": "scanner.cpp:363 build_number_token() loop condition is `while (isdigit(next_char) || next_char == '.')` -- '_' is never accepted inside a number, unlike identifiers. Confirmed with numunderscore.src (`x := 1_000;`) which fails with 'Error on line 4: Missing \";\" to end program statement' because the '_' breaks the number into '1' + a separate T_UNDERSCORE token."
+  },
+  {
+   "feature": "Number token: multiple-decimal-point rejection",
+   "spec_ref": "spec2023.txt:98 grammar implies a single optional '.'",
+   "status": "buggy",
+   "evidence": "scanner.cpp:365-376 sets `error_detected = true` and does an early `return;` on a second '.', but never sets Current_token->type, so the malformed number is silently discarded by the caller check `if (Current_token->type != 0 ...)` at scanner.cpp:189 with no error surfaced (same dead error_detected flag as the illegal-character item)."
+  },
+  {
+   "feature": "String token: \"[^\"]*\"",
+   "spec_ref": "spec2023.txt:101 '<string> :: = \u201c[^\u201d]*\u201d'",
+   "status": "implemented",
+   "evidence": "scanner.cpp:494-533 string_value_builder() accumulates chars up to the closing '\"'; parser.cpp:2444-2448 additionally reports 'quotation left open' if EOF is hit with quote_status still true (Lexer->quote_status), giving a real diagnostic for unterminated strings."
+  },
+  {
+   "feature": "Reserved-word pre-seeding of symbol table",
+   "spec_ref": "project2023.txt:142-147 'pre-seed the symbol table with the reserved word strings'",
+   "status": "implemented",
+   "evidence": "SymbolTable.cpp:9-35 init_reserved_words() inserts all keywords (program, is, begin, end, global, procedure, variable, type, integer, float, string, bool, enum, if, then, else, for, return, not, true, false) with their token types before scanning begins (SymbolTable::SymbolTable() ctor, SymbolTable.cpp:3-7)."
+  },
+  {
+   "feature": "Character-class table for scanner dispatch",
+   "spec_ref": "project2023.txt:206-210 'define character classes ... array indexed by the input character'",
+   "status": "implemented",
+   "evidence": "scanner.h:19-25 enum char_type {alpha_char, number_char, reserved_char, invalid_char}; scanner.cpp:31-49 what_is_char() dispatches on isalpha/isdigit/Is_Reserved_Char."
+  },
+  {
+   "feature": "grammar: <program> ::= <program_header> <program_body> .",
+   "spec_ref": "spec2023.txt:25-27",
+   "status": "implemented",
+   "evidence": "parser.cpp:129-152 parse_program() calls parse_program_header() then parse_program_body() then checks Current_parse_token_type == T_PERIOD, erroring 'Missing \".\" to end the program' otherwise."
+  },
+  {
+   "feature": "grammar: <program_header> ::= program <identifier> is",
+   "spec_ref": "spec2023.txt:30-31",
+   "status": "implemented",
+   "evidence": "parser.cpp:156-212 parse_program_header() checks T_PROGRAM, T_IDENTIFIER (tagged I_PROGRAM_NAME), T_IS in sequence with individual error messages for each missing piece."
+  },
+  {
+   "feature": "grammar: <program_body> ::= (declaration;)* begin (statement;)* end program",
+   "spec_ref": "spec2023.txt:33-39",
+   "status": "implemented",
+   "evidence": "parser.cpp:216-358 parse_program_body() loops parse_base_declaration() until T_BEGIN, then loops parse_base_statement() until T_END, then requires T_END, T_PROGRAM."
+  },
+  {
+   "feature": "grammar: <declaration> ::= [global] <procedure_declaration> | [global] <variable_declaration> (type declarations also accepted as an extension)",
+   "spec_ref": "spec2023.txt:42-47",
+   "status": "implemented",
+   "evidence": "parser.cpp:362-434 parse_base_declaration() dispatches on optional T_GLOBAL then T_PROCEDURE/T_VARIABLE/T_TYPE (T_TYPE/type_declaration is an extra construct beyond the literal grammar, tolerated as a superset)."
+  },
+  {
+   "feature": "grammar: <procedure_declaration> ::= <procedure_header> <procedure_body>",
+   "spec_ref": "spec2023.txt:49-51",
+   "status": "implemented",
+   "evidence": "parser.cpp:436-444 parse_procedure_declaration() calls parse_procedure_header() then parse_procedure_body()."
+  },
+  {
+   "feature": "grammar: <procedure_header> ::= procedure <identifier> : <type_mark> ( [<parameter_list>] )",
+   "spec_ref": "spec2023.txt:4-9",
+   "status": "implemented",
+   "evidence": "parser.cpp:448-533 parse_procedure_header() parses identifier, ':', type_mark(context=1 i.e. return type), '(', and either an empty '()' or a parameter list."
+  },
+  {
+   "feature": "grammar: <parameter_list> ::= <parameter> , <parameter_list> | <parameter>",
+   "spec_ref": "spec2023.txt:10-14",
+   "status": "buggy",
+   "evidence": "parser.cpp:1197-1233 parse_parameter_list(): after the comma branch recurses (which itself already consumes the trailing ')'), the SAME function then unconditionally re-checks `if (Current_parse_token_type == T_RPARAM)` at parser.cpp:1215 -- but Current_parse_token has already moved past ')' (e.g. to 'begin'), so it falls into the else branch and reports 'Missing \")\" to close procedure parameter list' (parser.cpp:1227) for every procedure with 2+ parameters. Confirmed with paramsonly.src (two comma-separated params, no call site involved): produces exactly that spurious error. None of the shipped testPgms/correct/*.src programs declare more than one parameter, so this was never exercised."
+  },
+  {
+   "feature": "grammar: <parameter> ::= <variable_declaration>",
+   "spec_ref": "spec2023.txt:16",
+   "status": "implemented",
+   "evidence": "parser.cpp:1528-1538 parse_parameter() forwards straight to parse_variable_declaration(false, procedure_name)."
+  },
+  {
+   "feature": "grammar: <procedure_body> ::= (declaration;)* begin (statement;)* end procedure",
+   "spec_ref": "spec2023.txt:19-26",
+   "status": "implemented",
+   "evidence": "parser.cpp:536-678 parse_procedure_body() mirrors parse_program_body()'s declaration/statement loop structure, ending on T_END, T_PROCEDURE and calling update_scopes(false) to tear down the scope."
+  },
+  {
+   "feature": "grammar: <variable_declaration> ::= variable <identifier> : <type_mark> [ [ <bound> ] ]",
+   "spec_ref": "spec2023.txt:29-32",
+   "status": "implemented",
+   "evidence": "parser.cpp:1238-1316 (and the procedure-parameter overload at 1319-1395) parse identifier, ':', type_mark, and an optional '[' bound ']'."
+  },
+  {
+   "feature": "grammar: <type_mark> ::= integer | float | string | bool",
+   "spec_ref": "spec2023.txt:35-37",
+   "status": "partial",
+   "evidence": "parser.cpp:683-825 (and overloads at 828-1191) correctly accept T_INTEGER_TYPE/T_FLOAT_TYPE/T_STRING_TYPE/T_BOOL_TYPE and also T_IDENTIFIER (named type-alias, undocumented extension) plus a full 'enum {...}' construct (parser.cpp:719-816) that is not part of the spec grammar at all; the enum branch's parsed identifiers are marked I_TYPE with no data type or enumerator value recorded anywhere, so it is a non-functional stub extension beyond the 4 spec'd base types."
+  },
+  {
+   "feature": "grammar: <bound> ::= <number>",
+   "spec_ref": "spec2023.txt:40",
+   "status": "buggy",
+   "evidence": "parser.cpp:1399-1411 parse_bound() calls parse_number() (parser.cpp:1541-1569) but the parsed numeric value (intValue) is never captured or stored anywhere -- token.h's `is_array` flag is set (e.g. parser.cpp:1957) but there is no array-length field on token at all, so the declared array size is discarded immediately after being parsed. Confirmed: `variable a : integer[5]; variable b : integer[3]; ... a := b;` (arrayops.src) produces no length-mismatch diagnostic."
+  },
+  {
+   "feature": "grammar: <statement> ::= <assignment_statement> | <if_statement> | <loop_statement> | <return_statement>",
+   "spec_ref": "spec2023.txt:43-50",
+   "status": "implemented",
+   "evidence": "parser.cpp:1478-1525 parse_base_statement() dispatches on T_IDENTIFIER/T_IF/T_FOR/T_RETURN to the four statement parsers, matching the grammar's four alternatives (procedure calls are correctly only reachable via <factor>, matching the grammar which lacks a bare procedure_call statement alternative)."
+  },
+  {
+   "feature": "grammar: <procedure_call> ::= <identifier> ( [<argument_list>] )",
+   "spec_ref": "spec2023.txt:57-58",
+   "status": "partial",
+   "evidence": "parser.cpp:2571-2618 parse_procedure_call() parses the syntax correctly (including empty '()'), but never looks up the called identifier in the symbol table and never validates it against a declared procedure signature -- see 'procedure call argument type/arity checking' item below."
+  },
+  {
+   "feature": "grammar: <assignment_statement> ::= <destination> := <expression>",
+   "spec_ref": "spec2023.txt:61-62",
+   "status": "implemented",
+   "evidence": "parser.cpp:1574-1628 parse_assignment_statement() parses destination, ':=' (scanner splits it into T_COLON then T_ASSIGN, parser.cpp:1590-1606), then <expression>."
+  },
+  {
+   "feature": "grammar: <destination> ::= <identifier> [ [ <expression> ] ]",
+   "spec_ref": "spec2023.txt:64-65",
+   "status": "implemented",
+   "evidence": "parser.cpp:1946-1990 parse_assignment_destination() handles the optional bracketed index expression, marking destination_token.is_array=true when present."
+  },
+  {
+   "feature": "grammar: <if_statement> ::= if ( <expression> ) then (...)* [else (...)*] end if",
+   "spec_ref": "spec2023.txt:67-70",
+   "status": "implemented",
+   "evidence": "parser.cpp:1633-1773 parse_if_statement() implements '(', expression, ')', 'then', optional 'else' branch (parser.cpp:1688-1691), statement loop, 'end', 'if'."
+  },
+  {
+   "feature": "grammar: <loop_statement> ::= for ( <assignment_statement> ; <expression> ) (...)* end for",
+   "spec_ref": "spec2023.txt:72-76",
+   "status": "implemented",
+   "evidence": "parser.cpp:1778-1912 parse_loop_statement() implements the full production including the initializer assignment_statement and condition expression."
+  },
+  {
+   "feature": "grammar: <return_statement> ::= return <expression>",
+   "spec_ref": "spec2023.txt:78",
+   "status": "implemented",
+   "evidence": "parser.cpp:1917-1941 parse_return_statement() unconditionally calls parse_expression() (an expression is mandatory, matching the grammar -- confirmed a bare 'return;' correctly fails with 'Invalid token for factor discovered')."
+  },
+  {
+   "feature": "grammar: <expression> ::= <expression> & <arithOp> | <expression> | <arithOp> | [not] <arithOp>",
+   "spec_ref": "spec2023.txt:82-85",
+   "status": "implemented",
+   "evidence": "parser.cpp:1995-2065 parse_expression() implements the right-recursive rewrite of the (informally) left-recursive grammar, correctly handling '&', '|' chaining and optional leading 'not'."
+  },
+  {
+   "feature": "grammar: <arithOp> ::= <arithOp> + <relation> | <arithOp> - <relation> | <relation>",
+   "spec_ref": "spec2023.txt:88-89,95",
+   "status": "implemented",
+   "evidence": "parser.cpp:2070-2141 parse_arithOp() implements the +/- chain over <relation>."
+  },
+  {
+   "feature": "grammar: <relation> ::= <relation> {<,>=,<=,>,==,!=} <term> | <term>",
+   "spec_ref": "spec2023.txt:61-70 (right column)",
+   "status": "implemented",
+   "evidence": "parser.cpp:2146-2281 parse_relation() manually assembles the two-character operators (<=, >=, ==, !=) from single-char tokens T_LESS/T_GREATER/T_ASSIGN/T_EXCLAM plus a following T_ASSIGN."
+  },
+  {
+   "feature": "grammar: <term> ::= <term> * <factor> | <term> / <factor> | <factor>",
+   "spec_ref": "spec2023.txt:71-73",
+   "status": "implemented",
+   "evidence": "parser.cpp:2285-2334 parse_term() implements the */ chain over <factor>."
+  },
+  {
+   "feature": "grammar: <factor> ::= ( <expression> ) | <procedure_call> | [-] <name> | [-] <number> | <string> | true | false",
+   "spec_ref": "spec2023.txt:75-81",
+   "status": "implemented",
+   "evidence": "parser.cpp:2338-2498 parse_factor() covers all seven alternatives, disambiguating procedure_call vs name via Next_parse_token_type == T_LPARAM (parser.cpp:2378)."
+  },
+  {
+   "feature": "grammar: <name> ::= <identifier> [ [ <expression> ] ]",
+   "spec_ref": "spec2023.txt:84-85",
+   "status": "implemented",
+   "evidence": "parser.cpp:2502-2546 parse_name() handles the optional bracketed index expression and marks identifier_token.is_array."
+  },
+  {
+   "feature": "grammar: <argument_list> ::= <expression> , <argument_list> | <expression>",
+   "spec_ref": "spec2023.txt:89-90,95",
+   "status": "buggy",
+   "evidence": "parser.cpp:2550-2567 parse_argument_list(): the comma branch `if (Current_parse_token_type == T_COMMA) { valid_parse = parse_argument_list(); }` (parser.cpp:2560-2563) never consumes the comma with Get_Valid_Token() before recursing, so the recursive parse_expression() call sees Current_parse_token still == T_COMMA and immediately fails in parse_factor() with 'Invalid token for factor discovered'. Confirmed with badcall.src / twoargs2.src (any call with 2+ arguments): produces 'Invalid token for factor discovered' + 'Error in expression' + 'Missing required \")\" for the end of a procedure call'. Every multi-argument procedure call in the language is effectively broken; no shipped test program calls with more than one argument."
+  },
+  {
+   "feature": "Two-character relational operators (==, !=, <=, >=) assembled by parser from single-char tokens",
+   "spec_ref": "spec2023.txt:61-70; project2023.txt: token design section",
+   "status": "buggy",
+   "evidence": "Typechecker.cpp:203-243 second_relation_token_chains() has no reachable `return` when token_to_check.type==T_ASSIGN and the chained operator is valid (all inner switch cases just `break;`), causing control to fall off the end of a non-void function (g++ -Wreturn-type warning, confirmed by rebuild). Empirically: `./compiler testPgms/correct/math.src` and `logicals.src` exit 132 (SIGILL) as soon as a two-character operator like '==' is type-checked."
+  },
+  {
+   "feature": "Semantics #1: procedure parameters transmitted by value; recursion supported",
+   "spec_ref": "spec2023.txt:106-107",
+   "status": "partial",
+   "evidence": "There is no by-reference/by-value distinction to violate since there is no runtime, so pass-by-value is vacuously N/A at this stage. Recursion syntactically 'works' (math.src's Fib calls itself) only because parse_procedure_call (parser.cpp:2571-2618) performs zero identifier/signature validation, not because of deliberate self-visibility handling."
+  },
+  {
+   "feature": "Semantics #2: identifiers/reserved words case-insensitive",
+   "spec_ref": "spec2023.txt:109-114",
+   "status": "implemented",
+   "evidence": "scanner.cpp:440 `build_string = Tolower_string(build_string);` before every symbol-table lookup; verified via casetest.src."
+  },
+  {
+   "feature": "Semantics #3-4: global/local two-level scoping, local shadowing of global, global names unique",
+   "spec_ref": "spec2023.txt:115-137",
+   "status": "buggy",
+   "evidence": "Global identifiers are stored in a separate pseudo-scope id -1 (SymbolTable.cpp:139,149,225) rather than scope 0, and scope ids are reused after a procedure ends (parser.cpp:3289-3302 update_scopes() decrements number_of_scopes on exit) so two sibling procedures can share a scope id. More importantly, uniqueness of global names is entirely unchecked: dupglobal.src (two `global variable x : integer;` / `global variable x : float;` declarations) produced 'The program parsed successfully with no errors'; grep for 'already declared'/'duplicate'/'redeclar' across parser.cpp/Typechecker.cpp/SymbolTable.cpp returns zero hits."
+  },
+  {
+   "feature": "Semantics #5-6: procedure visible to itself (recursion) but no forward references permitted otherwise",
+   "spec_ref": "spec2023.txt:139-141,102-103",
+   "status": "missing",
+   "evidence": "There is no declared-before-use enforcement at all: scanner.cpp:448-453 build_string_token() auto-inserts any unrecognized identifier into the symbol table as a bare T_IDENTIFIER with no type, and no code path ever rejects a reference to an identifier that has not been declared as a variable/procedure in the current or global scope. Confirmed with undeclared2.src (`x := totallyUndeclaredVar;`, a variable never declared anywhere) -> 'parsed successfully with no errors'. Also confirmed with shadow.src, where `y` (declared only *inside* procedure `p`) is referenced in the outer program scope (`y := p();`) with zero diagnostics, i.e. scope-boundary/forward-reference enforcement is absent, not just partially missing."
+  },
+  {
+   "feature": "Semantics #7: strong typing with automatic int/float conversion in arithmetic and bool<->int conversion in relational ops",
+   "spec_ref": "spec2023.txt:104-114",
+   "status": "partial",
+   "evidence": "Typechecker.cpp:1112-1134 is_float_or_int()/is_bool_or_int() implement the int/float and bool/int cross-compatibility used by the arithmetic (+,-,*,/) and relational (<,>,==,!=,<=,>=) cases in is_valid_operation() (Typechecker.cpp:262-606). However boolean LITERALS (true/false) are tokenized as T_TRUE/T_FALSE (SymbolTable.cpp:31-32) but every literal-vs-literal / literal-vs-identifier branch of token_types_compatible_at_all() checks for a distinct, never-produced token type T_BOOL_VALUE (Typechecker.cpp:764,794,814,844,874,904,924,954,977,984,1014,1034,1064) -- so raw true/false literals never match those branches and default to 'incompatible'. Confirmed: `d := true;` where d:bool passes silently (single-token RHS bypasses the pairwise check, see assignment item below), but `c := d & false;` (d:bool) produces a bogus 'Type \"Integer\" and type \"\" have no valid operations' instead of being accepted."
+  },
+  {
+   "feature": "Semantics #8: procedure argument type signatures must match exactly declared parameters",
+   "spec_ref": "spec2023.txt:115-118 ('The type signatures of a procedures arguments must match exactly their parameter declaration.')",
+   "status": "missing",
+   "evidence": "parser.cpp:2550-2618 (parse_argument_list/parse_procedure_call) never reference type_checker or the callee's procedure_params vector (SymbolTable stores these via add_procedure_valid_inputs, e.g. parser.cpp:1037/1047/1057/1067, but nothing ever reads procedure_params back for validation -- confirmed by grep, procedure_params is only written, never read outside SymbolTable.cpp housekeeping). Confirmed with proctypemismatch.src: calling `needsInt(true)` where needsInt takes an integer parameter produces 'parsed successfully with no errors'."
+  },
+  {
+   "feature": "Semantics #9: whole-array assignment/arithmetic (equal-length check; element-wise ops on unqualified array refs)",
+   "spec_ref": "spec2023.txt:119-126",
+   "status": "missing",
+   "evidence": "token.h:128 `bool is_array` is the only array-related field on token; there is no array-length field anywhere (parser.cpp:1399-1411 parse_bound() parses and discards the size). token.h and Typechecker.cpp never test `is_array` in any type-compatibility path (grep for is_array shows only 2 call sites, both merely setting the flag, parser.cpp:1957,2510). Confirmed with arrayops.src: `variable a:integer[5]; variable b:integer[3]; a := b;` produces no length-mismatch error."
+  },
+  {
+   "feature": "Semantics #10: arithmetic ops (+,-,*,/) int/float only; bitwise &,|,not int-only; boolean &,|,not for booleans",
+   "spec_ref": "spec2023.txt:126-138",
+   "status": "missing",
+   "evidence": "Typechecker.cpp:308-473 is_valid_operation()'s single-relation-token switch has cases only for T_PLUS/T_MINUS/T_GREATER/T_LESS/T_MULT/T_SLASH; there is NO case for T_AMPERSAND or T_VERTICAL_BAR (falls to `default: return_value=false; ... return return_object;` at Typechecker.cpp:469-473, silently, with no generate_error_report call), and unary T_NOT is never even accumulated into relation_tokens because feed_in_tokens() (Typechecker.cpp:61-137) treats the very first fed token as the left operand unconditionally, so a leading 'not' token itself becomes 'first_token' rather than an operator. Confirmed empirically: `c := a & b;` (a:float,b:integer, should be rejected -- & is integer-only) parses with NO error; `c := a & b;` (a,b:string, should be rejected) parses with NO error; `c := not a;` (a:string, should be rejected) parses with NO error; `c := -a;` (a:string, unary minus on a non-numeric type) parses with NO error."
+  },
+  {
+   "feature": "Semantics #11: relational ops for int/float/bool; string equality/inequality only (no <,>,<=,>= on strings)",
+   "spec_ref": "spec2023.txt:144-152",
+   "status": "implemented",
+   "evidence": "Typechecker.cpp:391-411,519-539 (T_LESS/T_GREATER cases) only accept is_float_or_int/is_bool_or_int, correctly rejecting strings, while Typechecker.cpp:541-567,569-595 (T_ASSIGN/T_EXCLAM, i.e. ==/!=) additionally accept both_are_strings(). Confirmed with strcompare.src: `a < b` for two strings is correctly rejected with 'Less than relations must relate...'."
+  },
+  {
+   "feature": "Semantics #12: strings as pointers to immutable, in-memory null-terminated strings",
+   "spec_ref": "spec2023.txt:153-160",
+   "status": "missing",
+   "evidence": "No runtime/codegen exists at all (grep for codegen/LLVM/MM[/Reg[ across the repo returns nothing), so string storage semantics are entirely unimplemented; N/A until code generation exists."
+  },
+  {
+   "feature": "Semantics #13: array indices must be integer; 0-based bounds checking on every indexed reference",
+   "spec_ref": "spec2023.txt:161-165",
+   "status": "missing",
+   "evidence": "parser.cpp:1954-1980 (parse_assignment_destination) and parser.cpp:2508-2534 (parse_name) parse the bracketed index expression but never check the resulting expression's resolved type is integer, and (as noted above) no array length is ever stored, so no compile-time bound could be checked even if desired; runtime bound checking is impossible with no codegen. Confirmed with arrayops.src: `a[10] := 1;` and `a[-1] := 2;` against a length-5 array both parse with no errors."
+  },
+  {
+   "feature": "Semantics #14: assignment target/expression type compatibility (bool<->int, int<->float cast)",
+   "spec_ref": "spec2023.txt:166-172",
+   "status": "buggy",
+   "evidence": "Typechecker.cpp:608-612 `bool Typechecker::check_assignment_statement(token destination_token, token resolved_token) { return true; }` is an unconditional stub, called from parser.cpp:1611. Since a single-token RHS (e.g. `x := s;` where s is just one identifier) never goes through the pairwise is_valid_operation() check either (feed_in_tokens only compares pairs once TWO operands plus an operator have been fed), assignment type checking is completely absent for the common case of a bare-name/literal RHS. Confirmed with typemismatch.src: `x := s;` (x:integer, s:string) -> 'parsed successfully with no errors'."
+  },
+  {
+   "feature": "Semantics #15: if/for condition must resolve to bool (int cast to bool)",
+   "spec_ref": "spec2023.txt:173-176",
+   "status": "buggy",
+   "evidence": "check_if_statement (Typechecker.cpp:1213-1249) is correctly wired for if-statements (parser.cpp:1650-1653), but parse_loop_statement calls type_checker->check_if_statement(updated_token) (parser.cpp:1806-1809) instead of the dedicated check_loop_statement (Typechecker.cpp:1297-1315, which exists but is dead code -- confirmed zero call sites via grep), so loop-condition diagnostics are misworded ('If statements must resolve...' for a for-loop). Additionally, because feed_in_tokens/parse_expression only bubble up the innermost factor's token rather than the whole expression's synthesized type (see architecture note), a legitimate relational for-condition like `i < zach` can spuriously fail: testPgms/correct/test1.src line 22's `for(i := 0; i < zach)` triggers 'Error on line 23: If statements must resolve to either type Bool or Integer' even though it should type-check as bool."
+  },
+  {
+   "feature": "Builtin: getBool() : bool",
+   "spec_ref": "spec2023.txt:181",
+   "status": "missing",
+   "evidence": "No runtime library and no symbol-table pre-declaration exists for any builtin I/O routine; grep for getbool/getinteger/getfloat/getstring/putbool/putinteger/putfloat/putstring/sqrt (case-insensitive) across all .cpp/.h returns zero hits outside testPgms/. logicals.src calls `getBool()` and 'works' only because parse_procedure_call performs no identifier/signature lookup at all (see procedure_call item)."
+  },
+  {
+   "feature": "Builtin: getInteger() : integer",
+   "spec_ref": "spec2023.txt:182",
+   "status": "missing",
+   "evidence": "Same as getBool: no predeclaration anywhere in SymbolTable.cpp's init_reserved_words()/reserved-word setup; iterativeFib.src/recursiveFib.src call `getInteger()` unchecked."
+  },
+  {
+   "feature": "Builtin: getFloat() : float",
+   "spec_ref": "spec2023.txt:183",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere in the codebase (grep, see getBool item); no test program even exercises it, so it is unverified end-to-end as well as unimplemented."
+  },
+  {
+   "feature": "Builtin: getString() : string",
+   "spec_ref": "spec2023.txt:184",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere; logicals.src calls `getString()` and it parses only because of the missing-call-validation gap noted above."
+  },
+  {
+   "feature": "Builtin: putBool(bool value) : bool",
+   "spec_ref": "spec2023.txt:145",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere in the codebase."
+  },
+  {
+   "feature": "Builtin: putInteger(integer value) : bool",
+   "spec_ref": "spec2023.txt:146",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere; math.src/iterativeFib.src/recursiveFib.src/test2.src/multipleProcs.src/test_program_minimal.src all call `putInteger(...)` and are accepted purely because argument count/type is never checked (see argument-list bugs above -- notably any of these calls with >1 argument would additionally hit the parse_argument_list comma bug)."
+  },
+  {
+   "feature": "Builtin: putFloat(float value) : bool",
+   "spec_ref": "spec2023.txt:147",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere; no test program exercises it."
+  },
+  {
+   "feature": "Builtin: putString(string value) : bool",
+   "spec_ref": "spec2023.txt:148",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere; logicals.src calls `putString(\"T\")`/`putString(\"F\")` and is accepted only due to the missing-call-validation gap."
+  },
+  {
+   "feature": "Builtin: sqrt(integer value) : float",
+   "spec_ref": "spec2023.txt:151",
+   "status": "missing",
+   "evidence": "No predeclaration found anywhere and no test program in testPgms/ references sqrt at all (grep returns no hits), so this builtin is entirely unimplemented and unexercised."
+  },
+  {
+   "feature": "Symbol table with scoping (define/remove scope as parse proceeds)",
+   "spec_ref": "project2023.txt:268-271 'You must be able to define a scope and remove a scope as the parse is made.'",
+   "status": "partial",
+   "evidence": "parser.cpp:3289-3302 update_scopes() and SymbolTable.cpp:174-242 (resync_tables/remove_scope) implement scope creation/teardown, but SymbolTable::create_new_scope_table (SymbolTable.cpp:166-172) is a non-void function with no return statement at all (confirmed via g++ -Wreturn-type rebuild warning: 'no return statement in function returning non-void'), which is UB every time a new scope is created (i.e. on every procedure entry)."
+  },
+  {
+   "feature": "LL(1) recursive-descent parser structure",
+   "spec_ref": "project2023.txt:248-252 'Build a recursive decent parser that looks only at the immediate next token'",
+   "status": "implemented",
+   "evidence": "parser.cpp implements one-token lookahead throughout (Current_parse_token/Next_parse_token, parser.cpp:31-60 Get_Valid_Token) and every nonterminal has a dedicated parse_* function, matching the required architecture."
+  },
+  {
+   "feature": "At least one resync point for panic-mode error recovery",
+   "spec_ref": "project2023.txt:253 'The parser should have at least one resync point to try to recover from a parsing error.'",
+   "status": "buggy",
+   "evidence": "parser.cpp:2620-3287 resync_parser() implements resync logic for ~10 of the 28 parser_state cases (far exceeding the minimum of one). However it has real defects: (1) `parser_state new_state;` (parser.cpp:2627) is never default-initialized, and several state cases' while-loops can exit without ever assigning new_state (e.g. if the loop condition `Current_parse_token_type != T_SEMICOLON && != T_INVALID` is false on entry), leading to `switch(new_state)` at parser.cpp:3046 reading an indeterminate value (UB); (2) the S_IF_STATEMENT/S_LOOP_STATEMENT cases `return true;` directly on hitting T_END (parser.cpp:2942,2976) which skips the `resync_status = false;` reset at the end of the function (parser.cpp:3285), leaving resync_status permanently true and silently suppressing all subsequent generate_error_report() calls (parser.cpp:69-92 gates every report on `!resync_status`)."
+  },
+  {
+   "feature": "Type checking incorporated inline into the parser (streaming, per statement)",
+   "spec_ref": "project2023.txt:262-267 'Incorporate type checking into the parser and perform type checking while the statements are parsed.'",
+   "status": "implemented",
+   "evidence": "parser.cpp calls type_checker->feed_in_tokens()/set_statement_type()/check_if_statement()/check_return_statement() inline throughout expression/statement parsing (e.g. parser.cpp:2003-2065, 1486, 1650-1653), matching the required streaming architecture, independent of the numerous correctness bugs cataloged elsewhere in this checklist."
+  },
+  {
+   "feature": "Error/warning reporting with a status flag (reportError/getErrorStatus pattern)",
+   "spec_ref": "project2023.txt:104-117 'class reporting ... reportError ... getErrorStatus'",
+   "status": "partial",
+   "evidence": "parser.cpp:69-92 generate_error_report()/error_reports vector implement error accumulation and parser.cpp:147 `errors_occured` is the status flag, but there is no separate warning channel (project2023.txt distinguishes reportError vs reportWarning) and `errors_occured` is set inconsistently: Typechecker.cpp:1213-1249 check_if_statement() and Typechecker.cpp:1297-1315 check_loop_statement() call generate_error_report() but never set parser_parent->errors_occured=true (only 3 of the ~10 error sites in Typechecker.cpp do, at lines 287,332,1196). Confirmed with testPgms/correct/test1.src: prints 'The program parsed successfully with no errors' immediately followed by 'Error on line 23: If statements must resolve to either type Bool or Integer' in the same run."
+  },
+  {
+   "feature": "Error location accuracy (line numbers reported for diagnostics)",
+   "spec_ref": "project2023.txt:80-82 'this value is used primarily to help generate meaningful error messages'",
+   "status": "buggy",
+   "evidence": "Most Typechecker errors use `parser_parent->Lexer->current_line` (the scanner's current lookahead line, e.g. Typechecker.cpp:286,331,1195,1221,1305) rather than the offending token's own line_found, so reported line numbers trail the actual statement. Confirmed with andor.src: the offending statement `c := a & b;` is on line 6 of the file, but the compiler reports 'Error on line 7: ...'."
+  },
+  {
+   "feature": "token::identifier_data_type default-initialization",
+   "spec_ref": "(implementation detail underlying semantics #7/#14/#15 type checks)",
+   "status": "buggy",
+   "evidence": "token.h:107-128: every other data field of `token` has an explicit in-class default (`int type = 0;`, `bool global_scope = false;`, etc.) except `data_types identifier_data_type;` at token.h:126, which has NO default initializer. Any token built without an explicit assignment to this field (e.g. literal tokens for true/false/numbers, or freshly-scanned identifiers before their declaration's type_mark is processed) carries an indeterminate value here, which convert_to_typechecker_types() (Typechecker.cpp:1251-1295) and token_types_compatible_at_all() switch on directly -- a likely contributor to the erratic test1.src for-loop failure noted above."
+  },
+  {
+   "feature": "Illegal-character scanning inside comments (should be fully ignored)",
+   "spec_ref": "project2023.txt:198-203",
+   "status": "implemented",
+   "evidence": "comment_invalid.src places a stray '$' inside a '//' comment and the compiler reports 'The program parsed successfully with no errors' -- the character is dropped without side effects because invalid_char_test() (scanner.cpp:462-492) never sets Current_token->type, so the token is discarded by scanner.cpp:189 regardless of comment state (this is the flip side of the dead error_detected flag noted above: within comments the silence is actually correct behavior)."
+  },
+  {
+   "feature": "Code generation (LLVM IR or restricted-C 3-address form)",
+   "spec_ref": "project2023.txt:280-345 'Code Generation ... LLVM backend ... or ... restricted C program'",
+   "status": "missing",
+   "evidence": "grep -rniE 'codegen|llvm|generate_code|MM\\[|Reg\\[|activation record' across all .cpp/.h in the repo returns zero hits; there is no code-generation phase in the compiler at all (parser.cpp's constructor only parses and type-checks, main.cpp:23-24)."
+  },
+  {
+   "feature": "Runtime system (activation records, stack, builtin I/O implementations)",
+   "spec_ref": "project2023.txt:347-419 'Runtime ... several (globally visible) predefined procedures provided by the runtime support environment'",
+   "status": "missing",
+   "evidence": "No stack/activation-record model, no libc-call adaptation layer, and no builtin function implementations exist anywhere in the source tree (consistent with the complete absence of code generation, see prior item)."
+  },
+  {
+   "feature": "All provided test programs compile/run correctly",
+   "spec_ref": "project2023.txt (general project goal, grading rung 'A')",
+   "status": "buggy",
+   "evidence": "Direct run of every file in testPgms/: 5 of 13 programs (logicals.src, math.src, recursiveFib.src, test2.src, custom_math.src) crash the compiler itself with SIGILL/exit 132 due to the second_relation_token_chains missing-return bug; test1b.src fails to parse due to a malformed final line in the test file itself (missing trailing '.'); test1.src 'succeeds' but emits a spurious type error on a legitimate for-loop condition (see semantics #15 item)."
+  },
+  {
+   "feature": "Compiler exit status reflects success/failure",
+   "spec_ref": "project2023.txt:113-117 'the reportError function will set the private variable errorStatus to True' (implying downstream consumers can detect failure)",
+   "status": "missing",
+   "evidence": "main.cpp:10-30 `main()` always `return 0;` on the non-crash path (line 29) regardless of parser::errors_occured, so shell scripts/CI cannot distinguish a clean compile from one with reported errors purely via exit code; the CLAUDE.md in the repo separately notes stdout must be parsed instead."
+  }
+ ],
+ "notes": "Methodology: read spec2023.txt (187 lines) and project2023.txt (425 lines) in full, then cross-referenced every grammar production/token rule/semantic rule/builtin/project requirement against direct reads of token.h, scanner.h/.cpp, SymbolTable.h/.cpp, ScopeTable.h/.cpp, parser.h/.cpp (full 3315 lines), Typechecker.h/.cpp (full 1315 lines), main.cpp, CustomFunctions.cpp. Built the project fresh (`make clean && make`) to independently capture the three -Wreturn-type warnings, and wrote/ran ~20 small .src probe programs against ./compiler (paths under scratchpad/testsrc/) to empirically confirm or refute each hypothesis rather than relying on static reading alone -- most 'buggy'/'missing' items above are backed by an actual compiler run showing wrong or absent diagnostics, not just code inspection.\n\nIndependently re-derived (not parroted) but confirmed overlapping with CLAUDE.md's own known-bugs list: the second_relation_token_chains missing-return SIGILL crash, check_assignment_statement being an unconditional stub, parse_loop_statement calling check_if_statement instead of check_loop_statement, and procedure calls never being validated against declared signatures. These are cited above only where load-bearing for a specific checklist item's evidence.\n\nNew defects found during this audit that are NOT mentioned in CLAUDE.md, with concrete repro cases in scratchpad/testsrc/:\n1. parse_argument_list() (parser.cpp:2550-2567) never consumes the comma before recursing -- every procedure call/argument list with 2+ arguments fails to parse ('Invalid token for factor discovered'). Repro: badcall.src, twoargs2.src.\n2. parse_parameter_list() (parser.cpp:1197-1233) re-checks for a closing ')' after a comma-triggered recursive call already consumed it, producing a spurious 'Missing \\\")\\\"' error for every procedure with 2+ parameters. Repro: paramsonly.src. Combined with #1, multi-parameter/multi-argument procedures are essentially non-functional, and no shipped test program exercises more than one parameter/argument, so this was never caught.\n3. token::identifier_data_type (token.h:126) has no default member initializer unlike every sibling field, leaving it indeterminate on tokens that never pass through an explicit type-assignment path.\n4. Boolean literals are tokenized as T_TRUE/T_FALSE but Typechecker.cpp's token_types_compatible_at_all() checks for a distinct, never-produced T_BOOL_VALUE token type in ~13 places, so literal true/false operands are effectively invisible to arithmetic/relational/bitwise type checking. Repro: boolplus.src, boolandbool.src.\n5. is_valid_operation()'s operator switch (Typechecker.cpp:308-473) has no case at all for T_AMPERSAND/T_VERTICAL_BAR (bitwise/logical & and |) or T_NOT, so these operators receive zero type validation (silently accept invalid operand combinations like string & string, float & integer, not <string>). Repro: andfloat.src, andstring.src, nottest.src, negstring.src.\n6. Array bound values are parsed and immediately discarded (no length field on token at all), so whole-array-assignment length matching (spec semantics #9) and array-index bounds checking (semantics #13) are structurally impossible, not just unimplemented. Repro: arrayops.src.\n7. No declared-before-use / scope-boundary enforcement anywhere: a completely undeclared identifier, or a local variable referenced outside its declaring procedure's scope, produces zero diagnostics. Repro: undeclared2.src, shadow.src.\n8. errors_occured is set inconsistently across Typechecker.cpp error sites (only 3 of ~10), so the top-level 'parsed successfully with no errors' banner can be printed in the same run as an actual reported error. Repro: test1.src (shipped 'correct' test).\n9. resync_parser()'s local `new_state` can be read uninitialized, and two of its branches return early bypassing the `resync_status=false` reset, potentially suppressing all later error reporting for the rest of the compile.\n10. Number literals with underscore digit separators (explicitly part of the spec's <number> grammar) are not supported by the scanner at all.\n11. main() always returns 0 regardless of compile errors, so exit code cannot be used to detect failure (only stdout text can, per the repo's own CLAUDE.md).\n\nAll test .src files created for probing are in /tmp/claude-1000/-datadrive-data-compiler-course/e0905122-5395-4b36-add9-f6a81e41bd28/scratchpad/testsrc/ and are not part of the repository."
+}

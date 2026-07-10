@@ -1,0 +1,11 @@
+program p is
+procedure H : integer(variable dummy : integer)
+variable n : integer;
+begin
+n := 5;
+return n;
+end procedure;
+variable r : integer;
+begin
+r := H(1);
+end program.

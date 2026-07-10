@@ -1,0 +1,3 @@
+// oops */ stray close
+/* level1 /* level2 */ leaked_identifier_should_be_hidden */
+z

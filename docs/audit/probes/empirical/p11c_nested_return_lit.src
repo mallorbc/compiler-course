@@ -1,0 +1,13 @@
+program P11C is
+variable result : integer;
+procedure Outer : integer()
+    procedure Inner : integer()
+        begin
+            return 1;
+        end procedure;
+    begin
+        return 2;
+    end procedure;
+begin
+result := Outer();
+end program.
