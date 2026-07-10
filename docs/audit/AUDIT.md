@@ -39,35 +39,42 @@ program`, nested `/* */` comments, case-insensitive identifiers, procedure
 calls as expression factors. The 2023 snapshot in `docs/assignment/` is the
 right document to finish against.
 
-Two nuances — both resolved by the Spring 2021 spec's own revision changelog
-(visible in the 2021 "Revision 6" PDF committed by a 2021 student; see
-PROVENANCE):
+Two nuances — both resolved by recovered earlier spec vintages (2016 Rev 1,
+2018 Rev 5, 2021 Rev 6 — see `docs/assignment/earlier-vintages/` and
+PROVENANCE's lineage table):
 
-1. **Global visibility was likely correct for the 2019 vintage.** The code
-   makes a program-level declaration visible inside procedures only when
-   literally prefixed `global` (parser.cpp:369-373, lookup at
-   parser.cpp:3304-3316) — the rule as written in the 2013 spec. The modern
-   rule (all outermost-scope declarations are global) demonstrably needed
-   clarifying *twice* in Spring 2021 — changelog: Rev 2 (2/18/21) "Clarified
-   global variables and scoping", Rev 6 (3/11/21) "Clarified scoping rules" —
-   and again in the Jan-2024 rewrite (the added forward-reference sentence).
-   Corroborating 2019 artifact: the professor's own test programs
-   (testPgms/, committed to this repo in 2019) follow the old discipline
-   exclusively — every variable referenced inside a procedure body is
-   explicitly `global`; no professor program ever exercises the modern rule.
-   Verdict: the 2019 spec said (or was read as) the old rule; the assignment
-   text moved after 2019. Still a fix against our 2023 target: adopt the
-   modern rule.
-2. **`type`/`enum` declarations are vintage-correct, not an extension.** The
-   Spring 2021 changelog shows type declarations were still in the language in
-   January 2021 and were then removed mid-semester: Rev 3 (3/2/21)
-   restructured `<type_declaration>`/enum, Rev 4 (3/4/21) "Removed type
-   declarations entirely from the language", Rev 5 (3/9/21) removed
-   identifier-as-type-mark. So the 2019 assignment had them, this repo's
-   custom test (`custom_math.src`, `global type tester is integer;`) uses
-   them, and the code's support (parser.cpp:386-390, 1416) matches its spec.
-   Decision going forward: targeting the 2023 doc means dropping them (or
-   keeping as a documented extension).
+1. **Global visibility was correct for the 2019 vintage — high confidence.**
+   The code makes a program-level declaration visible inside procedures only
+   when literally prefixed `global` (parser.cpp:369-373, lookup at
+   parser.cpp:3304-3316). That is the rule as *written verbatim* in every
+   recovered pre-2019 spec (2013, 2016 Rev 1, 2018 Rev 5: "…visible except
+   for those variables and functions in the outermost scope prefixed with the
+   global reserved word"). The modern rule (all outermost-scope declarations
+   are global) appears only from 2021 on, and the Spring 2021 changelog shows
+   the scoping text being "clarified" twice that semester (Rev 2: 2/18/21,
+   Rev 6: 3/11/21), then again in the Jan-2024 rewrite. Corroborating 2019
+   artifact: the professor's own test programs (testPgms/, committed to this
+   repo in 2019) follow the old discipline exclusively — every variable
+   referenced inside a procedure body is explicitly `global`. Verdict: the
+   assignment changed after 2019; this code implemented its spec faithfully.
+   Still a fix against our 2023 target: adopt the modern rule.
+2. **`type`/`enum` declarations are vintage-correct, not an extension.** They
+   are absent from the 2018 Rev 5 grammar, present in this repo's 2019 code
+   and the 2019 custom test (`custom_math.src`, `global type tester is
+   integer;`), still present in the January 2021 doc, and then removed
+   mid-Spring-2021 (changelog Rev 3: 3/2/21 restructure; Rev 4: 3/4/21
+   "Removed type declarations entirely from the language"). The feature
+   existed essentially only in the 2019-2020 window — precisely this code's
+   era. Decision going forward: targeting the 2023 doc means dropping them
+   (or keeping as a documented extension).
+
+Bonus lineage fact: the language was **substantially redesigned between
+Spring 2018 and this code's ~2019 offering** (2018 still had `<type_mark>
+<identifier>` declarations, untyped procedures, `char`, `[lower:upper]`
+bounds, and out-parameter builtins; this repo's code and the professor's 2019
+test programs are all fully modern-grammar). The 2019 cohort implemented the
+redesigned language's first iteration — which also explains why its spec
+needed clarifying for several offerings afterward.
 
 ## 2. Crashes and hangs (5 distinct)
 

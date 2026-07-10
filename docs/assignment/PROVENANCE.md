@@ -44,3 +44,26 @@ on every historic UC domain checked. The best available lineage evidence:
 Treat `2023-snapshot/` as "almost certainly the 2019 spec, unverifiable
 byte-for-byte"; use `2024-current/` for its cleaner wording when finishing the
 compiler.
+
+## Language lineage (reconstructed 2026-07-10)
+
+`earlier-vintages/` holds spec PDFs recovered from other students' public
+repos, establishing the full timeline:
+
+| Vintage | Source repo | Key traits |
+|---|---|---|
+| 2013 (`projectLanguage-2013.pdf`) | ajalt/eece6083-compiler | Untyped procedures, old grammar |
+| Spring 2016 Rev 1 (`projectLanguage-2016-rev1.pdf`) | mimpers/Compiler-in-C- (AndrewAlbert/Compiler-Theory identical) | Same old lineage; explicit-`global` visibility rule (verbatim: "…visible except for those variables and functions in the outermost scope prefixed with the global reserved word") |
+| Spring 2018 Rev 5 (`projectLanguage-2018-rev5.pdf`) | santacml/Hello_Compiler | Still old grammar: `<type_mark> <identifier>` declarations, `procedure <id> (params)` with NO return type, `char` type, `[lower:upper]` array bounds, out-parameter builtins (`getInteger(integer val out)`), explicit-`global` rule, no type/enum declarations |
+| **~2019 (this repo's class)** | — no copy survives online — | **The redesign cohort**: this repo's code + the professor's 2019 test programs (committed here in 2019) witness the modern grammar (typed procedures, `variable <id> : <type_mark>`, value-returning builtins, single `[bound]`) PLUS type/enum declarations PLUS the old explicit-`global` rule |
+| Spring 2021 Rev 6 (`projectLanguage-2021-rev6.pdf`) | BStarcheus/compiler | Modern grammar; changelog shows type declarations restructured 3/2/21 and **removed entirely 3/4/21**, global scoping "clarified" 2/18/21 and 3/11/21 |
+| 2023/2024 (`../2023-snapshot/`, `../2024-current/`) | professor's site | Modern grammar, no type/enum, modern all-outermost-is-global rule |
+
+Conclusions: (1) the language was substantially redesigned between Spring 2018
+and this repo's ~2019 offering; (2) type/enum declarations existed essentially
+only in the 2019-2020 window (added with the redesign, removed 3/4/21) — this
+repo's support for them is vintage-correct; (3) the explicit-`global`
+visibility rule is stated verbatim in every recovered pre-2019 spec and was
+"clarified" into the modern all-outermost-is-global rule during Spring 2021 —
+this repo's implementation of the old rule was almost certainly correct for
+its vintage.
