@@ -77,6 +77,7 @@ public:
     void generate_error_report(std::string error_message, int line_number);
     void clear_error_reports();
     void print_errors();
+    int error_count();
 
     //parsing parts of the program
     bool parse_program();

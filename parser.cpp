@@ -11,7 +11,7 @@ parser::parser(std::string file_to_parse)
     valid_parse = parse_program();
     if (valid_parse)
     {
-        if (errors_occured)
+        if (!error_reports.empty())
         {
             std::cout << "The program parsed successfully with errors" << std::endl;
         }
@@ -124,6 +124,11 @@ void parser::print_errors()
     }
 }
 
+int parser::error_count()
+{
+    return error_reports.size();
+}
+
 //ready for testing
 //refactored 1 time
 bool parser::parse_program()
@@ -217,7 +222,7 @@ bool parser::parse_program_body()
 {
     //this tracks the state of the parser
     parser_state state = S_PROGRAM_BODY;
-    bool valid_parse;
+    bool valid_parse = false;
     //keeps parsing until keyword begin is found
     while (Current_parse_token_type != T_BEGIN)
     {
@@ -537,7 +542,7 @@ bool parser::parse_procedure_body()
 {
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_BODY;
-    bool valid_parse;
+    bool valid_parse = false;
     //must be able to parse declarations until T_BEGIN is found
     while (Current_parse_token_type != T_BEGIN)
     {
@@ -898,7 +903,7 @@ bool parser::parse_type_mark(std::string identifier_name, int context)
         }
         if (context == 2)
         {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_INT, current_scope_id);
+            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_BOOL, current_scope_id);
         }
         Current_parse_token = Get_Valid_Token();
         valid_parse = true;
@@ -1781,7 +1786,7 @@ bool parser::parse_loop_statement()
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
-    bool valid_parse;
+    bool valid_parse = false;
     if (Current_parse_token_type == T_LPARAM)
     {
         //grabs what should be an identifier
@@ -2006,6 +2011,9 @@ token_and_status parser::parse_expression()
         Current_parse_token = Get_Valid_Token();
         arithop_parse = parse_arithOp();
         valid_parse = arithop_parse.valid_parse;
+        generate_error_report("Missing left operand before \"&\" operator");
+        errors_occured = true;
+        valid_parse = false;
     }
     //meaning that this is <expression>|<arithOp> rather than just <arithOp>
     else if (Current_parse_token_type == T_VERTICAL_BAR)
@@ -2014,6 +2022,9 @@ token_and_status parser::parse_expression()
         Current_parse_token = Get_Valid_Token();
         arithop_parse = parse_arithOp();
         valid_parse = arithop_parse.valid_parse;
+        generate_error_report("Missing left operand before \"|\" operator");
+        errors_occured = true;
+        valid_parse = false;
     }
     //else it was just an <arithOp>
     else if (Current_parse_token_type == T_NOT)
@@ -2149,7 +2160,7 @@ token_and_status parser::parse_relation()
     token_and_status term_parse;
     //this tracks the state of the parser
     parser_state state = S_RELATION;
-    bool valid_parse;
+    bool valid_parse = false;
 
     if (Current_parse_token_type == T_LESS)
     {
@@ -2169,6 +2180,9 @@ token_and_status parser::parse_relation()
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
         }
+        generate_error_report("Missing left operand before \"<\" operator");
+        errors_occured = true;
+        valid_parse = false;
     }
     else if (Current_parse_token_type == T_GREATER)
     {
@@ -2188,6 +2202,9 @@ token_and_status parser::parse_relation()
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
         }
+        generate_error_report("Missing left operand before \">\" operator");
+        errors_occured = true;
+        valid_parse = false;
     }
     else if (Current_parse_token_type == T_ASSIGN)
     {
@@ -2198,6 +2215,9 @@ token_and_status parser::parse_relation()
             type_checker->feed_in_tokens(Current_parse_token);
             term_parse = parse_term();
             valid_parse = term_parse.valid_parse;
+            generate_error_report("Missing left operand before \"==\" operator");
+            errors_occured = true;
+            valid_parse = false;
         }
         else
         {
@@ -2268,8 +2288,18 @@ token_and_status parser::parse_relation()
                 }
                 else
                 {
-                    term_parse = parse_term();
-                    valid_parse = term_parse.valid_parse;
+                    //a bare "!" not followed by "=" is not a valid relational operator
+                    if (prev_token_type == T_EXCLAM)
+                    {
+                        generate_error_report("Invalid relational operator detected");
+                        errors_occured = true;
+                        valid_parse = false;
+                    }
+                    else
+                    {
+                        term_parse = parse_term();
+                        valid_parse = term_parse.valid_parse;
+                    }
                 }
             }
         }
@@ -2343,7 +2373,7 @@ token_and_status parser::parse_factor()
     token identifier_token;
     //this tracks the state of the parser
     parser_state state = S_FACTOR;
-    bool valid_parse;
+    bool valid_parse = false;
     if (Current_parse_token_type == T_LPARAM)
     {
         Current_parse_token = Get_Valid_Token();
@@ -2398,11 +2428,12 @@ token_and_status parser::parse_factor()
         type_checker->feed_in_tokens(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
         //means that it isn't a name
-        if (Current_parse_token_type == T_INTEGER_TYPE || Current_parse_token_type == T_FLOAT_TYPE)
+        if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
         {
             factor_parse.resolved_token = Current_parse_token;
             type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
+            valid_parse = true;
         }
         //else it is a name
         else if (Current_parse_token_type == T_IDENTIFIER)
@@ -2559,6 +2590,7 @@ bool parser::parse_argument_list()
     {
         if (Current_parse_token_type == T_COMMA)
         {
+            Current_parse_token = Get_Valid_Token();
             valid_parse = parse_argument_list();
         }
     }
@@ -3296,8 +3328,23 @@ void parser::update_scopes(bool increment_scope_id)
     else
     {
         Lexer->symbol_table.remove_scope(current_scope_id);
-        current_scope_id--;
-        number_of_scopes--;
+        //scope -1 is the reserved global pseudo-scope, do not let the ids underflow past 0
+        if (current_scope_id > 0)
+        {
+            current_scope_id--;
+        }
+        else
+        {
+            current_scope_id = 0;
+        }
+        if (number_of_scopes > 0)
+        {
+            number_of_scopes--;
+        }
+        else
+        {
+            number_of_scopes = 0;
+        }
     }
 }
 

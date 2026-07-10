@@ -169,6 +169,7 @@ bool SymbolTable::create_new_scope_table(int scope_id)
     ScopeTable *table_to_make;
     table_to_make = new ScopeTable(scope_id);
     scope_table[scope_id] = *table_to_make;
+    return true;
 }
 
 bool SymbolTable::resync_tables(int scope_id, token token_to_sync)

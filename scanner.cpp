@@ -156,6 +156,8 @@ token scanner::Get_token()
             *Current_token = last_sent_token;
             //sets this token type to an invalid token type
             Current_token->type = T_INVALID;
+            //ensures the EOF token carries the current line rather than 0
+            Current_token->line_found = current_line;
             break;
         }
         previous_char = current_char;
@@ -528,7 +530,7 @@ void scanner::string_value_builder()
 
     Current_token->charValue = '\0';
     Current_token->stringValue = build_string;
-    Current_token->line_found = current_line;
+    Current_token->line_found = quote_opener;
     Current_token->type = T_STRING_VALUE;
 }
 

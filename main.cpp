@@ -26,6 +26,10 @@ int main(int argc, char *argv[])
         //scanner *first_scan;
         //first_scan = new scanner(string_arg);
         //first_scan->test();
+        if (file_parser->error_count() > 0)
+        {
+            return 1;
+        }
         return 0;
     }
 }

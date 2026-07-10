@@ -239,7 +239,7 @@ bool Typechecker::second_relation_token_chains(token token_to_check)
         }
     }
 
-    //return true;
+    return true;
 }
 
 bool Typechecker::clear_tokens(bool move_second_to_first)
@@ -1207,6 +1207,8 @@ bool Typechecker::check_return_statement(token resolved_token, token procedure_t
         {
             return true;
         }
+        //compatible-but-not-equal types are valid returns per spec rule 14
+        return true;
     }
 }
 
@@ -1271,6 +1273,16 @@ typechecker_types Typechecker::convert_to_typechecker_types(token token_to_conve
 
         case TYPE_STRING:
             return_conversion = typechecker_string;
+
+            break;
+
+        case TYPE_NONE:
+            return_conversion = typechecker_null;
+
+            break;
+
+        default:
+            return_conversion = typechecker_null;
 
             break;
         }

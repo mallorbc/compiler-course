@@ -21,7 +21,7 @@ Tier definitions:
   infrastructure choices (the "requires guidance" tier, not the "most severe
   symptom" tier).
 
-## Minimal — 15 items (Batch 1 candidate)
+## Minimal — 15 items (Batch 1 — **DONE 2026-07-10**, see docs/notes/2026-07-10-batch1-results.md)
 
 | ID | Fix | Verify with |
 |----|-----|-------------|
