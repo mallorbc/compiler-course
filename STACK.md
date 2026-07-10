@@ -7,5 +7,8 @@ Nothing merges to master without Blake's explicit go.
 |---|--------|---------|-----------|-------------------|
 | 1 | `finish-compiler` | Baseline audit: verified defect inventory + spec provenance before any fixes (docs/audit/AUDIT.md) | Full build (3 -Wreturn-type warnings recorded); 14-program test matrix (6 crash — documented); 49 claims adversarially verified, 0 refuted; ~160 probe programs recorded with outcomes | Pending Blake review |
 
-Next planned layers (not yet started, order per AUDIT.md §11): crash fixes →
-test harness → parser correctness → type system → codegen → runtime.
+Next planned layers (not yet started; queue in docs/audit/FIX-TIERS.md):
+Batch 1 minimal-tier fixes (15) → Batch 2 test harness → Batch 3 low-tier
+fixes (16) → medium items individually → TY-2 type-propagation rebuild
+(design doc first) → codegen → runtime. Critical-tier decisions pending
+Blake: type/enum policy, codegen target.
