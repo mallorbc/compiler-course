@@ -39,17 +39,35 @@ program`, nested `/* */` comments, case-insensitive identifiers, procedure
 calls as expression factors. The 2023 snapshot in `docs/assignment/` is the
 right document to finish against.
 
-Two nuances:
+Two nuances — both resolved by the Spring 2021 spec's own revision changelog
+(visible in the 2021 "Revision 6" PDF committed by a 2021 student; see
+PROVENANCE):
 
-1. **Global visibility follows the 2013 rule** — a program-level declaration is
-   only visible inside procedures when literally prefixed `global`
-   (parser.cpp:369-373, lookup at parser.cpp:3304-3316). The 2023/2024 spec
-   makes all outermost-scope declarations global regardless. This is a real
-   defect against our target spec, but it is a legacy-rule holdover, not a
-   random bug. (Fix = adopt the 2023 rule.)
-2. **`type`/`enum` declarations** (parser.cpp:386-390, 1416) appear in *none*
-   of the three spec vintages — likely a 2019-spec feature lost to time or an
-   extension. Decision needed: keep as extension or drop.
+1. **Global visibility was likely correct for the 2019 vintage.** The code
+   makes a program-level declaration visible inside procedures only when
+   literally prefixed `global` (parser.cpp:369-373, lookup at
+   parser.cpp:3304-3316) — the rule as written in the 2013 spec. The modern
+   rule (all outermost-scope declarations are global) demonstrably needed
+   clarifying *twice* in Spring 2021 — changelog: Rev 2 (2/18/21) "Clarified
+   global variables and scoping", Rev 6 (3/11/21) "Clarified scoping rules" —
+   and again in the Jan-2024 rewrite (the added forward-reference sentence).
+   Corroborating 2019 artifact: the professor's own test programs
+   (testPgms/, committed to this repo in 2019) follow the old discipline
+   exclusively — every variable referenced inside a procedure body is
+   explicitly `global`; no professor program ever exercises the modern rule.
+   Verdict: the 2019 spec said (or was read as) the old rule; the assignment
+   text moved after 2019. Still a fix against our 2023 target: adopt the
+   modern rule.
+2. **`type`/`enum` declarations are vintage-correct, not an extension.** The
+   Spring 2021 changelog shows type declarations were still in the language in
+   January 2021 and were then removed mid-semester: Rev 3 (3/2/21)
+   restructured `<type_declaration>`/enum, Rev 4 (3/4/21) "Removed type
+   declarations entirely from the language", Rev 5 (3/9/21) removed
+   identifier-as-type-mark. So the 2019 assignment had them, this repo's
+   custom test (`custom_math.src`, `global type tester is integer;`) uses
+   them, and the code's support (parser.cpp:386-390, 1416) matches its spec.
+   Decision going forward: targeting the 2023 doc means dropping them (or
+   keeping as a documented extension).
 
 ## 2. Crashes and hangs (5 distinct)
 
