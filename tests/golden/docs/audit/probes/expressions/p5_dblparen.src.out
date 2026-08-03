@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 5: If statements must resolve to either type Bool or Integer
+

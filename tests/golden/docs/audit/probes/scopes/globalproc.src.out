@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 7: Procedure is of type "Integer" which is not compatible with return type of ""
+

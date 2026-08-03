@@ -1,0 +1,5 @@
+The program parsed successfully with errors
+Error on line 4: Missing ")" expected for if statment
+
+Error on line 5: Missing expected keyword "then" for if statements
+

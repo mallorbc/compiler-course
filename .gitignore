@@ -1,2 +1,5 @@
 *.o
 compiler
+tests/unit_tests
+*.d
+__pycache__/

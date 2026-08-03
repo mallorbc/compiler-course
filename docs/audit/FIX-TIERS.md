@@ -80,7 +80,7 @@ Tier definitions:
 
 | ID | Work | Subsumes |
 |----|------|----------|
-| TY-2 | **Type-propagation rebuild**: each `parse_*` expression function returns its synthesized type; retire the `feed_in_tokens` accumulator side-channel; real assignment/return/condition checking on top | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), SIL-2 (assignment checking — its stub+discard can only be truly fixed here; a same-type-only stopgap is possible earlier if wanted) |
+| TY-2 | **Type-propagation rebuild**: each `parse_*` expression function returns its synthesized type; retire the `feed_in_tokens` accumulator side-channel; real assignment/return/condition checking on top | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry), SIL-2 (assignment checking — its stub+discard can only be truly fixed here; a same-type-only stopgap is possible earlier if wanted) |
 | TY-8 | **Arrays end-to-end**: record `is_array`+bound at declaration (parser.cpp:1289), index-must-be-integer, whole-array op rules per spec §14; runtime bounds checks land with codegen | design how array types ride through TY-2's propagation |
 
 ## Critical — 3 items (blocked on Blake)
@@ -90,6 +90,43 @@ Tier definitions:
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
 | CODEGEN | Target choice — LLVM IR vs "restricted C" output — then the full B-rung build | biggest remaining scope; needs its own design doc + layer plan |
 | RUNTIME | The 9 builtins (getInteger…sqrt) + runtime system (A rung) | shape depends on CODEGEN choice; includes predeclaring builtins in the symbol table |
+
+## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
+
+New defects, found while writing unit tests and adversarially verifying the
+harness. Each is pinned by a `KNOWN-BUG <id>` doctest case (tests/unit/) that
+asserts the current buggy behaviour and gets flipped in the fixing commit:
+
+| ID | Tier | Defect |
+|----|------|--------|
+| LX-6 | Minimal | A number token ending a line is stamped one line late: `build_number_token` counts the terminating newline before setting `line_found` (scanner.cpp:395-416). Fold into the ER-3 line-attribution batch. |
+| TY-10 | — (subsumed by TY-2) | `token_types_compatible_at_all` is asymmetric: `ident<float>` on the left accepts a *string* or *bool* literal on the right (Typechecker.cpp:891-913) while the mirrored pair is rejected. |
+| TY-11 | Minimal | `give_token_type_name(typechecker_null)` returns `""` — missing switch case, flagged by the build's one `-Wswitch` warning (Typechecker.cpp:1151). Source of the `type ""` wording in current diagnostics. |
+| CLI-1 | Low | `./compiler <nonexistent path>` infinite-loops: a failed `open` sets failbit, not eofbit, so `Get_token`'s `source.eof()` guard never trips (verified hang; no CLI path — no-args or bad-path — has any test coverage). Guard in main.cpp or the scanner ctor, then add coverage. |
+
+Already-filed defects newly pinned by unit tests: SIL-8 (the `next_char = '\0'`
+priming sets `error_detected` on every file, even clean ones), LX-1, LX-2.
+
+Also recorded: the `-Wall -Wextra` flags added in Batch 2 surface **41
+warnings** (33 unused-variable, 3 unused-parameter, 2 sign-compare, 1 each
+unused-but-set / switch / comment). Two are live defect evidence: the
+`-Wswitch` is TY-11 and `parser.cpp:1585 unused 'types_match'` is SIL-2's
+discarded result. Warning cleanup = **WARN-1 (Low)**, natural companion to
+Batch 3.
+
+Test-infrastructure follow-ups (not compiler defects; queue as touched):
+
+- TESTS-1 (Low): golden coverage for CLI paths (no args, nonexistent file) —
+  blocked on CLI-1's fix defining sane behaviour to record.
+- TESTS-2 (Low): SymbolTable/ScopeTable unit tests — both are standalone-safe
+  (no parser back-pointer) and encode the scope-id-reuse and global-(-1)
+  gotchas TY-2/codegen will lean on.
+- TESTS-3 (Low): CI — run `make test` on push so the gate outlives attention.
+- TESTS-4 (Low): record build config (CXXFLAGS, g++ version) in the manifest;
+  the baseline is only valid for the default `-g` build (`-O2` moves 13
+  UB-carrying programs — see tests/README.md).
+- TESTS-5 (defer): cache unit-test objects (doctest.h recompiles every run).
+- TESTS-6 (defer): distinct exit code for worker infrastructure exceptions.
 
 ## Suggested batch order
 

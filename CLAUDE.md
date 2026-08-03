@@ -11,19 +11,28 @@ The assignment PDFs live in `docs/assignment/`: `projectLanguage.pdf` (the BNF g
 ## Commands
 
 ```sh
-make                # builds ./compiler (plain g++ -g, no optimization)
-make clean          # removes *.o and compiler
+make                # builds ./compiler (g++ -g -Wall -Wextra -Werror=return-type, no optimization)
+make clean          # removes *.o, compiler, tests/unit_tests
+make unit           # builds + runs the doctest unit suite (tests/unit/)
+make check          # golden-file regression run: all 177 test programs vs recorded baseline (~2s)
+make test           # unit + check — run this before and after any change
 ./compiler <file.src>   # compile one source file; diagnostics go to stdout
-./test_all.sh       # rebuilds, then runs every program in testPgms/ (slow: sleeps + clears between tests)
+python3 tests/run_golden.py --update   # re-record the golden baseline after an INTENDED behavior change (review the diff it prints)
+./test_all.sh       # legacy manual eyeball-runner (sleeps + clears between tests); superseded by make check
 ```
 
-To run a single test, build and invoke directly, e.g. `./compiler testPgms/correct/math.src`. Test programs live in `testPgms/correct/` (professor-provided, expected to pass), `testPgms/custom/`, and `testPgms/fail/` (expected to produce errors). The exit code is always 0 whether or not compile errors were reported — check stdout, not the exit code. Exit code 132 means the compiler itself crashed (see Known broken state).
+The golden baseline (`tests/manifest.json` + `tests/golden/`) records **current** behavior, bugs included — a red `make check` means behavior *changed*, not that the compiler is wrong. Intended changes are re-recorded with `--update` and the diff reviewed in the commit. See `tests/README.md`.
 
-## Known broken state (verified 2026-07)
+To run a single test, build and invoke directly, e.g. `./compiler testPgms/correct/math.src`. Test programs live in `testPgms/correct/` (professor-provided), `testPgms/custom/`, `testPgms/fail/`, and ~160 audit regression probes under `docs/audit/probes/`. Since Batch 1 the exit code is truthful: 0 = no errors reported, 1 = errors reported, ≥128 = the compiler itself crashed. Note the `correct/` directory name is not authoritative — three of its programs legitimately report errors today (`logicals.src`, `test1.src`, `test1b.src`).
 
-- Several "correct" test programs currently **crash the compiler with SIGILL (exit 132)**, e.g. `math.src` and `logicals.src`. Cause: `Typechecker::second_relation_token_chains` (Typechecker.cpp) is a non-void function whose intended `return true;` is commented out, so control falls off the end (UB; g++ emits a trap). It triggers on two-character relational operators (`==`, `!=`, `<=`, `>=`), inconsistently because it is UB. The build's three `-Wreturn-type` warnings (this function, `SymbolTable::create_new_scope_table`, `Typechecker::check_return_statement`) all mark this same class of bug.
-- `Typechecker::check_assignment_statement` is a stub that always returns true — final LHS-vs-RHS assignment type checking never runs. `check_loop_statement` is dead code; `parse_loop_statement` calls `check_if_statement` instead, so loop-condition errors get if-statement wording.
+## Known broken state (updated 2026-08, post-Batch 1)
+
+Batch 1 (commit `ccef008`) fixed the 15 minimal-tier defects: the three missing-`return` UB crashes (SIGILL), silent accepts of invalid operators, untruthful exit codes, and all `-Wreturn-type` warnings. The full verified defect inventory is `docs/audit/AUDIT.md`; the remaining fix queue is `docs/audit/FIX-TIERS.md`. Still broken:
+
+- `docs/audit/probes/scanner/t_overflow.src` aborts (uncaught `std::stoi` out-of-range in scanner.cpp — CR-4), and five probe programs hang the compiler (CR-5/LX-3): `probes/resync/hang.src`, `probes/scanner/t_case.src`, `probes/scanner/t_number.src`, `probes/scopes/malformed_end_test.src`, `probes/scopes/minimal_hang_test.src`.
+- `Typechecker::check_assignment_statement` is a stub that always returns true — final LHS-vs-RHS assignment type checking never runs. `check_loop_statement` is dead code; `parse_loop_statement` calls `check_if_statement` instead, so loop-condition errors get if-statement wording. Both are slated for the TY-2 type-propagation rebuild (High tier).
 - Procedure calls are never validated against a declared signature (no lookup, no arity/type check). This is also how the built-in I/O procedures (`getInteger`, `putInteger`, etc.) used throughout testPgms "work" — they are not predeclared anywhere.
+- Type propagation is fundamentally stream-shaped, not tree-shaped (parens lose types, call return types don't propagate, unary ops desync the checker, for-conditions unchecked) — the TY-2 rebuild addresses this class.
 
 ## Architecture
 

@@ -1,0 +1,8 @@
+Error in resync start state
+The program had parsing errors
+Error on line 1: Expected keyword "Program" not found
+
+Error on line 1: Expected keywords "procedure","variable" "type", or "begin" not found
+
+Error on line 1: Unclosed block comment detected
+

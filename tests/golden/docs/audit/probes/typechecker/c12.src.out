@@ -1,0 +1,9 @@
+The program parsed successfully with errors
+Error on line 4: Error in expression
+
+Error on line 4: If statements must resolve to either type Bool or Integer
+
+Error on line 4: Missing ")" expected for if statment
+
+Error on line 5: Missing expected keyword "then" for if statements
+
