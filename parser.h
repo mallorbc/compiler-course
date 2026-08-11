@@ -5,6 +5,7 @@
 #include "IRBuilder.h"
 #include <iostream>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 #include "scanner.h"
@@ -73,6 +74,7 @@ public:
     bool debugging = false;
     //constructors for the parser
     parser(std::string parse_file);
+    ~parser();
 
     //data structures and methods for current tokens and look ahead tokens
     token Current_parse_token;
@@ -92,7 +94,7 @@ public:
     void collect_scanner_diagnostics();
 
     //Lexer object and the file that will be lexed by it
-    scanner *Lexer;
+    scanner *Lexer = nullptr;
     std::string parse_file;
 
     //data strucutres and methods for generating error reports
@@ -200,8 +202,16 @@ public:
     int declaration_scope(bool explicitly_global) const;
     void report_duplicate_declaration(const token &occurrence);
 
-    Typechecker *type_checker;
+    Typechecker *type_checker = nullptr;
     ir::IRBuilder *ir_builder = nullptr;
+
+private:
+    //Keep the original public raw seams while making their ownership explicit.
+    //The out-of-line destructor permits Typechecker to remain forward-declared
+    //when this header is reached through Typechecker.h's legacy include cycle.
+    std::unique_ptr<ir::IRBuilder> ir_builder_owner;
+    std::unique_ptr<scanner> lexer_owner;
+    std::unique_ptr<Typechecker> type_checker_owner;
 };
 
 #endif // !PARSER_H

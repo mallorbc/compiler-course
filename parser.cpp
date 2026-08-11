@@ -154,9 +154,12 @@ parser::parser(std::string file_to_parse)
     Current_parse_token.type = 9999;
     bool valid_parse;
     parse_file = file_to_parse;
-    ir_builder = new ir::IRBuilder();
-    Lexer = new scanner(parse_file);
-    type_checker = new Typechecker(this);
+    ir_builder_owner = std::make_unique<ir::IRBuilder>();
+    ir_builder = ir_builder_owner.get();
+    lexer_owner = std::make_unique<scanner>(parse_file);
+    Lexer = lexer_owner.get();
+    type_checker_owner = std::make_unique<Typechecker>(this);
+    type_checker = type_checker_owner.get();
     valid_parse = parse_program();
     ir_builder->finalize(valid_parse);
     if (valid_parse)
@@ -176,6 +179,8 @@ parser::parser(std::string file_to_parse)
     }
     print_errors();
 }
+
+parser::~parser() = default;
 
 //ready for testing; May have issues at the end of the program
 token parser::Get_Valid_Token()

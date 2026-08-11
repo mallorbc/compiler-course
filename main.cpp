@@ -105,13 +105,12 @@ int main(int argc, char *argv[])
     }
     source_file.close();
 
-    parser *file_parser;
-    file_parser = new parser(source_arg);
+    parser file_parser(source_arg);
 
     //scanner *first_scan;
     //first_scan = new scanner(source_arg);
     //first_scan->test();
-    if (file_parser->error_count() > 0)
+    if (file_parser.error_count() > 0)
     {
         if (emit_c || emit_native)
         {
@@ -124,24 +123,24 @@ int main(int argc, char *argv[])
     {
         return 0;
     }
-    if (file_parser->ir_status() != ir::ModuleStatus::Ready)
+    if (file_parser.ir_status() != ir::ModuleStatus::Ready)
     {
-        const char *status = file_parser->ir_status() == ir::ModuleStatus::Unsupported ?
+        const char *status = file_parser.ir_status() == ir::ModuleStatus::Unsupported ?
                                  "unsupported" : "invalid-ir";
         std::cerr << (emit_native ? "native" : "codegen") << ": " << status;
-        if (!file_parser->ir_reason().empty())
+        if (!file_parser.ir_reason().empty())
         {
-            std::cerr << ": " << file_parser->ir_reason();
+            std::cerr << ": " << file_parser.ir_reason();
         }
         std::cerr << "\n";
         return 1;
     }
     RestrictedCEmitter emitter;
-    const RestrictedCResult emitted = emit_native ? emitter.emit(file_parser->ir_module()) :
-        emitter.emit_to_file(file_parser->ir_module(), output_path);
-    if (emit_native && file_parser->Lexer != nullptr)
+    const RestrictedCResult emitted = emit_native ? emitter.emit(file_parser.ir_module()) :
+        emitter.emit_to_file(file_parser.ir_module(), output_path);
+    if (emit_native && file_parser.Lexer != nullptr)
     {
-        file_parser->Lexer->source.close();
+        file_parser.Lexer->source.close();
     }
     if (!emitted.succeeded())
     {
