@@ -1,10 +1,10 @@
 Error in resync start state
 The program had parsing errors
-Error on line 1: Numeric literal is out of range
-
 Error on line 0: Expected keyword "Program" not found
 
 Error on line 0: Expected keywords "procedure","variable" "type", or "begin" not found
 
-Error on line 2: Missing "." to end the program
+Error on line 1: Malformed numeric literal: multiple decimal points
+
+Error on line 1: Missing "." to end the program
 

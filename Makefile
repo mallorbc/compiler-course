@@ -3,7 +3,7 @@ CXX = g++
 #editing any header rebuilds every translation unit that includes it (the
 #hand-listed prerequisites below are incomplete, e.g. parser.h pulls in
 #scanner.h and Typechecker.h)
-CXXFLAGS = -g -Wall -Wextra -Werror=return-type -MMD -MP
+CXXFLAGS = -std=c++17 -g -Wall -Wextra -Werror=return-type -MMD -MP
 
 #everything except main.o, so the unit test binary can supply its own main
 CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o
@@ -42,15 +42,19 @@ $(UNIT_BIN): $(UNIT_SRCS) $(CORE_OBJS) tests/vendor/doctest.h
 unit: $(UNIT_BIN)
 	./$(UNIT_BIN)
 
+#checks process-level CLI behavior with only the Python standard library
+cli: compiler
+	python3 tests/test_cli.py
+
 #runs the golden output tests over the programs in testPgms/
 check: compiler
 	python3 tests/run_golden.py
 
-test: unit check
+test: unit cli check
 
 clean:
 	rm -f *.o *.d compiler $(UNIT_BIN) $(UNIT_BIN).d
 
-.PHONY: clean unit check test
+.PHONY: clean unit cli check test
 
 -include $(wildcard *.d)

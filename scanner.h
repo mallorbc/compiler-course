@@ -24,6 +24,12 @@ enum char_type
     invalid_char = 4
 };
 
+struct scanner_diagnostic
+{
+    int line_found;
+    std::string message;
+};
+
 class scanner
 {
 public:
@@ -69,6 +75,9 @@ public:
     //builds floats and integer tokens
     void build_number_token();
 
+    //returns lexical diagnostics collected since the previous call
+    std::vector<scanner_diagnostic> take_diagnostics();
+
     //builds indentifiers and reserved words
     void build_string_token();
 
@@ -112,6 +121,9 @@ public:
     int quote_opener = 0;
     //tracks whether an error has occured
     bool error_detected = false;
+
+    //lexical errors are collected here so the parser can report and count them
+    std::vector<scanner_diagnostic> diagnostics;
 
     //used to trigger debug statements
     bool debug = false;

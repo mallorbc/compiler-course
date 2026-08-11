@@ -77,6 +77,31 @@ std::vector<token> scan_all(const std::string &contents)
     return tokens;
 }
 
+struct scan_result
+{
+    std::vector<token> tokens;
+    std::vector<scanner_diagnostic> diagnostics;
+};
+
+scan_result scan_all_with_diagnostics(const std::string &contents)
+{
+    temp_source_file fixture(contents);
+    scanner lexer(fixture.name());
+    scan_result result;
+    while (result.tokens.size() < 128)
+    {
+        token scanned = lexer.Get_token();
+        result.tokens.push_back(scanned);
+        std::vector<scanner_diagnostic> latest = lexer.take_diagnostics();
+        result.diagnostics.insert(result.diagnostics.end(), latest.begin(), latest.end());
+        if (scanned.type == T_INVALID)
+        {
+            break;
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 TEST_CASE("scanner lowercases identifiers and matches reserved words in any case")
@@ -108,6 +133,56 @@ TEST_CASE("scanner reads integer and float literals with their values")
     CHECK(tokens[8].type == T_FLOAT_VALUE);
     CHECK(tokens[8].floatValue == doctest::Approx(3.5));
     CHECK(tokens[8].line_found == 2);
+}
+
+TEST_CASE("scanner reports integer and float overflow and reaches EOF")
+{
+    SUBCASE("integer overflow")
+    {
+        scan_result result = scan_all_with_diagnostics(
+            "99999999999999999999999999999999999999999;");
+
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].type == T_INTEGER_VALUE);
+        CHECK(result.tokens[0].intValue == 0);
+        CHECK(result.tokens[1].type == T_SEMICOLON);
+        CHECK(result.tokens[2].type == T_INVALID);
+        REQUIRE(result.diagnostics.size() == 1);
+        CHECK(result.diagnostics[0].line_found == 1);
+        CHECK(result.diagnostics[0].message == "Numeric literal is out of range");
+    }
+
+    SUBCASE("float overflow")
+    {
+        scan_result result = scan_all_with_diagnostics(
+            "99999999999999999999999999999999999999999.0;");
+
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].type == T_FLOAT_VALUE);
+        CHECK(result.tokens[0].floatValue == doctest::Approx(0.0));
+        CHECK(result.tokens[1].type == T_SEMICOLON);
+        CHECK(result.tokens[2].type == T_INVALID);
+        REQUIRE(result.diagnostics.size() == 1);
+        CHECK(result.diagnostics[0].line_found == 1);
+        CHECK(result.diagnostics[0].message == "Numeric literal is out of range");
+    }
+}
+
+TEST_CASE("scanner consumes and reports a multi-decimal numeric literal")
+{
+    scan_result result = scan_all_with_diagnostics("1.2.3; 4\n");
+
+    REQUIRE(result.tokens.size() == 4);
+    CHECK(result.tokens[0].type == T_FLOAT_VALUE);
+    CHECK(result.tokens[0].floatValue == doctest::Approx(0.0));
+    CHECK(result.tokens[1].type == T_SEMICOLON);
+    CHECK(result.tokens[2].type == T_INTEGER_VALUE);
+    CHECK(result.tokens[2].intValue == 4);
+    CHECK(result.tokens[3].type == T_INVALID);
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics[0].line_found == 1);
+    CHECK(result.diagnostics[0].message ==
+          "Malformed numeric literal: multiple decimal points");
 }
 
 TEST_CASE("scanner keeps the delimiters and the opening line of a string literal")

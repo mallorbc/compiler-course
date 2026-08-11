@@ -665,18 +665,22 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_number.src": {
-      "status": "TIMEOUT",
-      "timeout_sec": 2.0
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/scanner/t_number.src.out",
+      "stdout_bytes": 320,
+      "stdout_sha256": "2c39fd0fa4a55977eae61e7b4f297ad94139a00355d550f95caa1802e5ecb6e3",
+      "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_overflow.src": {
-      "status": "CRASH",
-      "exit_code": 134,
-      "signal": "SIGABRT",
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_overflow.src.out",
-      "stdout_bytes": 0,
-      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stderr_nonempty": true
+      "stdout_bytes": 301,
+      "stdout_sha256": "f2ae1fa97e92e6c75957f939b19c08acf12ea17155e54dbb2e75bdb9cee10c81",
+      "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_simple.src": {
       "status": "ERRORS",

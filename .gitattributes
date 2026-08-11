@@ -1,4 +1,4 @@
 # Golden files and test inputs are compared byte-exactly; no EOL translation ever.
-tests/golden/** -text
+tests/golden/** -text whitespace=-blank-at-eof
 *.src -text
 tests/manifest.json -text

@@ -65,6 +65,7 @@ public:
     //vector that could be used to build up a queue of tokens
     std::vector<token> Look_ahead_tokens;
     token Get_Valid_Token();
+    void collect_scanner_diagnostics();
 
     //Lexer object and the file that will be lexed by it
     scanner *Lexer;

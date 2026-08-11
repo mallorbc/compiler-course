@@ -35,7 +35,9 @@ token parser::Get_Valid_Token()
     if (Current_parse_token.type == 9999)
     {
         Current_parse_token = Lexer->Get_token();
+        collect_scanner_diagnostics();
         Next_parse_token = Lexer->Get_token();
+        collect_scanner_diagnostics();
         Current_parse_token_type = Current_parse_token.type;
         Next_parse_token_type = Next_parse_token.type;
     }
@@ -47,16 +49,29 @@ token parser::Get_Valid_Token()
         Current_parse_token = Next_parse_token;
         Current_parse_token_type = Next_parse_token_type;
         Next_parse_token = Lexer->Get_token();
+        collect_scanner_diagnostics();
         Next_parse_token_type = Next_parse_token.type;
         //for some reason random junk sometimes appears
         while (Next_parse_token_type > T_INVALID || Next_parse_token_type < 0)
         {
             Next_parse_token = Lexer->Get_token();
+            collect_scanner_diagnostics();
             Next_parse_token_type = Next_parse_token.type;
         }
     }
     // Lexer->symbol_table.update_token_scope_id(Current_parse_token, current_scope_id);
     return Current_parse_token;
+}
+
+void parser::collect_scanner_diagnostics()
+{
+    std::vector<scanner_diagnostic> collected = Lexer->take_diagnostics();
+    for (size_t i = 0; i < collected.size(); i++)
+    {
+        add_error_report("Error on line " +
+                         std::to_string(collected[i].line_found) + ": " +
+                         collected[i].message);
+    }
 }
 
 //ready for testing

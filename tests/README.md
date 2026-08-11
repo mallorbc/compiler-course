@@ -21,7 +21,7 @@ python3 tests/run_golden.py --jobs 1             # serial (default: 8 concurrent
 
 Verify mode prints a line only for programs that diverge, then a summary table
 by status class. Full suite: ~2s wall at the default 8 workers (~12s serial).
-`--update` takes ~32s (it re-runs the five known hangs at the full 30s budget
+`--update` takes ~32s (it re-runs the four known hangs at the full 30s budget
 so a hang that starts terminating gets honestly re-recorded).
 
 Python 3.12, standard library only. No pytest, no third-party anything.
@@ -92,15 +92,14 @@ Manifest entry, verbatim:
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
 | `OK`      | exited 0                                 | 89             |
-| `ERRORS`  | exited nonzero, terminated normally      | 82             |
-| `CRASH`   | killed by a signal (exit code is 128+n)  | 1              |
-| `TIMEOUT` | still running when the budget expired    | 5              |
+| `ERRORS`  | exited nonzero, terminated normally      | 84             |
+| `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
+| `TIMEOUT` | still running when the budget expired    | 4              |
 
-The one `CRASH` is `docs/audit/probes/scanner/t_overflow.src`: an uncaught
-`std::stoi` `out_of_range` aborts the process (SIGABRT). Its stdout is empty and
-its stderr message is checked only for being non-empty, not for content.
+There are currently no recorded `CRASH` programs. Numeric conversion overflow
+now terminates normally with a counted lexical diagnostic.
 
-The five `TIMEOUT` programs never terminate today, so there is no meaningful
+The four `TIMEOUT` programs never terminate today, so there is no meaningful
 stdout to record and no golden file exists for them. They run under a 2-second
 budget instead of the usual 30 (the default is generous because signal-killed
 programs pay ~1s of serialized core-dump handling on this host; terminating
@@ -138,7 +137,7 @@ produce identical results.
 contracts that survive the planned TY-2 typechecker rebuild: the scanner's
 token stream (`test_scanner.cpp`), `Tolower_string`, and the
 provably-parser-free typechecker predicates (`test_support.cpp`). `make test`
-runs both layers.
+runs the unit, CLI, and golden layers.
 
 Conventions for adding unit tests:
 

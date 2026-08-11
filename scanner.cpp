@@ -1,5 +1,7 @@
 #include "scanner.h"
 
+#include <stdexcept>
+
 scanner::scanner()
 {
 }
@@ -357,28 +359,22 @@ void scanner::build_char_token()
 
 void scanner::build_number_token()
 {
-    int token_int_value;
-    float token_float_value;
+    int token_int_value = 0;
+    float token_float_value = 0.0f;
     bool is_float = false;
-    bool one_decimal = true;
-    //numbers are valid until a non numbber character is used, or multiple decimals are used
+    bool multiple_decimals = false;
+    const int literal_line = current_line;
+    //Consume the whole run even when it is malformed.  Returning before the
+    //second decimal used to discard a prefix and could leave the parser without
+    //a useful token with which to make progress.
     while (isdigit(next_char) || next_char == '.')
     {
-        if (current_char == '.' && !one_decimal)
-        {
-            if (debug)
-            {
-                std::cout << "ERROR: The number has more than one decimal" << std::endl;
-            }
-
-            //throw error
-            error_detected = true;
-            return;
-            //break;
-        }
         if (current_char == '.')
         {
-            one_decimal = false;
+            if (is_float)
+            {
+                multiple_decimals = true;
+            }
             is_float = true;
         }
         build_string = build_string + current_char;
@@ -399,9 +395,34 @@ void scanner::build_number_token()
             //is_slash_comment = false;
         }
     }
-    if (is_float)
+
+    if (multiple_decimals)
     {
-        token_float_value = std::stof(build_string);
+        diagnostics.push_back(scanner_diagnostic{
+            literal_line, "Malformed numeric literal: multiple decimal points"});
+        error_detected = true;
+        Current_token->floatValue = token_float_value;
+        Current_token->type = T_FLOAT_VALUE;
+        Current_token->line_found = current_line;
+    }
+    else if (is_float)
+    {
+        try
+        {
+            token_float_value = std::stof(build_string);
+        }
+        catch (const std::out_of_range &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Numeric literal is out of range"});
+            error_detected = true;
+        }
+        catch (const std::invalid_argument &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Malformed numeric literal"});
+            error_detected = true;
+        }
         //assign token type and value here
         Current_token->floatValue = token_float_value;
         Current_token->type = T_FLOAT_VALUE;
@@ -409,12 +430,34 @@ void scanner::build_number_token()
     }
     else
     {
-        token_int_value = std::stoi(build_string);
+        try
+        {
+            token_int_value = std::stoi(build_string);
+        }
+        catch (const std::out_of_range &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Numeric literal is out of range"});
+            error_detected = true;
+        }
+        catch (const std::invalid_argument &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Malformed numeric literal"});
+            error_detected = true;
+        }
         //assign token type and value here
         Current_token->intValue = token_int_value;
         Current_token->type = T_INTEGER_VALUE;
         Current_token->line_found = current_line;
     }
+}
+
+std::vector<scanner_diagnostic> scanner::take_diagnostics()
+{
+    std::vector<scanner_diagnostic> collected;
+    collected.swap(diagnostics);
+    return collected;
 }
 
 //should probably return a string so that later checks on it can be done for reserved words
