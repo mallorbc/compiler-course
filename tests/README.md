@@ -1,6 +1,6 @@
 # Golden-file regression harness
 
-`tests/run_golden.py` runs `./compiler` over all 189 test programs in the repo
+`tests/run_golden.py` runs `./compiler` over all 195 test programs in the repo
 and compares what happens against a recorded baseline. It is the tripwire for
 "did my change alter compiler behaviour anywhere I did not intend?"
 
@@ -33,7 +33,7 @@ such as the scanner and parser remains project-owned.
 ## What is covered
 
 Every `*.src` found recursively under `testPgms/` (14) and `docs/audit/probes/`
-(175) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
+(181) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
 holds one stray non-`.src` file, which the `*.src` glob naturally excludes.
 
 **The baseline is only valid for the default build** (plain `make`: `-g`, no
@@ -95,8 +95,8 @@ Manifest entry, verbatim:
 
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
-| `OK`      | exited 0                                 | 98             |
-| `ERRORS`  | exited nonzero, terminated normally      | 91             |
+| `OK`      | exited 0                                 | 105            |
+| `ERRORS`  | exited nonzero, terminated normally      | 90             |
 | `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
 | `TIMEOUT` | still running when the budget expired    | 0              |
 
@@ -130,19 +130,23 @@ produce identical results.
 `make unit` builds and runs `tests/unit_tests` from `tests/unit/*.cpp` — a
 [doctest](https://github.com/doctest/doctest) suite (vendored single header in
 `tests/vendor/`, see its README for provenance). It pins the **stable**
-contracts that survive the planned TY-2 typechecker rebuild: the scanner's
-token stream (`test_scanner.cpp`), `Tolower_string`, and the
-provably-parser-free typechecker predicates (`test_support.cpp`). `make test`
-runs the unit, CLI, and golden layers.
+contracts around the handwritten scanner/parser: the scanner's token stream
+(`test_scanner.cpp`), `Tolower_string`, synthesized-expression helpers, and
+parser-backed semantic cases. `make test` runs the unit, CLI, and golden
+layers.
 
 Conventions for adding unit tests:
 
-- **Safety rule:** a default-constructed `Typechecker` has an *uninitialized*
-  `parser_parent` back-pointer, and every error path dereferences it. Only test
-  typechecker functions you have verified never touch `parser_parent` (the
+- **Safety rule:** a default-constructed `Typechecker` now initializes its
+  `parser_parent` back-pointer to `nullptr`, but
+  most legacy error paths still require a parser-backed instance. Only test
+  typechecker functions you have verified never dereference the parent (the
   safety argument for the currently-tested surface is written up at the top of
-  `test_support.cpp`). Do not test the `feed_in_tokens` accumulator — it is
-  scheduled for deletion in TY-2.
+  `test_support.cpp`). The isolated TY-2E helper-preservation regression is an
+  explicit exception because those helpers guard a null parent. Do not exercise
+  the legacy `feed_in_tokens` accumulator as an integration path: TY-2E removed
+  it from live expression parsing, and it remains only as compatibility surface
+  pending a later cleanup.
 - Tests named `KNOWN-BUG ...` assert **current buggy behaviour** on purpose,
   citing the audit ID; when the bug is fixed, the failing test is flipped in
   the same commit. Fixture programs are written via `mkstemp` to `$TMPDIR` and

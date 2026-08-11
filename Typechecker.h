@@ -30,6 +30,27 @@ enum typechecker_types
     typechecker_null = 104
 };
 
+//These are semantic operations, not scanner tokens.  Keeping this small
+//internal vocabulary separate lets the parser assemble <=, >=, ==, and !=
+//without teaching the scanner artificial compound tokens.
+enum semantic_operator
+{
+    SEM_ADD,
+    SEM_SUBTRACT,
+    SEM_MULTIPLY,
+    SEM_DIVIDE,
+    SEM_LESS,
+    SEM_LESS_EQUAL,
+    SEM_GREATER,
+    SEM_GREATER_EQUAL,
+    SEM_EQUAL,
+    SEM_NOT_EQUAL,
+    SEM_AND,
+    SEM_OR,
+    SEM_NOT,
+    SEM_NEGATE
+};
+
 //this will be used to convert to a single type and for the base check
 struct token_types_and_status
 {
@@ -61,6 +82,18 @@ public:
     void suppress_current_statement();
     token_and_status is_valid_operation();
 
+    //The handwritten parser owns grammar traversal.  These helpers are a
+    //non-streaming semantic layer for the type of one already-parsed node;
+    //the returned token is a synthetic expression type, never a declaration.
+    token make_expression_result(data_types result_type, const token &anchor) const;
+    token_and_status check_unary_expression(semantic_operator operation,
+                                             const token &operator_token,
+                                             const token &operand);
+    token_and_status check_binary_expression(semantic_operator operation,
+                                              const token &operator_token,
+                                              const token &left_operand,
+                                              const token &right_operand);
+
     bool check_assignment_statement(token destination_token, token resolved_token);
     bool are_tokens_full();
     token_types_and_status token_types_compatible_at_all();
@@ -79,7 +112,7 @@ public:
     typechecker_types convert_to_typechecker_types(token token_to_convert);
 
     bool debugger = false;
-    parser *parser_parent;
+    parser *parser_parent = nullptr;
 
     bool type_error_occured = false;
     bool statement_suppressed = false;

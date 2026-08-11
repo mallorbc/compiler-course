@@ -66,6 +66,9 @@ public:
     //Monotonically records token-window advances so recovery loops can prove
     //that each iteration either changed grammar state or consumed input.
     std::size_t token_generation = 0;
+    //Tracks nested expression calls solely to avoid repeating a parent
+    //syntax-recovery diagnostic from an already-failed child expression.
+    std::size_t expression_depth = 0;
     //vector that could be used to build up a queue of tokens
     std::vector<token> Look_ahead_tokens;
     token Get_Valid_Token();
@@ -130,11 +133,12 @@ public:
 
     bool parse_bound();
     bool parse_number();
-    bool parse_name(token identifier_token);
+    token_and_status parse_name(token identifier_token);
 
-    bool parse_argument_list();
+    bool parse_argument_list(std::vector<token_and_status> &arguments);
 
-    bool parse_procedure_call();
+    token_and_status parse_procedure_call(const token &callee_occurrence,
+                                          const token_and_status &callee_result);
 
     bool resync_parser(parser_state state);
 
@@ -156,8 +160,6 @@ public:
     int next_scope_id = 1;
 
     //section for Typechecker
-    //token that is used for context
-    token Context_token;
     bool resolve_identifier_use(const token &occurrence, token &resolved_token,
                                 const std::string &kind = "identifier");
     bool resolve_procedure_use(const token &occurrence, token &resolved_token);

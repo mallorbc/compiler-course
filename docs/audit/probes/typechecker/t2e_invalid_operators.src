@@ -1,0 +1,10 @@
+program t2e_invalid_operators is
+variable i : integer;
+variable b : bool;
+begin
+    i := "s" + 1;
+    i := 1 & true | "s";
+    b := "a" < "b";
+    b := not "s";
+    i := -true;
+end program.

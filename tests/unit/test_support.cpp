@@ -46,6 +46,25 @@ token_types_and_status compatibility_of(token first, token second)
     return checker.token_types_compatible_at_all();
 }
 
+bool same_token(const token &left, const token &right)
+{
+    return left.type == right.type &&
+           left.line_found == right.line_found &&
+           left.column_found == right.column_found &&
+           left.global_scope == right.global_scope &&
+           left.scope_id == right.scope_id &&
+           left.intValue == right.intValue &&
+           left.stringValue == right.stringValue &&
+           left.boolValue == right.boolValue &&
+           left.floatValue == right.floatValue &&
+           left.charValue == right.charValue &&
+           left.first_token_on_line == right.first_token_on_line &&
+           left.identifer_type == right.identifer_type &&
+           left.procedure_params == right.procedure_params &&
+           left.identifier_data_type == right.identifier_data_type &&
+           left.is_array == right.is_array;
+}
+
 } // namespace
 
 TEST_CASE("Tolower_string lowercases every letter and leaves the rest alone")
@@ -149,4 +168,112 @@ TEST_CASE("the typechecker's type predicates, conversions, and names")
     CHECK(checker.convert_to_typechecker_types(literal_of(T_STRING_VALUE)) == typechecker_string);
     CHECK(checker.convert_to_typechecker_types(literal_of(T_TRUE)) == typechecker_bool);
     CHECK(checker.convert_to_typechecker_types(literal_of(T_FALSE)) == typechecker_bool);
+}
+
+TEST_CASE("TY-2E expression helpers synthesize independent result tokens")
+{
+    Typechecker checker;
+    token anchor;
+    anchor.line_found = 7;
+    anchor.column_found = 3;
+    anchor.first_token_on_line = true;
+    const token integer = checker.make_expression_result(TYPE_INT, anchor);
+    const token floating = checker.make_expression_result(TYPE_FLOAT, anchor);
+    const token boolean = checker.make_expression_result(TYPE_BOOL, anchor);
+    token operation;
+    operation.line_found = 9;
+
+    token_and_status int_plus_float = checker.check_binary_expression(
+        SEM_ADD, operation, integer, floating);
+    CHECK(int_plus_float.valid_parse);
+    CHECK(int_plus_float.semantic_valid);
+    CHECK(int_plus_float.resolved_token.type == T_IDENTIFIER);
+    CHECK(int_plus_float.resolved_token.identifer_type == I_NONE);
+    CHECK(int_plus_float.resolved_token.identifier_data_type == TYPE_FLOAT);
+    CHECK(int_plus_float.resolved_token.line_found == 7);
+    CHECK(int_plus_float.resolved_token.column_found == 3);
+    CHECK(int_plus_float.resolved_token.first_token_on_line);
+
+    token_and_status float_plus_int = checker.check_binary_expression(
+        SEM_ADD, operation, floating, integer);
+    CHECK(float_plus_int.semantic_valid);
+    CHECK(float_plus_int.resolved_token.identifier_data_type == TYPE_FLOAT);
+
+    token_and_status division = checker.check_binary_expression(
+        SEM_DIVIDE, operation, integer, integer);
+    CHECK(division.semantic_valid);
+    CHECK(division.resolved_token.identifier_data_type == TYPE_INT);
+
+    token_and_status logical_not = checker.check_unary_expression(SEM_NOT, operation, boolean);
+    CHECK(logical_not.semantic_valid);
+    CHECK(logical_not.resolved_token.identifier_data_type == TYPE_BOOL);
+
+    token_and_status ordering = checker.check_binary_expression(
+        SEM_LESS_EQUAL, operation, boolean, integer);
+    CHECK(ordering.semantic_valid);
+    CHECK(ordering.resolved_token.identifier_data_type == TYPE_BOOL);
+}
+
+TEST_CASE("TY-2E invalid helpers preserve the legacy accumulator without a parent")
+{
+    Typechecker checker;
+    CHECK(checker.parser_parent == nullptr);
+
+    token first;
+    first.type = T_IDENTIFIER;
+    first.line_found = 3;
+    first.column_found = 4;
+    first.global_scope = true;
+    first.scope_id = 7;
+    first.intValue = 11;
+    first.stringValue = "first";
+    first.boolValue = true;
+    first.floatValue = 1.25F;
+    first.charValue = 'f';
+    first.first_token_on_line = true;
+    first.identifer_type = I_VARIABLE;
+    first.procedure_params = {TYPE_INT, TYPE_BOOL};
+    first.identifier_data_type = TYPE_INT;
+    first.is_array = true;
+
+    token second = first;
+    second.line_found = 8;
+    second.stringValue = "second";
+    second.identifier_data_type = TYPE_BOOL;
+    second.procedure_params = {TYPE_FLOAT};
+
+    token relation_one = first;
+    relation_one.type = T_LESS;
+    relation_one.stringValue = "relation-one";
+    token relation_two = second;
+    relation_two.type = T_ASSIGN;
+    relation_two.stringValue = "relation-two";
+
+    checker.first_token = first;
+    checker.second_token = second;
+    checker.relation_tokens = {relation_one, relation_two};
+    const token saved_first = checker.first_token;
+    const token saved_second = checker.second_token;
+    const std::vector<token> saved_relations = checker.relation_tokens;
+
+    token operator_token;
+    operator_token.line_found = 12;
+    const token integer = checker.make_expression_result(TYPE_INT, first);
+    const token boolean = checker.make_expression_result(TYPE_BOOL, second);
+    const token_and_status invalid = checker.check_binary_expression(
+        SEM_AND, operator_token, integer, boolean);
+
+    CHECK(invalid.valid_parse);
+    CHECK_FALSE(invalid.semantic_valid);
+    CHECK(invalid.resolved_token.type == 0);
+    CHECK(invalid.resolved_token.identifier_data_type == TYPE_NONE);
+    CHECK(checker.statement_suppressed);
+    CHECK(checker.type_error_occured);
+    CHECK(same_token(checker.first_token, saved_first));
+    CHECK(same_token(checker.second_token, saved_second));
+    REQUIRE(checker.relation_tokens.size() == saved_relations.size());
+    for (std::size_t i = 0; i < saved_relations.size(); i++)
+    {
+        CHECK(same_token(checker.relation_tokens[i], saved_relations[i]));
+    }
 }

@@ -138,6 +138,10 @@ public:
 struct token_and_status
 {
     bool valid_parse = true;
+    //Parsing and semantic analysis deliberately have separate outcomes.  A
+    //well-formed expression can be semantically invalid, and callers must
+    //still consume the rest of its grammar production for recovery.
+    bool semantic_valid = false;
     token resolved_token;
 };
 #endif // !TOKEN_H

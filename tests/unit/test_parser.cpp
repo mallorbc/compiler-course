@@ -873,3 +873,142 @@ TEST_CASE("Stage 2A local declarations shadow builtin procedures")
     CHECK(local_get_integer.identifer_type == I_VARIABLE);
     CHECK(local_get_integer.identifier_data_type == TYPE_INT);
 }
+
+TEST_CASE("TY-2E synthesizes nested calls, parentheses, and exact operator results")
+{
+    temp_source_file fixture(
+        "program expressions is\n"
+        "procedure predicate : bool(variable value : integer)\n"
+        "begin\n"
+        "    return value > 0;\n"
+        "end procedure;\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable b : bool;\n"
+        "begin\n"
+        "    i := 7 / 2;\n"
+        "    f := 1 + 2.0;\n"
+        "    f := 2.0 + 1;\n"
+        "    i := (1 + 2) * 3;\n"
+        "    b := not true & false;\n"
+        "    i := not 3;\n"
+        "    f := -1.0;\n"
+        "    i := -i;\n"
+        "    b := (1 + 2) < 4;\n"
+        "    b := 3 <= 4;\n"
+        "    b := 5 > 4;\n"
+        "    b := 5 >= 4;\n"
+        "    b := \"a\" == \"b\";\n"
+        "    b := \"a\" != \"b\";\n"
+        "    b := predicate((1 + 2) * 3);\n"
+        "    b := predicate(1) & true;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+    CHECK_FALSE(parsed.type_checker->statement_suppressed);
+}
+
+TEST_CASE("TY-2E distinguishes syntax errors from semantic folds and resets suppression")
+{
+    temp_source_file fixture(
+        "program invalid is\n"
+        "variable i : integer;\n"
+        "variable b : bool;\n"
+        "begin\n"
+        "    i := 1 & true | \"s\";\n"
+        "    b := 1 < 2 < 3.0;\n"
+        "    i := \"s\" + 1;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 3);
+    CHECK(has_error(parsed, "Bitwise and logical \"&\" operations require two integers or two bools"));
+    CHECK(has_error(parsed, "Ordering relations require compatible integers, floats, or bools"));
+    CHECK(has_error(parsed, "Arithmetic operations must be between floats and integers"));
+    CHECK_FALSE(has_error(parsed, "no valid operations"));
+}
+
+TEST_CASE("TY-2E reports an invalid fold at the physical operator line")
+{
+    temp_source_file fixture(
+        "program lines is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    i := 1\n"
+        "        & true;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 1);
+    CHECK(has_error(parsed, "Error on line 5: Bitwise and logical \"&\" operations require two integers or two bools"));
+}
+
+TEST_CASE("TY-2E keeps unusual precedence and malformed logical right operands structural")
+{
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"i := 1 + 2 < 3;", "Arithmetic operations must be between floats and integers"},
+        {"b := true & not false;", "Invalid token for factor discovered"},
+        {"b := not not true;", "Invalid token for factor discovered"},
+        {"i := + 1;", "Missing left operand before \"+\" operator"},
+        {"i := 1 & & 2;", "Missing left operand before \"&\" operator"}};
+    for (const std::pair<std::string, std::string> &test_case : cases)
+    {
+        temp_source_file fixture(
+            "program precedence is\n"
+            "variable i : integer;\n"
+            "variable b : bool;\n"
+            "begin\n"
+            "    " + test_case.first + "\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(has_error(parsed, test_case.second));
+        CHECK(parsed.error_count() >= 1);
+    }
+}
+
+TEST_CASE("TY-2E keeps invalid call arguments safe and enum values focused")
+{
+    temp_source_file call_fixture(
+        "program calls is\n"
+        "procedure q : integer(variable first : integer, variable second : integer, variable third : bool)\n"
+        "begin\n"
+        "    return first;\n"
+        "end procedure;\n"
+        "variable a : integer;\n"
+        "begin\n"
+        "    a := q(missing, 1 + 2, not false) + 1;\n"
+        "    a := \"s\" + 1;\n"
+        "end program.\n");
+    captured_stdout call_capture;
+    parser calls(call_fixture.name());
+    call_capture.restore();
+
+    CHECK(calls.error_reports.size() == 2);
+    CHECK(has_error(calls, "Undeclared identifier \"missing\""));
+    CHECK(has_error(calls, "Arithmetic operations must be between floats and integers"));
+
+    temp_source_file enum_fixture(
+        "program enumtype is\n"
+        "type color is enum{red, green};\n"
+        "variable c : color;\n"
+        "variable b : bool;\n"
+        "begin\n"
+        "    b := c == c;\n"
+        "end program.\n");
+    captured_stdout enum_capture;
+    parser enum_program(enum_fixture.name());
+    enum_capture.restore();
+
+    CHECK(enum_program.error_reports.size() == 1);
+    CHECK(has_error(enum_program, "Identifier \"c\" has no resolved type"));
+}

@@ -26,6 +26,70 @@ int operation_line(const std::vector<token> &relation_tokens, const token &first
     return valid_line(first_token.line_found);
 }
 
+data_types expression_data_type(const token &value)
+{
+    if (value.type == T_IDENTIFIER)
+    {
+        return value.identifier_data_type;
+    }
+    switch (value.type)
+    {
+    case T_INTEGER_VALUE:
+        return TYPE_INT;
+    case T_FLOAT_VALUE:
+        return TYPE_FLOAT;
+    case T_STRING_VALUE:
+        return TYPE_STRING;
+    case T_BOOL_VALUE:
+    case T_TRUE:
+    case T_FALSE:
+        return TYPE_BOOL;
+    default:
+        return TYPE_NONE;
+    }
+}
+
+bool is_numeric(data_types value_type)
+{
+    return value_type == TYPE_INT || value_type == TYPE_FLOAT;
+}
+
+bool is_bool_or_integer(data_types value_type)
+{
+    return value_type == TYPE_BOOL || value_type == TYPE_INT;
+}
+
+void report_expression_error(Typechecker *checker, const std::string &message,
+                             const token &operator_token)
+{
+    if (checker->statement_suppressed)
+    {
+        return;
+    }
+    if (checker->parser_parent != NULL)
+    {
+        checker->parser_parent->errors_occured = true;
+        checker->parser_parent->generate_error_report(message,
+                                                      valid_line(operator_token.line_found));
+    }
+    //Expression folding is deliberately independent from the legacy token
+    //accumulator.  In particular, an invalid fold must not clear or otherwise
+    //mutate first_token, second_token, or relation_tokens.
+    checker->statement_suppressed = true;
+    checker->type_error_occured = true;
+}
+
+bool is_ordering_operation(semantic_operator operation)
+{
+    return operation == SEM_LESS || operation == SEM_LESS_EQUAL ||
+           operation == SEM_GREATER || operation == SEM_GREATER_EQUAL;
+}
+
+bool is_equality_operation(semantic_operator operation)
+{
+    return operation == SEM_EQUAL || operation == SEM_NOT_EQUAL;
+}
+
 } // namespace
 
 Typechecker::Typechecker()
@@ -177,6 +241,161 @@ void Typechecker::suppress_current_statement()
     clear_tokens(false);
     statement_suppressed = true;
     type_error_occured = true;
+}
+
+token Typechecker::make_expression_result(data_types result_type, const token &anchor) const
+{
+    token result;
+    result.type = T_IDENTIFIER;
+    result.identifer_type = I_NONE;
+    result.identifier_data_type = result_type;
+    result.line_found = valid_line(anchor.line_found);
+    result.column_found = anchor.column_found;
+    result.first_token_on_line = anchor.first_token_on_line;
+    result.global_scope = false;
+    result.scope_id = 0;
+    result.is_array = false;
+    return result;
+}
+
+token_and_status Typechecker::check_unary_expression(semantic_operator operation,
+                                                      const token &operator_token,
+                                                      const token &operand)
+{
+    token_and_status result;
+    result.valid_parse = true;
+    if (statement_suppressed)
+    {
+        return result;
+    }
+
+    const data_types operand_type = expression_data_type(operand);
+    data_types result_type = TYPE_NONE;
+    std::string error_message;
+    if (operation == SEM_NEGATE)
+    {
+        if (is_numeric(operand_type))
+        {
+            result_type = operand_type;
+        }
+        else
+        {
+            error_message = "Negative factors must be integers or floats";
+        }
+    }
+    else if (operation == SEM_NOT)
+    {
+        if (operand_type == TYPE_INT || operand_type == TYPE_BOOL)
+        {
+            result_type = operand_type;
+        }
+        else
+        {
+            error_message = "Bitwise and logical \"not\" operations require an integer or bool";
+        }
+    }
+    else
+    {
+        error_message = "Invalid unary expression operation";
+    }
+
+    if (!error_message.empty())
+    {
+        report_expression_error(this, error_message, operator_token);
+        return result;
+    }
+
+    result.resolved_token = make_expression_result(result_type, operator_token);
+    result.semantic_valid = true;
+    return result;
+}
+
+token_and_status Typechecker::check_binary_expression(semantic_operator operation,
+                                                       const token &operator_token,
+                                                       const token &left_operand,
+                                                       const token &right_operand)
+{
+    token_and_status result;
+    result.valid_parse = true;
+    if (statement_suppressed)
+    {
+        return result;
+    }
+
+    const data_types left_type = expression_data_type(left_operand);
+    const data_types right_type = expression_data_type(right_operand);
+    data_types result_type = TYPE_NONE;
+    std::string error_message;
+
+    if (operation == SEM_ADD || operation == SEM_SUBTRACT ||
+        operation == SEM_MULTIPLY || operation == SEM_DIVIDE)
+    {
+        if (is_numeric(left_type) && is_numeric(right_type))
+        {
+            result_type = left_type == TYPE_FLOAT || right_type == TYPE_FLOAT ?
+                              TYPE_FLOAT : TYPE_INT;
+        }
+        else
+        {
+            error_message = "Arithmetic operations must be between floats and integers";
+        }
+    }
+    else if (operation == SEM_AND || operation == SEM_OR)
+    {
+        if (left_type == TYPE_INT && right_type == TYPE_INT)
+        {
+            result_type = TYPE_INT;
+        }
+        else if (left_type == TYPE_BOOL && right_type == TYPE_BOOL)
+        {
+            result_type = TYPE_BOOL;
+        }
+        else
+        {
+            error_message = operation == SEM_AND ?
+                                "Bitwise and logical \"&\" operations require two integers or two bools" :
+                                "Bitwise and logical \"|\" operations require two integers or two bools";
+        }
+    }
+    else if (is_ordering_operation(operation))
+    {
+        if ((is_numeric(left_type) && is_numeric(right_type)) ||
+            (is_bool_or_integer(left_type) && is_bool_or_integer(right_type)))
+        {
+            result_type = TYPE_BOOL;
+        }
+        else
+        {
+            error_message = "Ordering relations require compatible integers, floats, or bools";
+        }
+    }
+    else if (is_equality_operation(operation))
+    {
+        if ((is_numeric(left_type) && is_numeric(right_type)) ||
+            (is_bool_or_integer(left_type) && is_bool_or_integer(right_type)) ||
+            (left_type == TYPE_STRING && right_type == TYPE_STRING))
+        {
+            result_type = TYPE_BOOL;
+        }
+        else
+        {
+            error_message = "Equality relations require compatible integers, floats, bools, or strings";
+        }
+    }
+    else
+    {
+        error_message = "Invalid binary expression operation";
+    }
+
+    if (!error_message.empty())
+    {
+        report_expression_error(this, error_message, operator_token);
+        return result;
+    }
+
+    result.resolved_token = make_expression_result(result_type, left_operand);
+    result.semantic_valid = true;
+    return result;
 }
 
 bool Typechecker::token_is_relationship(token token_to_check)

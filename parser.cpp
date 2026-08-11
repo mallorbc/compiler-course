@@ -1,4 +1,34 @@
 #include "parser.h"
+
+namespace
+{
+
+token_and_status invalid_expression_result(bool syntax_valid = true)
+{
+    token_and_status result;
+    result.valid_parse = syntax_valid;
+    result.semantic_valid = false;
+    return result;
+}
+
+token_and_status typed_expression_result(Typechecker *checker, data_types type,
+                                         const token &anchor)
+{
+    token_and_status result;
+    result.valid_parse = true;
+    result.semantic_valid = true;
+    result.resolved_token = checker->make_expression_result(type, anchor);
+    return result;
+}
+
+bool is_relation_start(int token_type)
+{
+    return token_type == T_LESS || token_type == T_GREATER ||
+           token_type == T_ASSIGN || token_type == T_EXCLAM;
+}
+
+} // namespace
+
 //ready for testing
 parser::parser(std::string file_to_parse)
 {
@@ -1182,11 +1212,8 @@ bool parser::parse_assignment_statement(token destination_token)
     valid_parse = destination_parse.valid_parse;
     if (valid_parse)
     {
-        //MAY BE A BUG HERE, SHOULD THROW ERROR?
         if (Current_parse_token_type == T_COLON)
         {
-            //not needed because after resolving the token we do a direct comparison?
-            //type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
         }
         else
@@ -1197,14 +1224,16 @@ bool parser::parse_assignment_statement(token destination_token)
         }
         if (Current_parse_token_type == T_ASSIGN)
         {
-            //not needed because after resolving the token we do a direct comparison?
-            //type_checker->feed_in_tokens(Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             expression_parse = parse_expression();
             expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
-            //we know that this is an assignment statement and we are ending with 2 tokens so we should be good to directly compare here
-            (void)type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
+            if (valid_parse && destination_parse.semantic_valid &&
+                expression_parse.semantic_valid && !type_checker->statement_suppressed)
+            {
+                (void)type_checker->check_assignment_statement(destination_parse_token,
+                                                               expression_parse_token);
+            }
         }
         else
         {
@@ -1232,13 +1261,10 @@ bool parser::parse_if_statement()
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         updated_token = expression_parse.resolved_token;
-        if (!type_checker->type_error_occured)
+        if (expression_parse.valid_parse && expression_parse.semantic_valid &&
+            !type_checker->statement_suppressed)
         {
             type_checker->check_if_statement(updated_token);
-        }
-        else
-        {
-            type_checker->type_error_occured = false;
         }
         type_checker->clear_tokens(false);
         valid_parse = expression_parse.valid_parse;
@@ -1391,13 +1417,10 @@ bool parser::parse_loop_statement()
                 //COME BACK
                 expression_parse = parse_expression();
                 updated_token = expression_parse.resolved_token;
-                if (!type_checker->type_error_occured)
+                if (expression_parse.valid_parse && expression_parse.semantic_valid &&
+                    !type_checker->statement_suppressed)
                 {
                     type_checker->check_if_statement(updated_token);
-                }
-                else
-                {
-                    type_checker->type_error_occured = false;
                 }
                 valid_parse = expression_parse.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
@@ -1515,17 +1538,14 @@ bool parser::parse_return_statement()
     bool valid_parse;
     expression_parse = parse_expression();
     updated_token = expression_parse.resolved_token;
-    if (!type_checker->type_error_occured)
+    if (expression_parse.valid_parse && expression_parse.semantic_valid &&
+        !type_checker->statement_suppressed)
     {
         token owner;
         if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
         {
             type_checker->check_return_statement(updated_token, owner);
         }
-    }
-    else
-    {
-        type_checker->type_error_occured = false;
     }
     valid_parse = expression_parse.valid_parse;
     return valid_parse;
@@ -1538,8 +1558,24 @@ token_and_status parser::parse_assignment_destination(token destination_token)
 {
     token_and_status destination_parse;
     token_and_status expression_parse;
-    //this tracks the state of the parser
     bool valid_parse;
+    const bool resolved_variable = destination_token.identifer_type == I_VARIABLE;
+    const bool indexed = Current_parse_token_type == T_LBRACKET;
+    if (resolved_variable && destination_token.identifier_data_type == TYPE_NONE)
+    {
+        generate_error_report("Identifier \"" + destination_token.stringValue +
+                                  "\" has no resolved type",
+                              destination_token.line_found);
+        errors_occured = true;
+        type_checker->suppress_current_statement();
+    }
+    if (resolved_variable && destination_token.identifier_data_type != TYPE_NONE &&
+        !type_checker->statement_suppressed)
+    {
+        destination_parse = typed_expression_result(type_checker,
+                                                    destination_token.identifier_data_type,
+                                                    destination_token);
+    }
     //this means that the optional bracketed expression should exist
     if (Current_parse_token_type == T_LBRACKET)
     {
@@ -1547,7 +1583,6 @@ token_and_status parser::parse_assignment_destination(token destination_token)
         //metadata remains canonical and is not mutated by an expression use.
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
-        //COME BACK will need to check that the resolved token is an integer
         valid_parse = expression_parse.valid_parse;
         //after parsing the expression, it should have a right bracket
         if (Current_parse_token_type == T_RBRACKET)
@@ -1567,14 +1602,18 @@ token_and_status parser::parse_assignment_destination(token destination_token)
             return destination_parse;
         }
     }
-    //optional bracket not there
     else
     {
         valid_parse = true;
     }
-    //type_checker->feed_in_tokens(destination_token);
     destination_parse.valid_parse = valid_parse;
-    destination_parse.resolved_token = destination_token;
+    destination_parse.semantic_valid = destination_parse.semantic_valid &&
+                                       (!indexed || expression_parse.semantic_valid) &&
+                                       !type_checker->statement_suppressed;
+    if (!destination_parse.semantic_valid)
+    {
+        destination_parse.resolved_token = token();
+    }
     return destination_parse;
 }
 
@@ -1583,78 +1622,116 @@ token_and_status parser::parse_assignment_destination(token destination_token)
 //all expressions start be thought to start with a ArithOp?
 token_and_status parser::parse_expression()
 {
-    token_and_status expression_parse;
-    token_and_status arithop_parse;
-    //this tracks the state of the parser
-    bool valid_parse;
-
-    if (Current_parse_token_type == T_AMPERSAND)
+    expression_depth++;
+    struct expression_depth_guard
     {
-        type_checker->feed_in_tokens(Current_parse_token);
-        Current_parse_token = Get_Valid_Token();
-        arithop_parse = parse_arithOp();
-        valid_parse = arithop_parse.valid_parse;
-        generate_error_report("Missing left operand before \"&\" operator");
-        errors_occured = true;
-        valid_parse = false;
-    }
-    //meaning that this is <expression>|<arithOp> rather than just <arithOp>
-    else if (Current_parse_token_type == T_VERTICAL_BAR)
-    {
-        type_checker->feed_in_tokens(Current_parse_token);
-        Current_parse_token = Get_Valid_Token();
-        arithop_parse = parse_arithOp();
-        valid_parse = arithop_parse.valid_parse;
-        generate_error_report("Missing left operand before \"|\" operator");
-        errors_occured = true;
-        valid_parse = false;
-    }
-    //else it was just an <arithOp>
-    else if (Current_parse_token_type == T_NOT)
-    {
-        type_checker->feed_in_tokens(Current_parse_token);
-        Current_parse_token = Get_Valid_Token();
-        arithop_parse = parse_arithOp();
-        valid_parse = arithop_parse.valid_parse;
-    }
-    else
-    {
-        //Current_parse_token = Get_Valid_Token();
-        arithop_parse = parse_arithOp();
-        valid_parse = arithop_parse.valid_parse;
-    }
-    //check to see if expression continues with another Arithop
-    if (valid_parse)
-    {
-        if (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR)
+        std::size_t &depth;
+        ~expression_depth_guard()
         {
-            if (Current_parse_token_type == T_AMPERSAND)
-            {
-                type_checker->feed_in_tokens(Current_parse_token);
-                //code generation different here than a pipe
-            }
-            else if (Current_parse_token_type == T_VERTICAL_BAR)
-            {
-                type_checker->feed_in_tokens(Current_parse_token);
-                //code generation different here thana pipe
-            }
-            else
-            {
-                //not valid ever?
-            }
-            Current_parse_token = Get_Valid_Token();
-            arithop_parse = parse_expression();
-            valid_parse = arithop_parse.valid_parse;
+            depth--;
+        }
+    } depth_guard{expression_depth};
+    token_and_status expression_parse;
+    token_and_status right_parse;
+    bool has_leading_not = false;
+    token not_token;
+
+    //A leading logical operator has no left operand.  Consume the attempted
+    //right side so recovery can continue, but never offer the prefix token to
+    //the semantic layer.
+    if (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR)
+    {
+        const token operator_token = Current_parse_token;
+        const bool is_and = Current_parse_token_type == T_AMPERSAND;
+        Current_parse_token = Get_Valid_Token();
+        const bool nested_logical_prefix = Current_parse_token_type == T_AMPERSAND ||
+                                           Current_parse_token_type == T_VERTICAL_BAR;
+        if (nested_logical_prefix)
+        {
+            (void)parse_expression();
+        }
+        else
+        {
+            (void)parse_arithOp();
+        }
+        generate_error_report(is_and ? "Missing left operand before \"&\" operator" :
+                                       "Missing left operand before \"|\" operator",
+                              operator_token.line_found);
+        errors_occured = true;
+        if (!nested_logical_prefix && expression_depth == 1 &&
+            !type_checker->statement_suppressed)
+        {
+            generate_error_report("Error in expression", operator_token.line_found);
+        }
+        return invalid_expression_result(false);
+    }
+
+    if (Current_parse_token_type == T_NOT)
+    {
+        has_leading_not = true;
+        not_token = Current_parse_token;
+        Current_parse_token = Get_Valid_Token();
+    }
+
+    expression_parse = parse_arithOp();
+    if (has_leading_not && expression_parse.valid_parse)
+    {
+        if (expression_parse.semantic_valid && !type_checker->statement_suppressed)
+        {
+            expression_parse = type_checker->check_unary_expression(SEM_NOT, not_token,
+                                                                       expression_parse.resolved_token);
+        }
+        else
+        {
+            expression_parse.semantic_valid = false;
+            expression_parse.resolved_token = token();
         }
     }
-    else if (!type_checker->statement_suppressed)
+
+    //The grammar gives '&' and '|' equal precedence.  Each right operand is
+    //<arithOp>, not a new expression; the double-operator recovery above is
+    //the sole deliberate exception for a focused missing-left diagnostic.
+    while (expression_parse.valid_parse &&
+           (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR))
+    {
+        const token operator_token = Current_parse_token;
+        const semantic_operator operation = Current_parse_token_type == T_AMPERSAND ?
+                                                SEM_AND : SEM_OR;
+        Current_parse_token = Get_Valid_Token();
+        if (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR)
+        {
+            right_parse = parse_expression();
+        }
+        else
+        {
+            right_parse = parse_arithOp();
+        }
+        if (!right_parse.valid_parse)
+        {
+            expression_parse.valid_parse = false;
+            expression_parse.semantic_valid = false;
+            expression_parse.resolved_token = token();
+            break;
+        }
+        if (expression_parse.semantic_valid && right_parse.semantic_valid &&
+            !type_checker->statement_suppressed)
+        {
+            expression_parse = type_checker->check_binary_expression(
+                operation, operator_token, expression_parse.resolved_token,
+                right_parse.resolved_token);
+        }
+        else
+        {
+            expression_parse.semantic_valid = false;
+            expression_parse.resolved_token = token();
+        }
+    }
+
+    if (!expression_parse.valid_parse && !type_checker->statement_suppressed)
     {
         generate_error_report("Error in expression");
         errors_occured = true;
     }
-    expression_parse.valid_parse = valid_parse;
-    expression_parse.resolved_token = arithop_parse.resolved_token;
-
     return expression_parse;
 }
 
@@ -1664,72 +1741,48 @@ token_and_status parser::parse_expression()
 token_and_status parser::parse_arithOp()
 {
     token_and_status arithop_parse;
-    token_and_status relation_parse;
+    token_and_status right_parse;
 
-    //this tracks the state of the parser
-    bool valid_parse;
-    //Current_parse_token = Get_Valid_Token();
-
-    //meaning that this is <arithOp>+<relation> rather than just <relation>
     if (Current_parse_token_type == T_PLUS)
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        const token operator_token = Current_parse_token;
         Current_parse_token = Get_Valid_Token();
-        relation_parse = parse_relation();
-        valid_parse = relation_parse.valid_parse;
+        (void)parse_relation();
+        generate_error_report("Missing left operand before \"+\" operator",
+                              operator_token.line_found);
+        errors_occured = true;
+        return invalid_expression_result(false);
     }
-    //meaning that this is <arithOp>-<relation> rather than just <relation>
-    else if (Current_parse_token_type == T_MINUS)
+
+    arithop_parse = parse_relation();
+    while (arithop_parse.valid_parse &&
+           (Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS))
     {
-        type_checker->feed_in_tokens(Current_parse_token);
+        const token operator_token = Current_parse_token;
+        const semantic_operator operation = Current_parse_token_type == T_PLUS ?
+                                                SEM_ADD : SEM_SUBTRACT;
         Current_parse_token = Get_Valid_Token();
-        relation_parse = parse_relation();
-        valid_parse = relation_parse.valid_parse;
-    }
-    //else if was just a <relation>
-    else
-    {
-        //Current_parse_token = Get_Valid_Token();
-        relation_parse = parse_relation();
-        valid_parse = relation_parse.valid_parse;
-    }
-    //allows parsing of relation again
-    if (valid_parse)
-    {
-        if (Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS)
+        right_parse = parse_relation();
+        if (!right_parse.valid_parse)
         {
-            if (Current_parse_token_type == T_PLUS)
-            {
-                type_checker->feed_in_tokens(Current_parse_token);
-                //code generation stuff here probably different than T_MINUS
-            }
-            else if (Current_parse_token_type == T_MINUS)
-            {
-                type_checker->feed_in_tokens(Current_parse_token);
-                //code generation stuff here probably different than T_PLUS
-            }
-            Current_parse_token = Get_Valid_Token();
-            relation_parse = parse_arithOp();
-            valid_parse = relation_parse.valid_parse;
-            // if (valid_parse)
-            // {
-            //     if ((Current_parse_token_type == T_PLUS) || Current_parse_token_type == T_MINUS)
-            //     {
-            //         type_checker->feed_in_tokens(Current_parse_token);
-            //         Current_parse_token = Get_Valid_Token();
-            //         relation_parse = parse_relation();
-            //     }
-            // }
-            //valid_parse = relation_parse.valid_parse;
+            arithop_parse.valid_parse = false;
+            arithop_parse.semantic_valid = false;
+            arithop_parse.resolved_token = token();
+            break;
         }
-        //else not adding or subtracting and is just a relation
+        if (arithop_parse.semantic_valid && right_parse.semantic_valid &&
+            !type_checker->statement_suppressed)
+        {
+            arithop_parse = type_checker->check_binary_expression(
+                operation, operator_token, arithop_parse.resolved_token,
+                right_parse.resolved_token);
+        }
         else
         {
-            //nothing ever?
+            arithop_parse.semantic_valid = false;
+            arithop_parse.resolved_token = token();
         }
     }
-    arithop_parse.valid_parse = valid_parse;
-    arithop_parse.resolved_token = relation_parse.resolved_token;
     return arithop_parse;
 }
 
@@ -1739,179 +1792,142 @@ token_and_status parser::parse_arithOp()
 token_and_status parser::parse_relation()
 {
     token_and_status relation_parse;
-    token_and_status term_parse;
-    //this tracks the state of the parser
-    bool valid_parse = false;
+    token_and_status right_parse;
 
-    //Handle an operator at the beginning separately so that malformed input
-    //still gets the original missing-left-operand diagnostics while consuming
-    //enough of the attempted relation to make progress.  Do not stream an
-    //invalid prefix operator into the type checker: it has no left operand and
-    //would otherwise poison the current statement with a bogus type error.
-    if (Current_parse_token_type == T_LESS)
+    //Prefix relations are always syntax errors.  Still consume the complete
+    //operator spelling and one attempted term so statement recovery advances.
+    if (is_relation_start(Current_parse_token_type))
     {
+        const token operator_token = Current_parse_token;
+        const int operator_type = Current_parse_token_type;
         Current_parse_token = Get_Valid_Token();
-        //meaning less than or equal to
-        if (Current_parse_token_type == T_ASSIGN)
-        {
-            Current_parse_token = Get_Valid_Token();
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-        }
-        //else just less than
-        else
-        {
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-        }
-        generate_error_report("Missing left operand before \"<\" operator");
-        errors_occured = true;
-        valid_parse = false;
-    }
-    else if (Current_parse_token_type == T_GREATER)
-    {
-        Current_parse_token = Get_Valid_Token();
-        //greater than or equal to
-        if (Current_parse_token_type == T_ASSIGN)
-        {
-            Current_parse_token = Get_Valid_Token();
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-        }
-        //else just greateer than
-        else
-        {
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-        }
-        generate_error_report("Missing left operand before \">\" operator");
-        errors_occured = true;
-        valid_parse = false;
-    }
-    else if (Current_parse_token_type == T_ASSIGN)
-    {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_ASSIGN)
-        {
-            Current_parse_token = Get_Valid_Token();
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-            generate_error_report("Missing left operand before \"==\" operator");
-            errors_occured = true;
-            valid_parse = false;
-        }
-        else
-        {
-            if (debugging)
-            {
-                std::cout << "parser failed on parse_relation()" << std::endl;
-            }
-            //Current_parse_token = Get_Valid_Token();
-            generate_error_report("\"=\" is not a valid relational operator, did you mean \"==\"");
-            errors_occured = true;
-            valid_parse = false;
-            relation_parse.valid_parse = false;
-            return relation_parse;
-        }
-    }
-    else if (Current_parse_token_type == T_EXCLAM)
-    {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_ASSIGN)
-        {
-            Current_parse_token = Get_Valid_Token();
-            term_parse = parse_term();
-            valid_parse = term_parse.valid_parse;
-            generate_error_report("Missing left operand before \"!=\" operator");
-            errors_occured = true;
-            valid_parse = false;
-        }
-        else
-        {
-            if (debugging)
-            {
-                std::cout << "parser failed on parse_relation()" << std::endl;
-            }
-            generate_error_report("Invalid relational operator detected");
-            errors_occured = true;
-            valid_parse = false;
-        }
-    }
-    //else just a term
-    else
-    {
-        term_parse = parse_term();
-        valid_parse = term_parse.valid_parse;
-
-        // <relation> ::= <relation> <relop> <term> | <term>.  This loop is
-        // the left-recursive grammar lowered to recursive descent.  Each
-        // operator remains fed token-by-token so the existing streaming type
-        // checker sees <=, >=, ==, and != as the same two-token sequences it
-        // saw before.
-        while (valid_parse &&
-               (Current_parse_token_type == T_ASSIGN ||
-                Current_parse_token_type == T_LESS ||
-                Current_parse_token_type == T_GREATER ||
-                Current_parse_token_type == T_EXCLAM))
+        bool valid_operator = true;
+        std::string message;
+        if (operator_type == T_LESS || operator_type == T_GREATER)
         {
             if (Current_parse_token_type == T_ASSIGN)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
                 Current_parse_token = Get_Valid_Token();
-                if (Current_parse_token_type == T_ASSIGN)
-                {
-                    type_checker->feed_in_tokens(Current_parse_token);
-                    Current_parse_token = Get_Valid_Token();
-                    term_parse = parse_term();
-                    valid_parse = term_parse.valid_parse;
-                }
-                else
-                {
-                    generate_error_report("Not a valid relational operator");
-                    errors_occured = true;
-                    valid_parse = false;
-                }
             }
-            else if (Current_parse_token_type == T_LESS || Current_parse_token_type == T_GREATER)
+            message = operator_type == T_LESS ?
+                          "Missing left operand before \"<\" operator" :
+                          "Missing left operand before \">\" operator";
+        }
+        else if (operator_type == T_ASSIGN)
+        {
+            if (Current_parse_token_type == T_ASSIGN)
             {
-                type_checker->feed_in_tokens(Current_parse_token);
                 Current_parse_token = Get_Valid_Token();
-                if (Current_parse_token_type == T_ASSIGN)
-                {
-                    type_checker->feed_in_tokens(Current_parse_token);
-                    Current_parse_token = Get_Valid_Token();
-                    term_parse = parse_term();
-                    valid_parse = term_parse.valid_parse;
-                }
-                else
-                {
-                    term_parse = parse_term();
-                    valid_parse = term_parse.valid_parse;
-                }
+                message = "Missing left operand before \"==\" operator";
             }
             else
             {
-                type_checker->feed_in_tokens(Current_parse_token);
-                Current_parse_token = Get_Valid_Token();
-                if (Current_parse_token_type == T_ASSIGN)
-                {
-                    type_checker->feed_in_tokens(Current_parse_token);
-                    Current_parse_token = Get_Valid_Token();
-                    term_parse = parse_term();
-                    valid_parse = term_parse.valid_parse;
-                }
-                else
-                {
-                    generate_error_report("Invalid relational operator detected");
-                    errors_occured = true;
-                    valid_parse = false;
-                }
+                valid_operator = false;
+                message = "\"=\" is not a valid relational operator, did you mean \"==\"";
             }
         }
+        else
+        {
+            if (Current_parse_token_type == T_ASSIGN)
+            {
+                Current_parse_token = Get_Valid_Token();
+                message = "Missing left operand before \"!=\" operator";
+            }
+            else
+            {
+                valid_operator = false;
+                message = "Invalid relational operator detected";
+            }
+        }
+        if (valid_operator)
+        {
+            (void)parse_term();
+        }
+        generate_error_report(message, operator_token.line_found);
+        errors_occured = true;
+        return invalid_expression_result(false);
     }
 
-    relation_parse.valid_parse = valid_parse;
-    relation_parse.resolved_token = term_parse.resolved_token;
+    relation_parse = parse_term();
+    while (relation_parse.valid_parse && is_relation_start(Current_parse_token_type))
+    {
+        const token operator_token = Current_parse_token;
+        const int operator_type = Current_parse_token_type;
+        semantic_operator operation = SEM_LESS;
+        bool valid_operator = true;
+        Current_parse_token = Get_Valid_Token();
+
+        if (operator_type == T_LESS)
+        {
+            operation = SEM_LESS;
+            if (Current_parse_token_type == T_ASSIGN)
+            {
+                operation = SEM_LESS_EQUAL;
+                Current_parse_token = Get_Valid_Token();
+            }
+        }
+        else if (operator_type == T_GREATER)
+        {
+            operation = SEM_GREATER;
+            if (Current_parse_token_type == T_ASSIGN)
+            {
+                operation = SEM_GREATER_EQUAL;
+                Current_parse_token = Get_Valid_Token();
+            }
+        }
+        else if (operator_type == T_ASSIGN)
+        {
+            if (Current_parse_token_type == T_ASSIGN)
+            {
+                operation = SEM_EQUAL;
+                Current_parse_token = Get_Valid_Token();
+            }
+            else
+            {
+                valid_operator = false;
+                generate_error_report("Not a valid relational operator", operator_token.line_found);
+            }
+        }
+        else if (Current_parse_token_type == T_ASSIGN)
+        {
+            operation = SEM_NOT_EQUAL;
+            Current_parse_token = Get_Valid_Token();
+        }
+        else
+        {
+            valid_operator = false;
+            generate_error_report("Invalid relational operator detected", operator_token.line_found);
+        }
+
+        if (!valid_operator)
+        {
+            errors_occured = true;
+            relation_parse.valid_parse = false;
+            relation_parse.semantic_valid = false;
+            relation_parse.resolved_token = token();
+            break;
+        }
+        right_parse = parse_term();
+        if (!right_parse.valid_parse)
+        {
+            relation_parse.valid_parse = false;
+            relation_parse.semantic_valid = false;
+            relation_parse.resolved_token = token();
+            break;
+        }
+        if (relation_parse.semantic_valid && right_parse.semantic_valid &&
+            !type_checker->statement_suppressed)
+        {
+            relation_parse = type_checker->check_binary_expression(
+                operation, operator_token, relation_parse.resolved_token,
+                right_parse.resolved_token);
+        }
+        else
+        {
+            relation_parse.semantic_valid = false;
+            relation_parse.resolved_token = token();
+        }
+    }
     return relation_parse;
 }
 
@@ -1919,13 +1935,12 @@ token_and_status parser::parse_relation()
 //already consumes a token before being parsed
 token_and_status parser::parse_term()
 {
-    token_and_status factor_parse;
     token_and_status term_parse;
-    //this tracks the state of the parser
-    bool valid_parse;
+    token_and_status right_parse;
     if (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH)
     {
-        int operator_type = Current_parse_token_type;
+        const token operator_token = Current_parse_token;
+        const int operator_type = Current_parse_token_type;
         Current_parse_token = Get_Valid_Token();
 
         //Consume repeated multiplicative prefixes before parsing the attempted
@@ -1935,46 +1950,52 @@ token_and_status parser::parse_term()
         {
             Current_parse_token = Get_Valid_Token();
         }
-        factor_parse = parse_factor();
+        (void)parse_factor();
         if (operator_type == T_MULT)
         {
-            generate_error_report("Missing left operand before \"*\" operator");
+            generate_error_report("Missing left operand before \"*\" operator",
+                                  operator_token.line_found);
         }
         else
         {
-            generate_error_report("Missing left operand before \"/\" operator");
+            generate_error_report("Missing left operand before \"/\" operator",
+                                  operator_token.line_found);
         }
         errors_occured = true;
-        valid_parse = false;
+        return invalid_expression_result(false);
     }
-    //else is just a factor
-    else
-    {
-        factor_parse = parse_factor();
-        valid_parse = factor_parse.valid_parse;
-    }
+    term_parse = parse_factor();
 
     // <term> ::= <term> (*|/) <factor> | <factor>.  Consume every valid
     // following multiplicative operator left-to-right.
-    while (valid_parse &&
+    while (term_parse.valid_parse &&
            (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH))
     {
-        if (Current_parse_token_type == T_MULT)
+        const token operator_token = Current_parse_token;
+        const semantic_operator operation = Current_parse_token_type == T_MULT ?
+                                                SEM_MULTIPLY : SEM_DIVIDE;
+        Current_parse_token = Get_Valid_Token();
+        right_parse = parse_factor();
+        if (!right_parse.valid_parse)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
-            //code generation probaly different here than division
+            term_parse.valid_parse = false;
+            term_parse.semantic_valid = false;
+            term_parse.resolved_token = token();
+            break;
+        }
+        if (term_parse.semantic_valid && right_parse.semantic_valid &&
+            !type_checker->statement_suppressed)
+        {
+            term_parse = type_checker->check_binary_expression(
+                operation, operator_token, term_parse.resolved_token,
+                right_parse.resolved_token);
         }
         else
         {
-            type_checker->feed_in_tokens(Current_parse_token);
-            //code generation probably different here than multiplication
+            term_parse.semantic_valid = false;
+            term_parse.resolved_token = token();
         }
-        Current_parse_token = Get_Valid_Token();
-        factor_parse = parse_factor();
-        valid_parse = factor_parse.valid_parse;
     }
-    term_parse.valid_parse = valid_parse;
-    term_parse.resolved_token = factor_parse.resolved_token;
     return term_parse;
 }
 
@@ -1982,254 +2003,198 @@ token_and_status parser::parse_term()
 //already consumes a token before being parsed
 token_and_status parser::parse_factor()
 {
-    token_and_status handler;
     token_and_status expression_parse;
     token_and_status factor_parse;
     token identifier_token;
-    //this tracks the state of the parser
-    bool valid_parse = false;
     if (Current_parse_token_type == T_LPARAM)
     {
         Current_parse_token = Get_Valid_Token();
-        //what to do here? COME BACK
-        //move the second token to first?
-        //type_checker->second_to_first();
-        //maybe have parse_expression return a token of the type it resolves to?
         expression_parse = parse_expression();
-        valid_parse = expression_parse.valid_parse;
-        //Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_RPARAM)
         {
             Current_parse_token = Get_Valid_Token();
+            //Parentheses are syntax only; their expression type is the inner
+            //result, including its source anchor.
+            return expression_parse;
         }
-        else
-        {
-            if (debugging)
-            {
-                std::cout << "parser failed on parse_factor()" << std::endl;
-            }
-            generate_error_report_previous_token("Missing \")\" to close expresssion factor");
-            errors_occured = true;
-            valid_parse = false;
-            factor_parse.valid_parse = valid_parse;
-            return factor_parse;
-        }
+        generate_error_report_previous_token("Missing \")\" to close expresssion factor");
+        errors_occured = true;
+        return invalid_expression_result(false);
     }
-    //This means that this is either a procedure call or a name
-    else if (Current_parse_token_type == T_IDENTIFIER)
+    if (Current_parse_token_type == T_IDENTIFIER)
     {
-        //this means that it is a procedure call
         if (Next_parse_token_type == T_LPARAM)
         {
             const token callee_occurrence = Current_parse_token;
             token callee;
-            const bool resolved = resolve_procedure_use(callee_occurrence, callee);
-            if (resolved)
+            token_and_status callee_result;
+            callee_result.valid_parse = true;
+            if (resolve_procedure_use(callee_occurrence, callee))
             {
-                type_checker->feed_in_tokens(callee);
-                factor_parse.resolved_token = callee;
-            }
-            else
-            {
-                factor_parse.resolved_token = callee_occurrence;
+                if (callee.identifier_data_type == TYPE_NONE)
+                {
+                    if (!type_checker->statement_suppressed)
+                    {
+                        generate_error_report("Procedure \"" + callee_occurrence.stringValue +
+                                                  "\" has no resolved type",
+                                              callee_occurrence.line_found);
+                        errors_occured = true;
+                        type_checker->suppress_current_statement();
+                    }
+                }
+                else
+                {
+                    callee_result = typed_expression_result(type_checker,
+                                                            callee.identifier_data_type,
+                                                            callee_occurrence);
+                }
             }
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_call();
+            return parse_procedure_call(callee_occurrence, callee_result);
         }
-        //else it must be a name
-        else
-        {
-            //COMMENTED OUT 4/22
-            identifier_token = Current_parse_token;
-            //COME BACK
-            factor_parse.resolved_token = Current_parse_token;
-            Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name(identifier_token);
-            if (valid_parse)
-            {
-                factor_parse.resolved_token = Context_token;
-            }
-        }
-    }
-    //this means that it must be either a name or a number
-    else if (Current_parse_token_type == T_MINUS)
-    {
-        type_checker->feed_in_tokens(Current_parse_token);
+        identifier_token = Current_parse_token;
         Current_parse_token = Get_Valid_Token();
-        //means that it isn't a name
+        return parse_name(identifier_token);
+    }
+    if (Current_parse_token_type == T_MINUS)
+    {
+        const token operator_token = Current_parse_token;
+        Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
         {
-            factor_parse.resolved_token = Current_parse_token;
-            type_checker->feed_in_tokens(Current_parse_token);
+            factor_parse = typed_expression_result(
+                type_checker,
+                Current_parse_token_type == T_INTEGER_VALUE ? TYPE_INT : TYPE_FLOAT,
+                Current_parse_token);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = true;
+            return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
+                                                         factor_parse.resolved_token);
         }
-        //else it is a name
-        else if (Current_parse_token_type == T_IDENTIFIER)
+        if (Current_parse_token_type == T_IDENTIFIER)
         {
-            //COME BACK
-            factor_parse.resolved_token = Current_parse_token;
             identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_name(identifier_token);
-            if (valid_parse)
+            factor_parse = parse_name(identifier_token);
+            if (!factor_parse.valid_parse)
             {
-                factor_parse.resolved_token = Context_token;
+                return factor_parse;
             }
-        }
-        //else it had a negative sign, it isn't a number, and it isn't a name
-        else
-        {
-            if (debugging)
+            if (factor_parse.semantic_valid && !type_checker->statement_suppressed)
             {
-                std::cout << "parser failed on parse_factor()" << std::endl;
+                return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
+                                                             factor_parse.resolved_token);
             }
-            generate_error_report("Unexpected negative factor is not a name or a number");
-            errors_occured = true;
-            valid_parse = false;
-            factor_parse.valid_parse = valid_parse;
-            return factor_parse;
+            return invalid_expression_result(true);
         }
+        generate_error_report("Unexpected negative factor is not a name or a number",
+                              operator_token.line_found);
+        errors_occured = true;
+        return invalid_expression_result(false);
     }
-    //else is a non negative number
-    else if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
+    if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
     {
-        factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        factor_parse = typed_expression_result(
+            type_checker,
+            Current_parse_token_type == T_INTEGER_VALUE ? TYPE_INT : TYPE_FLOAT,
+            Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        //type checking will need to be done here?
-        valid_parse = true;
-        factor_parse.valid_parse = valid_parse;
         return factor_parse;
     }
-    else if (Current_parse_token_type == T_STRING_VALUE)
+    if (Current_parse_token_type == T_STRING_VALUE)
     {
-        //means there was never a closing quote
         if (Lexer->quote_status)
         {
             generate_error_report("quotation left open", Lexer->quote_opener);
         }
-        factor_parse.resolved_token = Current_parse_token;
-        handler = type_checker->feed_in_tokens(Current_parse_token);
-        if (handler.valid_parse)
-        {
-            factor_parse.resolved_token = handler.resolved_token;
-        }
-
+        factor_parse = typed_expression_result(type_checker, TYPE_STRING, Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        //type checking will need to be done here?
-        valid_parse = true;
-        factor_parse.valid_parse = valid_parse;
         return factor_parse;
     }
-    else if (Current_parse_token_type == T_TRUE)
+    if (Current_parse_token_type == T_TRUE || Current_parse_token_type == T_FALSE)
     {
-        factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
+        factor_parse = typed_expression_result(type_checker, TYPE_BOOL, Current_parse_token);
         Current_parse_token = Get_Valid_Token();
-        //type checking will need to be done here?
-        valid_parse = true;
-        factor_parse.valid_parse = valid_parse;
         return factor_parse;
     }
-    else if (Current_parse_token_type == T_FALSE)
-    {
-        factor_parse.resolved_token = Current_parse_token;
-        type_checker->feed_in_tokens(Current_parse_token);
-        Current_parse_token = Get_Valid_Token();
-        //type checking will need to be done here?
-        valid_parse = true;
-        factor_parse.valid_parse = valid_parse;
-        return factor_parse;
-    }
-    //else nothing valid was seen
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_factor()" << std::endl;
-        }
-        generate_error_report("Invalid token for factor discovered");
-        errors_occured = true;
-        valid_parse = false;
-        factor_parse.valid_parse = valid_parse;
-        return factor_parse;
-    }
-
-    factor_parse.valid_parse = valid_parse;
-    return factor_parse;
+    generate_error_report("Invalid token for factor discovered");
+    errors_occured = true;
+    return invalid_expression_result(false);
 }
 
 //ready to test
 //already consumes indentifier token before being parsed
-bool parser::parse_name(token identifier_token)
+token_and_status parser::parse_name(token identifier_token)
 {
     token_and_status expression_parse;
-    //this tracks the state of the parser
-    bool valid_parse;
+    token_and_status name_parse;
     token resolved_identifier;
-    //A semantic miss must not leave a prior name's semantic token available to
-    //the enclosing expression.  Keep this occurrence as the safe structural
-    //result unless resolution succeeds below.
-    Context_token = identifier_token;
     const bool resolved = resolve_identifier_use(identifier_token, resolved_identifier);
     if (resolved)
     {
-        Context_token = resolved_identifier;
+        if (resolved_identifier.identifier_data_type == TYPE_NONE)
+        {
+            if (!type_checker->statement_suppressed)
+            {
+                generate_error_report("Identifier \"" + identifier_token.stringValue +
+                                          "\" has no resolved type",
+                                      identifier_token.line_found);
+                errors_occured = true;
+                type_checker->suppress_current_statement();
+            }
+        }
+        else
+        {
+            name_parse = typed_expression_result(type_checker,
+                                                 resolved_identifier.identifier_data_type,
+                                                 identifier_token);
+        }
     }
     const bool indexed = Current_parse_token_type == T_LBRACKET;
     if (indexed)
     {
-        if (resolved)
-        {
-            type_checker->feed_in_tokens(resolved_identifier);
-        }
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
-        valid_parse = expression_parse.valid_parse;
         if (Current_parse_token_type == T_RBRACKET)
         {
-
             Current_parse_token = Get_Valid_Token();
         }
-        //missing right bracket for the end of an optional expression
         else
         {
-            if (debugging)
-            {
-                std::cout << "parser failed on parse_name()" << std::endl;
-            }
             generate_error_report_previous_token("Missing require \"]\" for the end of optional expression for name");
             errors_occured = true;
-            return false;
+            return invalid_expression_result(false);
+        }
+        name_parse.valid_parse = expression_parse.valid_parse;
+        name_parse.semantic_valid = name_parse.semantic_valid && expression_parse.semantic_valid &&
+                                    !type_checker->statement_suppressed;
+        if (!name_parse.semantic_valid)
+        {
+            name_parse.resolved_token = token();
         }
     }
-    //the optional expression does not exist do nothing
-    else
+    if (!resolved)
     {
-        //Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
+        name_parse.valid_parse = true;
+        name_parse.semantic_valid = false;
+        name_parse.resolved_token = token();
     }
-    if (resolved && !indexed)
-    {
-        type_checker->feed_in_tokens(resolved_identifier);
-    }
-
-    return valid_parse;
+    return name_parse;
 }
 
 //ready to test
 //consumes one token before starting
-bool parser::parse_argument_list()
+bool parser::parse_argument_list(std::vector<token_and_status> &arguments)
 {
     token_and_status expression_parse;
     bool valid_parse = true;
     expression_parse = parse_expression();
+    arguments.push_back(expression_parse);
     valid_parse = expression_parse.valid_parse;
     while (Current_parse_token_type == T_COMMA)
     {
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
+        arguments.push_back(expression_parse);
         valid_parse = expression_parse.valid_parse && valid_parse;
     }
 
@@ -2238,22 +2203,22 @@ bool parser::parse_argument_list()
 
 //ready to test
 //already consumes identifier token before parsing
-bool parser::parse_procedure_call()
+token_and_status parser::parse_procedure_call(const token &callee_occurrence,
+                                              const token_and_status &callee_result)
 {
-    //this tracks the state of the parser
-    bool valid_parse;
+    token_and_status call_parse;
+    call_parse.valid_parse = true;
+    std::vector<token_and_status> arguments;
     if (Current_parse_token_type == T_LPARAM)
     {
         Current_parse_token = Get_Valid_Token();
-        //if has no parameters
         if (Current_parse_token_type == T_RPARAM)
         {
-            valid_parse = true;
             Current_parse_token = Get_Valid_Token();
         }
         else
         {
-            valid_parse = parse_argument_list();
+            call_parse.valid_parse = parse_argument_list(arguments);
             if (Current_parse_token_type == T_RPARAM)
             {
                 Current_parse_token = Get_Valid_Token();
@@ -2261,29 +2226,43 @@ bool parser::parse_procedure_call()
             //missing needed right param for the end of a procedure call
             else
             {
-                if (debugging)
-                {
-                    std::cout << "parser failed on parse_procedure_call()" << std::endl;
-                }
                 generate_error_report_previous_token("Missing required \")\" for the end of a procedure call");
                 errors_occured = true;
-                return false;
+                return invalid_expression_result(false);
             }
         }
     }
     //missing needed left param for the start of the procedure call
     else
     {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_procedure_call()" << std::endl;
-        }
         generate_error_report_previous_token("Missing required \"(\" for the end of a procedure call");
         errors_occured = true;
-        return false;
+        return invalid_expression_result(false);
     }
-
-    return valid_parse;
+    if (!call_parse.valid_parse || !callee_result.semantic_valid ||
+        type_checker->statement_suppressed)
+    {
+        call_parse.semantic_valid = false;
+        call_parse.resolved_token = token();
+        return call_parse;
+    }
+    for (std::size_t i = 0; i < arguments.size(); i++)
+    {
+        if (!arguments[i].semantic_valid)
+        {
+            call_parse.semantic_valid = false;
+            call_parse.resolved_token = token();
+            return call_parse;
+        }
+    }
+    //The call is syntactically and semantically usable as an expression.  Its
+    //signature is intentionally not checked until SIL-1; preserve the callee
+    //occurrence as the source coordinate of the synthesized return type.
+    call_parse = callee_result;
+    call_parse.resolved_token.line_found = callee_occurrence.line_found;
+    call_parse.resolved_token.column_found = callee_occurrence.column_found;
+    call_parse.resolved_token.first_token_on_line = callee_occurrence.first_token_on_line;
+    return call_parse;
 }
 
 bool parser::resync_parser(parser_state state)
