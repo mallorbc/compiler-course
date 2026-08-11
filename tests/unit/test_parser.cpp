@@ -1152,3 +1152,185 @@ TEST_CASE("SIL-1 anchors type mismatches at their argument and supports recursio
         }
     }
 }
+
+TEST_CASE("Stage 2D accepts the scalar assignment compatibility matrix")
+{
+    temp_source_file fixture(
+        "program assignments is\n"
+        "type count is integer;\n"
+        "procedure integerValue : integer()\n"
+        "begin\n"
+        "    return 1;\n"
+        "end procedure;\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable b : bool;\n"
+        "variable s : string;\n"
+        "variable alias : count;\n"
+        "begin\n"
+        "    i := i;\n"
+        "    f := f;\n"
+        "    b := b;\n"
+        "    i := f;\n"
+        "    f := i;\n"
+        "    i := b;\n"
+        "    b := i;\n"
+        "    s := s;\n"
+        "    alias := i;\n"
+        "    i := alias;\n"
+        "    i := integerValue();\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+}
+
+TEST_CASE("Stage 2D reports scalar assignment failures at the target and resets")
+{
+    temp_source_file fixture(
+        "program assignments is\n"
+        "type color is enum{red};\n"
+        "procedure stringValue : string()\n"
+        "begin\n"
+        "    return \"s\";\n"
+        "end procedure;\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable b : bool;\n"
+        "variable s : string;\n"
+        "variable c : color;\n"
+        "begin\n"
+        "    b := f;\n"
+        "    f := b;\n"
+        "    s := i;\n"
+        "    i := stringValue();\n"
+        "    i := c;\n"
+        "    c := i;\n"
+        "    i := \"s\";\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 7);
+    CHECK(has_error(parsed, "Error on line 13: Assignment target type \"bool\" is not compatible with expression type \"float\""));
+    CHECK(has_error(parsed, "Error on line 14: Assignment target type \"float\" is not compatible with expression type \"bool\""));
+    CHECK(has_error(parsed, "Error on line 15: Assignment target type \"string\" is not compatible with expression type \"integer\""));
+    CHECK(has_error(parsed, "Error on line 16: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK(has_error(parsed, "Identifier \"c\" has no resolved type"));
+    CHECK_FALSE(has_error(parsed, "expression type \"unknown\""));
+    CHECK(has_error(parsed, "Error on line 19: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+
+    temp_source_file multiline(
+        "program lines is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    i\n"
+        "        := \"s\";\n"
+        "end program.\n");
+    captured_stdout multiline_capture;
+    parser multiline_program(multiline.name());
+    multiline_capture.restore();
+
+    CHECK(multiline_program.error_reports.size() == 1);
+    CHECK(has_error(multiline_program, "Error on line 4: Assignment target type"));
+}
+
+TEST_CASE("Stage 2D gives loop initializers and conditions separate semantic boundaries")
+{
+    temp_source_file valid_fixture(
+        "program loops is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; true)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := 0; i)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := 0; i < 3)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout valid_capture;
+    parser valid(valid_fixture.name());
+    valid_capture.restore();
+    CHECK(valid.error_count() == 0);
+
+    temp_source_file invalid_fixture(
+        "program loops is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable s : string;\n"
+        "begin\n"
+        "    for (i := 0;\n"
+        "         f)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := \"s\"; s)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := 0; \"s\" + 1)\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := 0; missing())\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    i := \"after\";\n"
+        "end program.\n");
+    captured_stdout invalid_capture;
+    parser invalid(invalid_fixture.name());
+    invalid_capture.restore();
+
+    CHECK(invalid.error_reports.size() == 6);
+    CHECK(has_error(invalid, "Error on line 7: Loop statements must resolve to either type Bool or Integer"));
+    CHECK(has_error(invalid, "Error on line 10: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK(has_error(invalid, "Error on line 10: Loop statements must resolve to either type Bool or Integer"));
+    CHECK(has_error(invalid, "Arithmetic operations must be between floats and integers"));
+    CHECK(has_error(invalid, "Undeclared procedure \"missing\""));
+    CHECK(has_error(invalid, "Error on line 19: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK_FALSE(has_error(invalid, "Error on line 14: Loop statements"));
+    CHECK_FALSE(has_error(invalid, "Error on line 17: Loop statements"));
+
+    temp_source_file missing_closer(
+        "program malformed is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "begin\n"
+        "    for (i := 0; f\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout missing_capture;
+    parser malformed(missing_closer.name());
+    missing_capture.restore();
+
+    CHECK(has_error(malformed, "Missing \")\" for loop declaration"));
+    CHECK_FALSE(has_error(malformed, "Loop statements must resolve to either type Bool or Integer"));
+
+    temp_source_file nested_reset(
+        "program nested is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable s : string;\n"
+        "begin\n"
+        "    for (i := 0; f)\n"
+        "        for (i := 0; s)\n"
+        "            i := i + 1;\n"
+        "        end for;\n"
+        "        i := \"body\";\n"
+        "    end for;\n"
+        "    i := \"after\";\n"
+        "end program.\n");
+    captured_stdout nested_capture;
+    parser nested(nested_reset.name());
+    nested_capture.restore();
+
+    CHECK(nested.error_reports.size() == 4);
+    CHECK(has_error(nested, "Error on line 6: Loop statements must resolve to either type Bool or Integer"));
+    CHECK(has_error(nested, "Error on line 7: Loop statements must resolve to either type Bool or Integer"));
+    CHECK(has_error(nested, "Error on line 10: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK(has_error(nested, "Error on line 12: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+}

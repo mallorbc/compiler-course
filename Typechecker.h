@@ -72,6 +72,7 @@ public:
     Typechecker();
     Typechecker(parser *parent);
     bool set_statement_type(token statement_key_token);
+    bool begin_loop_condition(token condition_anchor);
     bool statement_is_finished();
     bool is_valid_relation();
     bool second_to_first();

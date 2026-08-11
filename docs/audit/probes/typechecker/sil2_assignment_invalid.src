@@ -1,0 +1,20 @@
+program sil2_assignment_invalid is
+type color is enum{red};
+procedure stringValue : string()
+begin
+    return "s";
+end procedure;
+variable i : integer;
+variable f : float;
+variable b : bool;
+variable s : string;
+variable c : color;
+begin
+    b := f;
+    f := b;
+    s := i;
+    i := stringValue();
+    i := c;
+    c := i;
+    i := "s";
+end program.

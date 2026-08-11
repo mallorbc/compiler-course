@@ -114,6 +114,45 @@ void report_call_error(Typechecker *checker, const std::string &message,
     checker->type_error_occured = true;
 }
 
+void report_statement_error(Typechecker *checker, const std::string &message,
+                            const token &anchor)
+{
+    if (checker->statement_suppressed)
+    {
+        return;
+    }
+    if (checker->parser_parent != NULL)
+    {
+        checker->parser_parent->errors_occured = true;
+        checker->parser_parent->generate_error_report(message,
+                                                      valid_line(anchor.line_found));
+    }
+    //Scalar statement checks intentionally stay independent from the retired
+    //streaming accumulator.  A semantic failure must not erase its sentinel
+    //state or create a later accumulator-driven cascade.
+    checker->statement_suppressed = true;
+    checker->type_error_occured = true;
+}
+
+bool assignment_types_compatible(data_types destination_type, data_types expression_type)
+{
+    if (destination_type == TYPE_NONE || expression_type == TYPE_NONE)
+    {
+        return false;
+    }
+    if (destination_type == expression_type)
+    {
+        return true;
+    }
+    if ((destination_type == TYPE_BOOL && expression_type == TYPE_INT) ||
+        (destination_type == TYPE_INT && expression_type == TYPE_BOOL))
+    {
+        return true;
+    }
+    return (destination_type == TYPE_INT && expression_type == TYPE_FLOAT) ||
+           (destination_type == TYPE_FLOAT && expression_type == TYPE_INT);
+}
+
 bool is_ordering_operation(semantic_operator operation)
 {
     return operation == SEM_LESS || operation == SEM_LESS_EQUAL ||
@@ -185,6 +224,16 @@ bool Typechecker::set_statement_type(token key_token)
     }
     clear_tokens(false);
 
+    return true;
+}
+
+bool Typechecker::begin_loop_condition(token condition_anchor)
+{
+    statement_key_token = condition_anchor;
+    current_statement_type = STATEMENT_LOOP;
+    statement_suppressed = false;
+    type_error_occured = false;
+    clear_tokens(false);
     return true;
 }
 
@@ -1011,10 +1060,27 @@ token_and_status Typechecker::is_valid_operation()
     return return_object;
 }
 
-bool Typechecker::check_assignment_statement(token, token)
+bool Typechecker::check_assignment_statement(token destination_token, token resolved_token)
 {
+    if (statement_suppressed)
+    {
+        return false;
+    }
 
-    return true;
+    const data_types destination_type = expression_data_type(destination_token);
+    const data_types expression_type = expression_data_type(resolved_token);
+    if (assignment_types_compatible(destination_type, expression_type))
+    {
+        return true;
+    }
+
+    report_statement_error(
+        this,
+        "Assignment target type \"" + procedure_type_name(destination_type) +
+            "\" is not compatible with expression type \"" +
+            procedure_type_name(expression_type) + "\"",
+        destination_token);
+    return false;
 }
 
 bool Typechecker::are_tokens_full()
@@ -1700,20 +1766,17 @@ typechecker_types Typechecker::convert_to_typechecker_types(token token_to_conve
 
 bool Typechecker::check_loop_statement(token token_to_check)
 {
-    bool return_value = false;
-    typechecker_types type_to_check;
-    type_to_check = convert_to_typechecker_types(token_to_check);
-    //first check if it is an identifier
-    if (type_to_check != typechecker_bool && type_to_check != typechecker_int)
+    if (statement_suppressed)
     {
-        parser_parent->generate_error_report("Loop statements must resolve to either type Bool or Integer", valid_line(statement_key_token.line_found));
-        return_value = false;
-        type_error_occured = true;
+        return false;
     }
-    else
+    const typechecker_types type_to_check = convert_to_typechecker_types(token_to_check);
+    if (type_to_check == typechecker_bool || type_to_check == typechecker_int)
     {
-        return_value = true;
+        return true;
     }
-
-    return return_value;
+    report_statement_error(this,
+                           "Loop statements must resolve to either type Bool or Integer",
+                           statement_key_token);
+    return false;
 }

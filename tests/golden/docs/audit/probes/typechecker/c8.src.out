@@ -1,1 +1,3 @@
-The program parsed successfully with no errors
+The program parsed successfully with errors
+Error on line 5: Assignment target type "integer" is not compatible with expression type "string"
+

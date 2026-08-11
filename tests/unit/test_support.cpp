@@ -320,3 +320,89 @@ TEST_CASE("SIL-1 call validation requires exact types and rejects unresolved typ
         canonical, occurrence, {integer_argument, unresolved_argument}));
     CHECK(unresolved_argument_checker.statement_suppressed);
 }
+
+TEST_CASE("Stage 2D scalar assignment and loop checks are direct and accumulator-safe")
+{
+    token anchor;
+    anchor.type = T_IDENTIFIER;
+    anchor.line_found = 9;
+
+    Typechecker compatible_checker;
+    const token integer = compatible_checker.make_expression_result(TYPE_INT, anchor);
+    const token floating = compatible_checker.make_expression_result(TYPE_FLOAT, anchor);
+    const token boolean = compatible_checker.make_expression_result(TYPE_BOOL, anchor);
+    const token string = compatible_checker.make_expression_result(TYPE_STRING, anchor);
+    CHECK(compatible_checker.check_assignment_statement(integer, integer));
+    CHECK(compatible_checker.check_assignment_statement(floating, floating));
+    CHECK(compatible_checker.check_assignment_statement(boolean, boolean));
+    CHECK(compatible_checker.check_assignment_statement(integer, boolean));
+    CHECK(compatible_checker.check_assignment_statement(boolean, integer));
+    CHECK(compatible_checker.check_assignment_statement(integer, floating));
+    CHECK(compatible_checker.check_assignment_statement(floating, integer));
+    CHECK(compatible_checker.check_assignment_statement(string, string));
+    CHECK_FALSE(compatible_checker.statement_suppressed);
+
+    Typechecker rejected_assignment;
+    token sentinel;
+    sentinel.type = T_IDENTIFIER;
+    sentinel.line_found = 3;
+    sentinel.stringValue = "assignment-sentinel";
+    rejected_assignment.first_token = sentinel;
+    rejected_assignment.second_token = string;
+    rejected_assignment.relation_tokens = {anchor};
+    const token saved_first = rejected_assignment.first_token;
+    const token saved_second = rejected_assignment.second_token;
+    const std::vector<token> saved_relations = rejected_assignment.relation_tokens;
+    CHECK_FALSE(rejected_assignment.check_assignment_statement(boolean, floating));
+    CHECK(rejected_assignment.statement_suppressed);
+    CHECK(rejected_assignment.type_error_occured);
+    CHECK(same_token(rejected_assignment.first_token, saved_first));
+    CHECK(same_token(rejected_assignment.second_token, saved_second));
+    REQUIRE(rejected_assignment.relation_tokens.size() == saved_relations.size());
+    CHECK(same_token(rejected_assignment.relation_tokens[0], saved_relations[0]));
+
+    Typechecker unresolved_assignment;
+    const token unknown = unresolved_assignment.make_expression_result(TYPE_NONE, anchor);
+    CHECK_FALSE(unresolved_assignment.check_assignment_statement(integer, unknown));
+    CHECK(unresolved_assignment.statement_suppressed);
+
+    Typechecker unresolved_destination;
+    CHECK_FALSE(unresolved_destination.check_assignment_statement(unknown, integer));
+    CHECK(unresolved_destination.statement_suppressed);
+
+    Typechecker loop_checker;
+    loop_checker.first_token = sentinel;
+    loop_checker.second_token = sentinel;
+    loop_checker.relation_tokens = {sentinel};
+    loop_checker.statement_suppressed = true;
+    loop_checker.type_error_occured = true;
+    CHECK(loop_checker.begin_loop_condition(anchor));
+    CHECK(loop_checker.current_statement_type == STATEMENT_LOOP);
+    CHECK_FALSE(loop_checker.statement_suppressed);
+    CHECK_FALSE(loop_checker.type_error_occured);
+    CHECK(loop_checker.statement_key_token.line_found == 9);
+    CHECK(loop_checker.first_token.type == T_NULL);
+    CHECK(loop_checker.second_token.type == T_NULL);
+    CHECK(loop_checker.relation_tokens.empty());
+    CHECK(loop_checker.check_loop_statement(boolean));
+    CHECK(loop_checker.check_loop_statement(integer));
+
+    loop_checker.first_token = sentinel;
+    loop_checker.second_token = string;
+    loop_checker.relation_tokens = {anchor};
+    const token loop_saved_first = loop_checker.first_token;
+    const token loop_saved_second = loop_checker.second_token;
+    const std::vector<token> loop_saved_relations = loop_checker.relation_tokens;
+    CHECK_FALSE(loop_checker.check_loop_statement(floating));
+    CHECK(loop_checker.statement_suppressed);
+    CHECK(loop_checker.type_error_occured);
+    CHECK(same_token(loop_checker.first_token, loop_saved_first));
+    CHECK(same_token(loop_checker.second_token, loop_saved_second));
+    REQUIRE(loop_checker.relation_tokens.size() == loop_saved_relations.size());
+    CHECK(same_token(loop_checker.relation_tokens[0], loop_saved_relations[0]));
+
+    Typechecker unresolved_loop;
+    CHECK(unresolved_loop.begin_loop_condition(anchor));
+    CHECK_FALSE(unresolved_loop.check_loop_statement(unknown));
+    CHECK(unresolved_loop.statement_suppressed);
+}

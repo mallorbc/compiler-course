@@ -1405,6 +1405,7 @@ bool parser::parse_loop_statement()
         if (Current_parse_token_type == T_IDENTIFIER)
         {
             const token destination_occurrence = Current_parse_token;
+            type_checker->set_statement_type(destination_occurrence);
             token destination;
             const bool destination_resolved = resolve_identifier_use(destination_occurrence,
                                                                      destination);
@@ -1414,18 +1415,18 @@ bool parser::parse_loop_statement()
             if (Current_parse_token_type == T_SEMICOLON)
             {
                 Current_parse_token = Get_Valid_Token();
-                //COME BACK
+                type_checker->begin_loop_condition(Current_parse_token);
                 expression_parse = parse_expression();
                 updated_token = expression_parse.resolved_token;
-                if (expression_parse.valid_parse && expression_parse.semantic_valid &&
-                    !type_checker->statement_suppressed)
-                {
-                    type_checker->check_if_statement(updated_token);
-                }
                 valid_parse = expression_parse.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
                     Current_parse_token = Get_Valid_Token();
+                    if (expression_parse.valid_parse && expression_parse.semantic_valid &&
+                        !type_checker->statement_suppressed)
+                    {
+                        (void)type_checker->check_loop_statement(updated_token);
+                    }
                     while (Current_parse_token_type != T_END)
                     {
                         std::size_t iteration_start = token_generation;

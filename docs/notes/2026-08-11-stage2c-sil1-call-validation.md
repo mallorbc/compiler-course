@@ -19,8 +19,8 @@ call therefore consumes its enclosing syntax and prevents an outer signature
 cascade. Unresolved/wrong-kind callees and malformed argument lists likewise
 consume their grammar but never receive signature diagnostics.
 
-This is deliberately not assignment checking (SIL-2), runtime builtin
-implementation, array/index typing (TY-8), loop-specific condition checking
-(TY-6), or an overhaul of the legacy compatibility accumulator. The nine
-builtin declarations now participate in the same exact validation path, but
-their existing return convention is unchanged.
+This deliberately leaves runtime builtin implementation, array/index typing
+(TY-8), and an overhaul of the legacy compatibility accumulator. Scalar
+assignment and loop-condition validation (SIL-2/TY-6) follow in Stage 2D. The
+nine builtin declarations participate in the same exact call-validation path,
+but their existing return convention is unchanged.

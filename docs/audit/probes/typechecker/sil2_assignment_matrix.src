@@ -1,0 +1,24 @@
+program sil2_assignment_matrix is
+type count is integer;
+procedure integerValue : integer()
+begin
+    return 1;
+end procedure;
+variable i : integer;
+variable f : float;
+variable b : bool;
+variable s : string;
+variable alias : count;
+begin
+    i := i;
+    f := f;
+    b := b;
+    i := f;
+    f := i;
+    i := b;
+    b := i;
+    s := s;
+    alias := i;
+    i := alias;
+    i := integerValue();
+end program.
