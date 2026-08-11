@@ -1,6 +1,19 @@
 #include "../vendor/doctest.h"
 #include "../../BuiltinCatalog.h"
+#include "../../IR.h"
+
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+
+//The finalizer deliberately has no public mutation hook.  This translation
+//unit exposes its scratch module only to pin priority for corrupt internal CFG
+//state that the public builder correctly prevents callers from constructing.
+#define private public
 #include "../../IRBuilder.h"
+#undef private
 
 #include <type_traits>
 
@@ -391,7 +404,7 @@ TEST_CASE("Stage 5A verifier independently rejects malformed CFG invariants")
     const ir::VerificationResult procedure_blocks_result = ir::verify_module(multi_block_procedure);
     CAPTURE(procedure_blocks_result.reason);
     CHECK_FALSE(procedure_blocks_result.valid);
-    CHECK(procedure_blocks_result.reason.find("exactly one") != std::string::npos);
+    CHECK(procedure_blocks_result.reason.find("unreachable") != std::string::npos);
 }
 
 TEST_CASE("Stage 5A builder rejects unfinished and procedure multi-block states atomically")
@@ -440,7 +453,7 @@ TEST_CASE("Stage 5A builder rejects unfinished and procedure multi-block states 
     REQUIRE(procedure_blocks.leave_function());
     REQUIRE(procedure_blocks.emit_halt());
     procedure_blocks.finalize(true);
-    CHECK(procedure_blocks.status() == ir::ModuleStatus::Unsupported);
+    CHECK(procedure_blocks.status() == ir::ModuleStatus::InvalidIR);
     CHECK(procedure_blocks.module().functions.empty());
 }
 
@@ -903,4 +916,242 @@ TEST_CASE("Stage 4A verifier catches stale identity and wrong instruction type")
     stale.functions[0].blocks[0].instructions.push_back(
         ir::Load{ir::ValueId(ir::FunctionId(0), 99), ir::StorageId(99)});
     CHECK_FALSE(ir::verify_module(stale).valid);
+}
+
+TEST_CASE("Stage 5C procedure CFG permits branching returns and rejects fallthrough")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "procedure_cfg"}, "procedure_cfg").valid());
+    builder.seed_external_builtins();
+    const ir::FunctionId procedure = builder.register_procedure(
+        SymbolRef{0, "choose"}, "choose", scalar(TYPE_INT), {});
+    REQUIRE(procedure.valid());
+    REQUIRE(builder.enter_function(procedure));
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    const ir::ValueId one = builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(builder.emit_return(one));
+    REQUIRE(builder.select_block(else_block));
+    const ir::ValueId zero = builder.emit_constant(scalar(TYPE_INT), 0);
+    REQUIRE(builder.emit_return(zero));
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    CHECK(ir::verify_module(builder.module()).valid);
+
+    ir::IRBuilder fallthrough;
+    REQUIRE(fallthrough.register_program(SymbolRef{0, "fallthrough"}, "fallthrough").valid());
+    fallthrough.seed_external_builtins();
+    const ir::FunctionId missing_return = fallthrough.register_procedure(
+        SymbolRef{0, "missing"}, "missing", scalar(TYPE_INT), {});
+    REQUIRE(missing_return.valid());
+    REQUIRE(fallthrough.enter_function(missing_return));
+    REQUIRE(fallthrough.leave_function());
+    REQUIRE(fallthrough.emit_halt());
+    fallthrough.finalize(true);
+    CHECK(fallthrough.status() == ir::ModuleStatus::Unsupported);
+    CHECK(fallthrough.module().functions.empty());
+}
+
+TEST_CASE("Stage 5C unreachable lowering suppression is balanced and inert")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "suppressed"}, "suppressed").valid());
+    builder.seed_external_builtins();
+    const ir::FunctionId procedure = builder.register_procedure(
+        SymbolRef{0, "done"}, "done", scalar(TYPE_INT), {});
+    REQUIRE(builder.enter_function(procedure));
+    const ir::ValueId one = builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(builder.emit_return(one));
+    REQUIRE(builder.begin_unreachable_statement());
+    REQUIRE(builder.begin_unreachable_statement());
+    CHECK_FALSE(builder.emit_constant(scalar(TYPE_FLOAT), 1.0F).valid());
+    builder.mark_unsupported("dead unsupported operation");
+    builder.mark_invalid("dead invalid lowering result");
+    REQUIRE(builder.end_unreachable_statement());
+    REQUIRE(builder.end_unreachable_statement());
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    CHECK(builder.status() == ir::ModuleStatus::Ready);
+
+    ir::IRBuilder underflow;
+    REQUIRE(underflow.register_program(SymbolRef{0, "underflow"}, "underflow").valid());
+    underflow.seed_external_builtins();
+    CHECK_FALSE(underflow.end_unreachable_statement());
+    underflow.finalize(true);
+    CHECK(underflow.status() == ir::ModuleStatus::InvalidIR);
+
+    ir::IRBuilder leaked;
+    REQUIRE(leaked.register_program(SymbolRef{0, "leaked"}, "leaked").valid());
+    leaked.seed_external_builtins();
+    const ir::FunctionId leaked_procedure = leaked.register_procedure(
+        SymbolRef{0, "leaked_done"}, "leaked_done", scalar(TYPE_INT), {});
+    REQUIRE(leaked.enter_function(leaked_procedure));
+    const ir::ValueId leaked_one = leaked.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(leaked.emit_return(leaked_one));
+    REQUIRE(leaked.begin_unreachable_statement());
+    REQUIRE(leaked.leave_function());
+    leaked.finalize(true);
+    CHECK(leaked.status() == ir::ModuleStatus::InvalidIR);
+
+    ir::IRBuilder frontend;
+    REQUIRE(frontend.register_program(SymbolRef{0, "dead_frontend"}, "dead_frontend").valid());
+    frontend.seed_external_builtins();
+    const ir::FunctionId frontend_procedure = frontend.register_procedure(
+        SymbolRef{0, "dead_frontend_done"}, "dead_frontend_done", scalar(TYPE_INT), {});
+    REQUIRE(frontend.enter_function(frontend_procedure));
+    const ir::ValueId frontend_one = frontend.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(frontend.emit_return(frontend_one));
+    REQUIRE(frontend.begin_unreachable_statement());
+    frontend.mark_frontend_error();
+    REQUIRE(frontend.end_unreachable_statement());
+    REQUIRE(frontend.leave_function());
+    CHECK_FALSE(frontend.emit_halt());
+    frontend.finalize(false);
+    CHECK(frontend.status() == ir::ModuleStatus::FrontendError);
+    CHECK(frontend.module().functions.empty());
+}
+
+TEST_CASE("Stage 5C finalization prioritizes malformed/orphan procedure CFGs")
+{
+    ir::IRBuilder branch_fallthrough;
+    REQUIRE(branch_fallthrough.register_program(SymbolRef{0, "branch_fallthrough"},
+                                                 "branch_fallthrough").valid());
+    branch_fallthrough.seed_external_builtins();
+    const ir::FunctionId procedure = branch_fallthrough.register_procedure(
+        SymbolRef{0, "branchy"}, "branchy", scalar(TYPE_INT), {});
+    REQUIRE(branch_fallthrough.enter_function(procedure));
+    const ir::ValueId condition = branch_fallthrough.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId returned_arm = branch_fallthrough.create_block();
+    const ir::BlockId open_arm = branch_fallthrough.create_block();
+    REQUIRE(branch_fallthrough.emit_branch(condition, returned_arm, open_arm));
+    REQUIRE(branch_fallthrough.select_block(returned_arm));
+    const ir::ValueId one = branch_fallthrough.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(branch_fallthrough.emit_return(one));
+    REQUIRE(branch_fallthrough.leave_function());
+    REQUIRE(branch_fallthrough.emit_halt());
+    branch_fallthrough.finalize(true);
+    CHECK(branch_fallthrough.status() == ir::ModuleStatus::Unsupported);
+
+    ir::IRBuilder orphan;
+    REQUIRE(orphan.register_program(SymbolRef{0, "sealed_orphan"}, "sealed_orphan").valid());
+    orphan.seed_external_builtins();
+    const ir::FunctionId orphan_procedure = orphan.register_procedure(
+        SymbolRef{0, "sealed"}, "sealed", scalar(TYPE_INT), {});
+    REQUIRE(orphan.enter_function(orphan_procedure));
+    const ir::BlockId sealed_orphan = orphan.create_block();
+    const ir::BlockId reachable_open = orphan.create_block();
+    REQUIRE(orphan.emit_jump(reachable_open));
+    REQUIRE(orphan.select_block(sealed_orphan));
+    const ir::ValueId returned = orphan.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(orphan.emit_return(returned));
+    REQUIRE(orphan.select_block(reachable_open));
+    REQUIRE(orphan.leave_function());
+    REQUIRE(orphan.emit_halt());
+    orphan.finalize(true);
+    CHECK(orphan.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(orphan.reason().find("unreachable") != std::string::npos);
+
+    ir::IRBuilder cross_target;
+    REQUIRE(cross_target.register_program(SymbolRef{0, "cross_target"}, "cross_target").valid());
+    cross_target.seed_external_builtins();
+    const ir::FunctionId cross_procedure = cross_target.register_procedure(
+        SymbolRef{0, "cross"}, "cross", scalar(TYPE_INT), {});
+    REQUIRE(cross_target.enter_function(cross_procedure));
+    const ir::BlockId cross_open = cross_target.create_block();
+    REQUIRE(cross_target.emit_jump(cross_open));
+    REQUIRE(cross_target.select_block(cross_open));
+    REQUIRE(cross_target.leave_function());
+    REQUIRE(cross_target.emit_halt());
+    ir::Function &corrupt_procedure =
+        cross_target.scratch_module.functions[cross_procedure.index];
+    corrupt_procedure.blocks[0].terminator = ir::Terminator(
+        ir::JumpTerminator{ir::BlockId(cross_target.program_function(), 0)});
+    cross_target.finalize(true);
+    CHECK(cross_target.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(cross_target.reason().find("invalid block or target") != std::string::npos);
+}
+
+TEST_CASE("Stage 5C verifier rejects malformed procedure control flow")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "procedure_verify"}, "procedure_verify").valid());
+    builder.seed_external_builtins();
+    const ir::FunctionId procedure = builder.register_procedure(
+        SymbolRef{0, "choose_verify"}, "choose_verify", scalar(TYPE_INT), {});
+    REQUIRE(builder.enter_function(procedure));
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    const ir::ValueId then_value = builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(builder.emit_return(then_value));
+    REQUIRE(builder.select_block(else_block));
+    const ir::ValueId else_value = builder.emit_constant(scalar(TYPE_INT), 0);
+    REQUIRE(builder.emit_return(else_value));
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.emit_call(procedure, {}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    REQUIRE(ir::verify_module(builder.module()).valid);
+
+    ir::Module halted = builder.module();
+    halted.functions[procedure.index].blocks[0].terminator = ir::Terminator(ir::HaltTerminator{});
+    CHECK_FALSE(ir::verify_module(halted).valid);
+
+    ir::Module bad_target = builder.module();
+    bad_target.functions[procedure.index].blocks[0].terminator = ir::Terminator(
+        ir::JumpTerminator{ir::BlockId(builder.program_function(), 0)});
+    CHECK_FALSE(ir::verify_module(bad_target).valid);
+
+    ir::Module no_return_cycle = builder.module();
+    ir::Function &cyclic = no_return_cycle.functions[procedure.index];
+    cyclic.blocks.resize(1);
+    cyclic.blocks[0].terminator = ir::Terminator(
+        ir::JumpTerminator{ir::BlockId(procedure, 0)});
+    CHECK_FALSE(ir::verify_module(no_return_cycle).valid);
+
+    ir::Module dominance_leak = builder.module();
+    ir::ReturnTerminator &else_return = std::get<ir::ReturnTerminator>(
+        std::get<ir::Terminator>(dominance_leak.functions[procedure.index].blocks[2].terminator));
+    else_return.value = then_value;
+    CHECK_FALSE(ir::verify_module(dominance_leak).valid);
+}
+
+TEST_CASE("Stage 5C verifier accepts a reachable mutual-call SCC")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "mutual"}, "mutual").valid());
+    builder.seed_external_builtins();
+    const ir::FunctionId alpha = builder.register_procedure(
+        SymbolRef{0, "alpha"}, "alpha", scalar(TYPE_INT), {});
+    const ir::FunctionId beta = builder.register_procedure(
+        SymbolRef{0, "beta"}, "beta", scalar(TYPE_INT), {});
+    REQUIRE(alpha.valid());
+    REQUIRE(beta.valid());
+
+    REQUIRE(builder.enter_function(alpha));
+    const ir::ValueId from_beta = builder.emit_call(beta, {});
+    REQUIRE(from_beta.valid());
+    REQUIRE(builder.emit_return(from_beta));
+    REQUIRE(builder.leave_function());
+
+    REQUIRE(builder.enter_function(beta));
+    const ir::ValueId from_alpha = builder.emit_call(alpha, {});
+    REQUIRE(from_alpha.valid());
+    REQUIRE(builder.emit_return(from_alpha));
+    REQUIRE(builder.leave_function());
+
+    REQUIRE(builder.emit_call(alpha, {}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    CHECK(ir::verify_module(builder.module()).valid);
 }

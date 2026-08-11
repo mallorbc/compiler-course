@@ -172,26 +172,18 @@ VerificationResult verify_module(const Module &module)
                 return failure("external builtin does not match catalog");
             }
         }
-        else if (function.kind == FunctionKind::Procedure)
-        {
-            if (function.blocks.size() != 1 ||
-                function.blocks[0].id != BlockId(function.id, 0))
-            {
-                return failure("procedure does not have exactly one owned block");
-            }
-        }
         else
         {
             if (function.blocks.empty())
             {
-                return failure("program has no entry block");
+                return failure("defined function has no entry block");
             }
             for (std::size_t block_index = 0; block_index < function.blocks.size(); block_index++)
             {
                 if (function.blocks[block_index].id !=
                     BlockId(function.id, static_cast<std::uint32_t>(block_index)))
                 {
-                    return failure("program block id does not match function order");
+                    return failure("defined block id does not match function order");
                 }
             }
         }
@@ -282,7 +274,7 @@ VerificationResult verify_module(const Module &module)
         std::vector<std::vector<std::size_t>> predecessors(block_count);
         std::vector<std::vector<std::size_t>> successors(block_count);
         std::size_t halt_count = 0;
-        std::size_t halt_block = block_count;
+        std::vector<std::size_t> completion_blocks;
         const auto add_target = [&function, &successors, &predecessors](std::size_t source,
                                                                           BlockId target) -> bool {
             if (!target.valid() || target.function != function.id ||
@@ -309,7 +301,7 @@ VerificationResult verify_module(const Module &module)
                 if (std::holds_alternative<HaltTerminator>(terminator))
                 {
                     halt_count++;
-                    halt_block = block_index;
+                    completion_blocks.push_back(block_index);
                 }
                 else if (const JumpTerminator *jump = std::get_if<JumpTerminator>(&terminator))
                 {
@@ -333,11 +325,32 @@ VerificationResult verify_module(const Module &module)
                     return failure("program may not return a value");
                 }
             }
-            else
+            else // Procedure
             {
-                if (!std::holds_alternative<ReturnTerminator>(terminator))
+                if (std::holds_alternative<ReturnTerminator>(terminator))
                 {
-                    return failure("procedure control flow is not supported");
+                    completion_blocks.push_back(block_index);
+                }
+                else if (const JumpTerminator *jump = std::get_if<JumpTerminator>(&terminator))
+                {
+                    if (!add_target(block_index, jump->target))
+                    {
+                        return failure("procedure jump has an invalid target");
+                    }
+                }
+                else if (const BranchTerminator *branch =
+                             std::get_if<BranchTerminator>(&terminator))
+                {
+                    if (branch->when_true == branch->when_false ||
+                        !add_target(block_index, branch->when_true) ||
+                        !add_target(block_index, branch->when_false))
+                    {
+                        return failure("procedure branch has invalid targets");
+                    }
+                }
+                else
+                {
+                    return failure("procedure may not halt");
                 }
             }
         }
@@ -370,8 +383,11 @@ VerificationResult verify_module(const Module &module)
         if (function.kind == FunctionKind::Program)
         {
             std::vector<bool> reaches_halt(block_count, false);
-            work.push_back(halt_block);
-            reaches_halt[halt_block] = true;
+            for (std::size_t halt_block : completion_blocks)
+            {
+                work.push_back(halt_block);
+                reaches_halt[halt_block] = true;
+            }
             while (!work.empty())
             {
                 const std::size_t current = work.back();
@@ -388,6 +404,37 @@ VerificationResult verify_module(const Module &module)
             if (std::find(reaches_halt.begin(), reaches_halt.end(), false) != reaches_halt.end())
             {
                 return failure("program block cannot reach halt");
+            }
+        }
+        else
+        {
+            if (completion_blocks.empty())
+            {
+                return failure("procedure has no return block");
+            }
+            std::vector<bool> reaches_return(block_count, false);
+            for (std::size_t return_block : completion_blocks)
+            {
+                work.push_back(return_block);
+                reaches_return[return_block] = true;
+            }
+            while (!work.empty())
+            {
+                const std::size_t current = work.back();
+                work.pop_back();
+                for (std::size_t predecessor : predecessors[current])
+                {
+                    if (!reaches_return[predecessor])
+                    {
+                        reaches_return[predecessor] = true;
+                        work.push_back(predecessor);
+                    }
+                }
+            }
+            if (std::find(reaches_return.begin(), reaches_return.end(), false) !=
+                reaches_return.end())
+            {
+                return failure("procedure block cannot reach return");
             }
         }
 
@@ -617,7 +664,7 @@ VerificationResult verify_module(const Module &module)
                 if (condition == NULL ||
                     condition->type != value_shape{TYPE_BOOL, false, -1})
                 {
-                    return failure("program branch condition must be a visible scalar bool");
+                    return failure("branch condition must be a visible scalar bool");
                 }
             }
             if (const ReturnTerminator *returned = std::get_if<ReturnTerminator>(&terminator))

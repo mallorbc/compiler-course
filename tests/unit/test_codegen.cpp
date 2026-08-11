@@ -94,6 +94,34 @@ ir::Module procedure_module()
     return builder.module();
 }
 
+ir::Module mutual_procedure_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "mutual_program"}, "mutual_program").valid());
+    builder.seed_external_builtins();
+    const ir::FunctionId alpha = builder.register_procedure(
+        SymbolRef{0, "alpha_codegen"}, "alpha_codegen", scalar(TYPE_INT), {});
+    const ir::FunctionId beta = builder.register_procedure(
+        SymbolRef{0, "beta_codegen"}, "beta_codegen", scalar(TYPE_INT), {});
+    REQUIRE(alpha.valid());
+    REQUIRE(beta.valid());
+    REQUIRE(builder.enter_function(alpha));
+    const ir::ValueId beta_value = builder.emit_call(beta, {});
+    REQUIRE(beta_value.valid());
+    REQUIRE(builder.emit_return(beta_value));
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.enter_function(beta));
+    const ir::ValueId alpha_value = builder.emit_call(alpha, {});
+    REQUIRE(alpha_value.valid());
+    REQUIRE(builder.emit_return(alpha_value));
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.emit_call(alpha, {}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 ir::Module put_integer_module()
 {
     ir::IRBuilder builder;
@@ -364,13 +392,18 @@ TEST_CASE("Stage 4B fixed memory capacity is an emitter invariant")
     CHECK_FALSE(RestrictedCEmitter::storage_count_fits_memory(capacity + 1U));
 }
 
-TEST_CASE("Stage 4B restricted C rejects unlowered and invalid modules atomically")
+TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupported modules atomically")
 {
     RestrictedCEmitter emitter;
 
     const RestrictedCResult procedure = emitter.emit(procedure_module());
-    CHECK(procedure.status == RestrictedCStatus::Unsupported);
-    CHECK(procedure.text.empty());
+    CHECK(procedure.status == RestrictedCStatus::Success);
+    CHECK_FALSE(procedure.text.empty());
+
+    const RestrictedCResult mutual = emitter.emit(mutual_procedure_module());
+    CHECK(mutual.status == RestrictedCStatus::Success);
+    CHECK(mutual.text.find("L_f10_b0:") != std::string::npos);
+    CHECK(mutual.text.find("L_f11_b0:") != std::string::npos);
 
     ir::IRBuilder call_builder;
     REQUIRE(call_builder.register_program(SymbolRef{0, "call_program"}, "call_program").valid());

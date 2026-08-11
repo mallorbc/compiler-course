@@ -872,7 +872,18 @@ bool parser::parse_procedure_body()
     while (Current_parse_token_type != T_END)
     {
         std::size_t iteration_start = token_generation;
+        const bool suppress_unreachable = ir_builder != NULL &&
+            ir_builder->current_function() != ir_builder->program_function() &&
+            !ir_builder->current_block_is_open();
+        if (suppress_unreachable)
+        {
+            ir_builder->begin_unreachable_statement();
+        }
         valid_parse = parse_base_statement();
+        if (suppress_unreachable)
+        {
+            ir_builder->end_unreachable_statement();
+        }
         if (Current_parse_token_type == T_SEMICOLON)
         {
             //clear out the tokens at the end of a statement
@@ -1350,15 +1361,6 @@ bool parser::parse_base_statement()
     }
     else if (Current_parse_token_type == T_FOR)
     {
-        //Program loops use the generic CFG primitives below.  Procedure CFG
-        //and return-path lowering remain a later slice, but continue parsing
-        //their bodies so the handwritten recovery contract is unchanged.
-        if (ir_builder != NULL && ir_builder->emission_enabled() &&
-            ir_builder->current_function() != ir_builder->program_function())
-        {
-            ir_builder->mark_unsupported(
-                "loop statements in procedures require procedure control-flow lowering");
-        }
         //sets the typchecker up to handle loop statements
         type_checker->set_statement_type(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
@@ -1491,6 +1493,7 @@ bool parser::parse_if_statement(const token &if_token)
         ir::BlockId else_block;
         ir::BlockId join_block;
         bool active = false;
+        bool procedure_cfg = false;
     } blocks;
 
     const bool has_left_parenthesis = Current_parse_token_type == T_LPARAM;
@@ -1563,12 +1566,8 @@ bool parser::parse_if_statement(const token &if_token)
         condition_plan.valid && !type_checker->statement_suppressed && ir_builder != NULL &&
         ir_builder->emission_enabled() && condition.value.valid())
     {
-        if (ir_builder->current_function() != ir_builder->program_function())
-        {
-            ir_builder->mark_unsupported(
-                "if statements in procedures require procedure control-flow lowering");
-        }
-        else
+        const bool procedure_cfg =
+            ir_builder->current_function() != ir_builder->program_function();
         {
             ir::ValueId condition_value = condition.value;
             if (condition_plan.requires_conversion)
@@ -1583,14 +1582,22 @@ bool parser::parse_if_statement(const token &if_token)
             {
                 blocks.then_block = ir_builder->create_block();
                 blocks.else_block = ir_builder->create_block();
-                blocks.join_block = ir_builder->create_block();
+                //Program CFGs keep their established eager three-target
+                //shape.  A procedure creates its join only for an arm that
+                //actually falls through, avoiding an unreachable join after
+                //two early returns.
+                if (!procedure_cfg)
+                {
+                    blocks.join_block = ir_builder->create_block();
+                }
                 if (blocks.then_block.valid() && blocks.else_block.valid() &&
-                    blocks.join_block.valid() &&
+                    (procedure_cfg || blocks.join_block.valid()) &&
                     ir_builder->emit_branch(condition_value, blocks.then_block,
                                             blocks.else_block) &&
                     ir_builder->select_block(blocks.then_block))
                 {
                     blocks.active = true;
+                    blocks.procedure_cfg = procedure_cfg;
                 }
             }
         }
@@ -1601,7 +1608,18 @@ bool parser::parse_if_statement(const token &if_token)
                Current_parse_token_type != T_INVALID)
         {
             const std::size_t iteration_start = token_generation;
+            const bool suppress_unreachable = ir_builder != NULL &&
+                ir_builder->current_function() != ir_builder->program_function() &&
+                !ir_builder->current_block_is_open();
+            if (suppress_unreachable)
+            {
+                ir_builder->begin_unreachable_statement();
+            }
             const bool child_valid = parse_base_statement();
+            if (suppress_unreachable)
+            {
+                ir_builder->end_unreachable_statement();
+            }
             if (Current_parse_token_type == T_SEMICOLON)
             {
                 type_checker->clear_tokens(false);
@@ -1651,7 +1669,18 @@ bool parser::parse_if_statement(const token &if_token)
     }
     if (blocks.active && ir_builder != NULL && ir_builder->emission_enabled())
     {
-        (void)ir_builder->emit_jump(blocks.join_block);
+        if (!blocks.procedure_cfg)
+        {
+            (void)ir_builder->emit_jump(blocks.join_block);
+        }
+        else if (ir_builder->current_block_is_open())
+        {
+            blocks.join_block = ir_builder->create_block();
+            if (blocks.join_block.valid())
+            {
+                (void)ir_builder->emit_jump(blocks.join_block);
+            }
+        }
     }
     bool consumed_optional_else = false;
     bool reported_repeated_else = false;
@@ -1676,7 +1705,21 @@ bool parser::parse_if_statement(const token &if_token)
         }
         if (blocks.active && first_else && ir_builder != NULL && ir_builder->emission_enabled())
         {
-            (void)ir_builder->emit_jump(blocks.join_block);
+            if (!blocks.procedure_cfg)
+            {
+                (void)ir_builder->emit_jump(blocks.join_block);
+            }
+            else if (ir_builder->current_block_is_open())
+            {
+                if (!blocks.join_block.valid())
+                {
+                    blocks.join_block = ir_builder->create_block();
+                }
+                if (blocks.join_block.valid())
+                {
+                    (void)ir_builder->emit_jump(blocks.join_block);
+                }
+            }
         }
     }
     if (blocks.active && !consumed_optional_else && ir_builder != NULL &&
@@ -1684,6 +1727,10 @@ bool parser::parse_if_statement(const token &if_token)
     {
         if (ir_builder->select_block(blocks.else_block))
         {
+            if (blocks.procedure_cfg && !blocks.join_block.valid())
+            {
+                blocks.join_block = ir_builder->create_block();
+            }
             (void)ir_builder->emit_jump(blocks.join_block);
         }
     }
@@ -1702,7 +1749,8 @@ bool parser::parse_if_statement(const token &if_token)
         return false;
     }
     Current_parse_token = Get_Valid_Token();
-    if (blocks.active && ir_builder != NULL && ir_builder->emission_enabled())
+    if (blocks.active && blocks.join_block.valid() && ir_builder != NULL &&
+        ir_builder->emission_enabled())
     {
         (void)ir_builder->select_block(blocks.join_block);
     }
@@ -1807,8 +1855,7 @@ bool parser::parse_loop_statement()
                 //Select the condition block before parsing its expression so
                 //loads and calls are re-evaluated on every loop backedge.
                 if (initializer_valid_parse && has_internal_semicolon && ir_builder != NULL &&
-                    ir_builder->emission_enabled() &&
-                    ir_builder->current_function() == ir_builder->program_function())
+                    ir_builder->emission_enabled())
                 {
                     blocks.condition = ir_builder->create_block();
                     blocks.body = ir_builder->create_block();
@@ -1861,7 +1908,18 @@ bool parser::parse_loop_statement()
                     while (Current_parse_token_type != T_END)
                     {
                         std::size_t iteration_start = token_generation;
+                        const bool suppress_unreachable = ir_builder != NULL &&
+                            ir_builder->current_function() != ir_builder->program_function() &&
+                            !ir_builder->current_block_is_open();
+                        if (suppress_unreachable)
+                        {
+                            ir_builder->begin_unreachable_statement();
+                        }
                         valid_parse = parse_base_statement();
+                        if (suppress_unreachable)
+                        {
+                            ir_builder->end_unreachable_statement();
+                        }
                         if (Current_parse_token_type == T_SEMICOLON)
                         {
                             //clear out the tokens at the end of a statement
@@ -1932,9 +1990,16 @@ bool parser::parse_loop_statement()
                         errors_occured = true;
                     }
                     if (closed_loop && blocks.active && ir_builder != NULL &&
-                        ir_builder->emission_enabled() && ir_builder->emit_jump(blocks.condition))
+                        ir_builder->emission_enabled())
                     {
-                        (void)ir_builder->select_block(blocks.exit);
+                        if (ir_builder->current_block_is_open())
+                        {
+                            (void)ir_builder->emit_jump(blocks.condition);
+                        }
+                        if (ir_builder->emission_enabled() && !ir_builder->current_block_is_open())
+                        {
+                            (void)ir_builder->select_block(blocks.exit);
+                        }
                     }
                 }
                 else

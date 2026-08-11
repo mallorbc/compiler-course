@@ -1911,7 +1911,7 @@ TEST_CASE("Stage 5A parser lowers Program if headers and restores nested joins")
     CHECK(ir::verify_module(parsed.ir_module()).valid);
 }
 
-TEST_CASE("Stage 5A keeps procedure control-flow lowering unsupported")
+TEST_CASE("Stage 5C lowers procedure conditionals and loops into typed CFGs")
 {
     temp_source_file procedure_fixture(
         "program procedure_control is\n"
@@ -1928,8 +1928,9 @@ TEST_CASE("Stage 5A keeps procedure control-flow lowering unsupported")
     parser procedure(procedure_fixture.name());
     procedure_capture.restore();
     CHECK(procedure.frontend_valid());
-    CHECK(procedure.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(procedure.ir_module().functions.empty());
+    CHECK(procedure.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(procedure.ir_module().functions.size() > 1);
+    CHECK(procedure.ir_module().functions[10].blocks.size() > 1);
 
     temp_source_file loop_fixture(
         "program procedure_loop is\n"
@@ -1946,8 +1947,9 @@ TEST_CASE("Stage 5A keeps procedure control-flow lowering unsupported")
     parser loop(loop_fixture.name());
     loop_capture.restore();
     CHECK(loop.frontend_valid());
-    CHECK(loop.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(loop.ir_module().functions.empty());
+    CHECK(loop.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(loop.ir_module().functions.size() > 1);
+    CHECK(loop.ir_module().functions[10].blocks.size() == 4);
 }
 
 TEST_CASE("Stage 5B parser lowers Program loops into condition and backedge blocks")
@@ -2685,4 +2687,43 @@ TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
     CHECK(semantic.ir_status() == ir::ModuleStatus::FrontendError);
     CHECK(semantic.ir_module().functions.empty());
     CHECK(semantic.ir_module().storages.empty());
+}
+
+TEST_CASE("Stage 5C parses unreachable procedure statements without stale IR emission")
+{
+    temp_source_file fixture(
+        "program unreachable_procedure is\n"
+        "procedure choose : integer()\n"
+        "begin\n"
+        "    return 1;\n"
+        "    missing := 2;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    CHECK(has_error(parsed, "Undeclared identifier \"missing\""));
+    CHECK(parsed.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(parsed.ir_module().functions.empty());
+    CHECK(parsed.ir_module().storages.empty());
+
+    temp_source_file valid_dead_fixture(
+        "program dead_mixed is\n"
+        "variable target : integer;\n"
+        "procedure done : integer()\n"
+        "begin\n"
+        "    return 1;\n"
+        "    target := 1 + 2.0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    target := done();\n"
+        "end program.\n");
+    captured_stdout valid_dead_capture;
+    parser valid_dead(valid_dead_fixture.name());
+    valid_dead_capture.restore();
+    CHECK(valid_dead.frontend_valid());
+    CHECK(valid_dead.can_generate_code());
+    CHECK(valid_dead.ir_status() == ir::ModuleStatus::Ready);
+    CHECK(ir::verify_module(valid_dead.ir_module()).valid);
 }

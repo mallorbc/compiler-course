@@ -192,6 +192,319 @@ def main() -> int:
             check(source_identifier not in gate4_c, f"Gate4 source name leaked: {source_identifier}")
         strict_c11_compile_and_run(gate4_output, "42\n")
 
+        procedure_source = root / "stage5c-procedures.src"
+        procedure_output = root / "stage5c-procedures.c"
+        procedure_source.write_text(
+            "program Stage5C is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure sumdown : integer(variable n : integer)\n"
+            "begin\n"
+            "    if (n == 0) then\n"
+            "        return 0;\n"
+            "    else\n"
+            "        return n + sumdown(n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure count : integer(variable n : integer)\n"
+            "variable i : integer;\n"
+            "variable total : integer;\n"
+            "begin\n"
+            "    total := 0;\n"
+            "    for (i := 0; i < n)\n"
+            "        total := total + 1;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    return total;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := sumdown(4) + count(2);\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        procedure = run_compiler(
+            "--emit-c", str(procedure_output), str(procedure_source)
+        )
+        check(procedure.returncode == 0, f"Stage5C procedure emit failed: {procedure.stderr!r}")
+        procedure_c = procedure_output.read_text(encoding="utf-8")
+        check("L_f10_b0:" in procedure_c and "L_f11_b0:" in procedure_c,
+              "Stage5C procedure labels are missing")
+        check("L_f0_r0:" in procedure_c and "L_f10_c" in procedure_c,
+              "Stage5C continuation dispatch is missing")
+        for source_identifier in ("Stage5C", "sumdown", "count", "answer", "printed"):
+            check(source_identifier not in procedure_c,
+                  f"Stage5C source identifier leaked into C: {source_identifier}")
+        check(not re.search(r"MM\[[^\n]+\]\s*=\s*MM\[", procedure_c),
+              "Stage5C procedure lowering emitted a direct MM-to-MM assignment")
+        check("MM[(uint32_t)Reg[" in procedure_c,
+              "Stage5C procedure frame traffic was not staged through registers")
+        strict_c11_compile_and_run(procedure_output, "12\n")
+
+        procedure_matrix_source = root / "stage5c-matrix.src"
+        procedure_matrix_output = root / "stage5c-matrix.c"
+        procedure_matrix_source.write_text(
+            "program Stage5CMatrix is\n"
+            "variable global_value : integer;\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure bump : integer(variable global_value : integer)\n"
+            "begin\n"
+            "    global_value := global_value + 1;\n"
+            "    return global_value;\n"
+            "end procedure;\n"
+            "procedure setglobal : integer()\n"
+            "begin\n"
+            "    global_value := global_value + 10;\n"
+            "    return global_value;\n"
+            "end procedure;\n"
+            "procedure pair : integer(variable left : integer, variable right : integer)\n"
+            "begin\n"
+            "    return left * 10 + right;\n"
+            "end procedure;\n"
+            "procedure choose : integer(variable value : integer)\n"
+            "begin\n"
+            "    if (value == 0) then\n"
+            "        return 44;\n"
+            "    else\n"
+            "        return 55;\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure iterate : integer(variable value : integer)\n"
+            "variable i : integer;\n"
+            "variable total : integer;\n"
+            "begin\n"
+            "    total := 0;\n"
+            "    for (i := 0; i < value)\n"
+            "        total := total + 1;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    return total;\n"
+            "end procedure;\n"
+            "procedure speak : integer(variable value : integer)\n"
+            "variable did_print : bool;\n"
+            "begin\n"
+            "    did_print := putInteger(value);\n"
+            "    return value;\n"
+            "end procedure;\n"
+            "procedure truth : bool()\n"
+            "begin\n"
+            "    return 9;\n"
+            "end procedure;\n"
+            "procedure negate : integer(variable value : integer)\n"
+            "begin\n"
+            "    return -value;\n"
+            "end procedure;\n"
+            "procedure minimumDivide : integer()\n"
+            "begin\n"
+            "    return (-2147483647 - 1) / -1;\n"
+            "end procedure;\n"
+            "procedure divide : integer(variable value : integer)\n"
+            "begin\n"
+            "    return value / 2;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    global_value := 5;\n"
+            "    answer := bump(global_value);\n"
+            "    printed := putInteger(answer);\n"
+            "    printed := putInteger(global_value);\n"
+            "    answer := setglobal();\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := pair(speak(1), speak(2));\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := choose(0);\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := iterate(3);\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := truth();\n"
+            "    printed := putInteger(answer);\n"
+            "    for (answer := 0; answer < 3)\n"
+            "        answer := bump(answer);\n"
+            "    end for;\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := speak(9);\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := negate(-5);\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := minimumDivide();\n"
+            "    printed := putInteger(answer);\n"
+            "    answer := divide(8);\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        procedure_matrix = run_compiler(
+            "--emit-c", str(procedure_matrix_output), str(procedure_matrix_source)
+        )
+        check(procedure_matrix.returncode == 0,
+              f"Stage5C matrix emit failed: {procedure_matrix.stderr!r}")
+        matrix_c = procedure_matrix_output.read_text(encoding="utf-8")
+        check(not re.search(r"MM\[[^\n]+\]\s*=\s*MM\[", matrix_c),
+              "Stage5C matrix contains a direct MM-to-MM assignment")
+        check("if (MM[" not in matrix_c,
+              "Stage5C matrix uses memory directly as a branch operand")
+        check(not re.search(r"MM\[[^\n]*MM\[", matrix_c),
+              "Stage5C matrix uses nested MM indirection")
+        for line in matrix_c.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("MM[") and " = " in stripped:
+                right_hand_side = stripped.split(" = ", 1)[1]
+                check("MM[" not in right_hand_side,
+                      f"Stage5C MM store bypassed scratch registers: {stripped}")
+            elif " = " in stripped and "MM[" in stripped.split(" = ", 1)[1]:
+                right_hand_side = stripped.split(" = ", 1)[1]
+                check(right_hand_side.startswith("MM[") and
+                      right_hand_side.endswith("];") and
+                      right_hand_side.count("MM[") == 1,
+                      f"Stage5C arithmetic used an MM operand directly: {stripped}")
+            if stripped.startswith("if ("):
+                check(stripped.startswith("if (Reg["),
+                      f"Stage5C branch bypassed a normalized register: {stripped}")
+        strict_c11_compile_and_run(
+            procedure_matrix_output,
+            "6\n5\n15\n1\n2\n12\n44\n3\n1\n3\n9\n9\n5\n-2147483648\n4\n",
+        )
+        procedure_matrix_repeat = root / "stage5c-matrix-repeat.c"
+        repeat_matrix = run_compiler(
+            "--emit-c", str(procedure_matrix_repeat), str(procedure_matrix_source)
+        )
+        check(repeat_matrix.returncode == 0,
+              f"repeated Stage5C matrix emit failed: {repeat_matrix.stderr!r}")
+        check(matrix_c == procedure_matrix_repeat.read_text(encoding="utf-8"),
+              "Stage5C procedure output is not deterministic")
+
+        procedure_divide_source = root / "stage5c-procedure-divide.src"
+        procedure_divide_output = root / "stage5c-procedure-divide.c"
+        procedure_divide_source.write_text(
+            "program Stage5CDivide is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure bad : integer()\n"
+            "begin\n"
+            "    return 1 / 0;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := bad();\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        procedure_divide = run_compiler(
+            "--emit-c", str(procedure_divide_output), str(procedure_divide_source)
+        )
+        check(procedure_divide.returncode == 0,
+              f"procedure divide emit failed: {procedure_divide.stderr!r}")
+        strict_c11_compile_and_run(procedure_divide_output, "", expected_returncode=1)
+
+        stack_source = root / "stage5c-stack-overflow.src"
+        stack_output = root / "stage5c-stack-overflow.c"
+        stack_source.write_text(
+            "program Stage5CStack is\n"
+            "variable answer : integer;\n"
+            "procedure recurse : integer(variable value : integer)\n"
+            "variable a : integer;\n"
+            "variable b : integer;\n"
+            "variable c : integer;\n"
+            "variable d : integer;\n"
+            "variable e : integer;\n"
+            "variable f : integer;\n"
+            "variable g : integer;\n"
+            "variable h : integer;\n"
+            "begin\n"
+            "    return recurse(value + 1);\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := recurse(0);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        stack = run_compiler("--emit-c", str(stack_output), str(stack_source))
+        check(stack.returncode == 0, f"stack-overflow emit failed: {stack.stderr!r}")
+        strict_c11_compile_and_run(stack_output, "", expected_returncode=1)
+
+        no_capture_source = root / "stage5c-no-capture.src"
+        no_capture_output = root / "stage5c-no-capture.c"
+        no_capture_output.write_text("preserve no-capture output\n", encoding="utf-8")
+        no_capture_source.write_text(
+            "program Stage5CNoCapture is\n"
+            "procedure outer : integer()\n"
+            "variable hidden : integer;\n"
+            "procedure inner : integer()\n"
+            "begin\n"
+            "    return hidden;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    hidden := 1;\n"
+            "    return inner();\n"
+            "end procedure;\n"
+            "begin\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        no_capture = run_compiler("--emit-c", str(no_capture_output), str(no_capture_source))
+        check(no_capture.returncode != 0, "nested no-capture source unexpectedly emitted C")
+        check('Undeclared identifier "hidden"' in no_capture.stdout,
+              f"nested no-capture failure was not focused: {no_capture.stdout!r}")
+        check(no_capture_output.read_text(encoding="utf-8") == "preserve no-capture output\n",
+              "nested no-capture frontend failure replaced the output sentinel")
+
+        unused_procedure_source = root / "stage5c-unused-procedure.src"
+        unused_procedure_output = root / "stage5c-unused-procedure.c"
+        unused_procedure_source.write_text(
+            "program Stage5CUnused is\n"
+            "procedure hidden : integer()\n"
+            "begin\n"
+            "    return 1;\n"
+            "end procedure;\n"
+            "begin\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        unused_procedure = run_compiler(
+            "--emit-c", str(unused_procedure_output), str(unused_procedure_source)
+        )
+        check(unused_procedure.returncode == 0,
+              f"unused Stage5C procedure blocked emission: {unused_procedure.stderr!r}")
+        unused_procedure_c = unused_procedure_output.read_text(encoding="utf-8")
+        check("L_f10_" not in unused_procedure_c,
+              "unreachable procedure leaked labels into restricted C")
+        strict_c11_compile_and_run(unused_procedure_output, "")
+
+        compact_source = root / "stage5c-compact-layout.src"
+        compact_output = root / "stage5c-compact-layout.c"
+        compact_source.write_text(
+            "program Stage5CCompact is\n"
+            "variable first : integer;\n"
+            "variable second : integer;\n"
+            "variable printed : bool;\n"
+            "procedure dead : integer(variable parameter : integer)\n"
+            "variable local : integer;\n"
+            "begin\n"
+            "    local := getInteger();\n"
+            "    return local + parameter;\n"
+            "end procedure;\n"
+            "procedure live : integer()\n"
+            "begin\n"
+            "    return 7;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    first := live();\n"
+            "    printed := putInteger(first);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        compact = run_compiler("--emit-c", str(compact_output), str(compact_source))
+        check(compact.returncode == 0,
+              f"compact Stage5C layout emit failed: {compact.stderr!r}")
+        compact_c = compact_output.read_text(encoding="utf-8")
+        check("Reg[0u] = INT32_C(4);" in compact_c,
+              "compact Stage5C layout did not reserve exactly three globals and one call spill")
+        check("L_f10_" not in compact_c and "L_f11_b0:" in compact_c,
+              "reachable closure emitted the dead procedure or omitted the live procedure")
+        check("R_get" not in compact_c,
+              "an unsupported builtin reachable only from a dead procedure leaked into C")
+        strict_c11_compile_and_run(compact_output, "7\n")
+
         gate5_source = root / "gate5-if.src"
         gate5_output = root / "gate5-if.c"
         gate5_source.write_text(

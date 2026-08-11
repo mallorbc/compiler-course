@@ -1,5 +1,6 @@
 #include "IRBuilder.h"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace ir
@@ -87,6 +88,10 @@ void IRBuilder::mark_frontend_error()
 
 void IRBuilder::mark_unsupported(const std::string &reason_text)
 {
+    if (unreachable_statement_depth != 0)
+    {
+        return;
+    }
     if (!saw_unsupported)
     {
         unsupported_reason = reason_text;
@@ -96,6 +101,10 @@ void IRBuilder::mark_unsupported(const std::string &reason_text)
 
 void IRBuilder::mark_invalid(const std::string &reason_text)
 {
+    if (unreachable_statement_depth != 0)
+    {
+        return;
+    }
     if (!saw_invalid)
     {
         invalid_reason = reason_text;
@@ -106,7 +115,7 @@ void IRBuilder::mark_invalid(const std::string &reason_text)
 bool IRBuilder::emission_enabled() const noexcept
 {
     return !saw_frontend_error && !saw_unsupported && !saw_invalid &&
-           final_status == ModuleStatus::Unfinalized;
+           final_status == ModuleStatus::Unfinalized && unreachable_statement_depth == 0;
 }
 
 FunctionId IRBuilder::register_program(const SymbolRef &symbol, const std::string &name)
@@ -339,6 +348,45 @@ bool IRBuilder::select_block(BlockId block)
 BlockId IRBuilder::current_block() const noexcept
 {
     return block_context.empty() ? BlockId() : block_context.back();
+}
+
+bool IRBuilder::current_block_is_open() const noexcept
+{
+    if (block_context.empty())
+    {
+        return false;
+    }
+    const Function *function = function_for_id(block_context.back().function);
+    return function != NULL && block_context.back().index < function->blocks.size() &&
+           std::holds_alternative<std::monostate>(
+               function->blocks[block_context.back().index].terminator);
+}
+
+bool IRBuilder::begin_unreachable_statement()
+{
+    if (unreachable_statement_depth == 0)
+    {
+        const Function *function = function_for_id(current_function());
+        if (function == NULL || function->kind != FunctionKind::Procedure ||
+            current_block_is_open())
+        {
+            mark_invalid("unreachable statement suppression has no terminated procedure block");
+            return false;
+        }
+    }
+    ++unreachable_statement_depth;
+    return true;
+}
+
+bool IRBuilder::end_unreachable_statement()
+{
+    if (unreachable_statement_depth == 0)
+    {
+        mark_invalid("unreachable statement suppression underflow");
+        return false;
+    }
+    --unreachable_statement_depth;
+    return true;
 }
 
 bool IRBuilder::emit_jump(BlockId target)
@@ -728,6 +776,14 @@ void IRBuilder::finalize(bool top_level_parse_success)
         discard_if_not_ready();
         return;
     }
+    if (unreachable_statement_depth != 0)
+    {
+        saw_invalid = true;
+        if (invalid_reason.empty())
+        {
+            invalid_reason = "unreachable statement suppression was not balanced";
+        }
+    }
     //Frontend failures always win.  An internal failure must win over every
     //unsupported feature, including fallthrough discovered below.
     if (saw_invalid)
@@ -739,11 +795,89 @@ void IRBuilder::finalize(bool top_level_parse_success)
     }
     for (const Function &function : scratch_module.functions)
     {
-        if (function.kind == FunctionKind::Procedure &&
-            (function.blocks.size() != 1 ||
-             std::holds_alternative<std::monostate>(function.blocks[0].terminator)))
+        if (function.kind != FunctionKind::Procedure)
         {
-            mark_unsupported("procedure fallthrough requires control-flow lowering");
+            continue;
+        }
+        bool malformed = function.blocks.empty();
+        std::vector<std::vector<std::size_t>> successors(function.blocks.size());
+        const auto add_target = [&function, &successors, &malformed](std::size_t source,
+                                                                       BlockId target) {
+            if (!target.valid() || target.function != function.id ||
+                target.index >= function.blocks.size() ||
+                function.blocks[target.index].id != target)
+            {
+                malformed = true;
+                return;
+            }
+            successors[source].push_back(target.index);
+        };
+        for (std::size_t index = 0; index < function.blocks.size(); index++)
+        {
+            const BasicBlock &block = function.blocks[index];
+            if (block.id != BlockId(function.id, static_cast<std::uint32_t>(index)))
+            {
+                malformed = true;
+                continue;
+            }
+            if (std::holds_alternative<std::monostate>(block.terminator))
+            {
+                continue;
+            }
+            const Terminator &terminator = std::get<Terminator>(block.terminator);
+            if (const JumpTerminator *jump = std::get_if<JumpTerminator>(&terminator))
+            {
+                add_target(index, jump->target);
+            }
+            else if (const BranchTerminator *branch = std::get_if<BranchTerminator>(&terminator))
+            {
+                if (branch->when_true == branch->when_false)
+                {
+                    malformed = true;
+                }
+                add_target(index, branch->when_true);
+                add_target(index, branch->when_false);
+            }
+            else if (!std::holds_alternative<ReturnTerminator>(terminator))
+            {
+                malformed = true;
+            }
+        }
+        if (malformed)
+        {
+            mark_invalid("procedure CFG has an invalid block or target");
+            break;
+        }
+        std::vector<bool> reachable(function.blocks.size(), false);
+        std::vector<std::size_t> pending{0};
+        reachable[0] = true;
+        while (!pending.empty())
+        {
+            const std::size_t index = pending.back();
+            pending.pop_back();
+            for (std::size_t target : successors[index])
+            {
+                if (!reachable[target])
+                {
+                    reachable[target] = true;
+                    pending.push_back(target);
+                }
+            }
+        }
+        if (std::find(reachable.begin(), reachable.end(), false) != reachable.end())
+        {
+            mark_invalid("procedure has an unreachable block");
+            break;
+        }
+        for (const BasicBlock &block : function.blocks)
+        {
+            if (std::holds_alternative<std::monostate>(block.terminator))
+            {
+                mark_unsupported("procedure fallthrough has no return path");
+            }
+        }
+        if (saw_invalid)
+        {
             break;
         }
     }

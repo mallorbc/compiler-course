@@ -37,6 +37,12 @@ public:
     BlockId create_block();
     bool select_block(BlockId block);
     BlockId current_block() const noexcept;
+    //Parsing remains structural after a terminator.  These scoped guards make
+    //IR lowering inert for an unreachable source statement without changing
+    //frontend diagnostics or disturbing the function/block context stacks.
+    bool current_block_is_open() const noexcept;
+    bool begin_unreachable_statement();
+    bool end_unreachable_statement();
     bool emit_jump(BlockId target);
     bool emit_branch(ValueId condition, BlockId when_true, BlockId when_false);
 
@@ -77,6 +83,7 @@ private:
     bool saw_frontend_error = false;
     bool saw_unsupported = false;
     bool saw_invalid = false;
+    unsigned int unreachable_statement_depth = 0;
     std::string unsupported_reason;
     std::string invalid_reason;
     FunctionId program_id;
