@@ -185,6 +185,103 @@ def main() -> int:
             f"unexpected missing-begin stderr: {missing_begin_result.stderr!r}",
         )
 
+        malformed_expression_cases = (
+            (
+                "leading-multiply.src",
+                "* 2",
+                'Missing left operand before "*" operator',
+            ),
+            (
+                "leading-divide.src",
+                "/ 2",
+                'Missing left operand before "/" operator',
+            ),
+            (
+                "double-multiply.src",
+                "* * 2",
+                'Missing left operand before "*" operator',
+            ),
+            (
+                "double-multiply-after-factor.src",
+                "1 * * 2",
+                "Invalid token for factor discovered",
+            ),
+            (
+                "trailing-multiply.src",
+                "1 *",
+                "Invalid token for factor discovered",
+            ),
+            (
+                "trailing-divide.src",
+                "1 /",
+                "Invalid token for factor discovered",
+            ),
+            (
+                "leading-less.src",
+                "< 2",
+                'Missing left operand before "<" operator',
+            ),
+            (
+                "leading-less-equal.src",
+                "<= 2",
+                'Missing left operand before "<" operator',
+            ),
+            (
+                "leading-greater.src",
+                "> 2",
+                'Missing left operand before ">" operator',
+            ),
+            (
+                "leading-greater-equal.src",
+                ">= 2",
+                'Missing left operand before ">" operator',
+            ),
+            (
+                "leading-equal.src",
+                "== 2",
+                'Missing left operand before "==" operator',
+            ),
+            (
+                "leading-not-equal.src",
+                "!= 2",
+                'Missing left operand before "!=" operator',
+            ),
+        )
+        for file_name, expression, expected_diagnostic in malformed_expression_cases:
+            source = Path(temp_dir) / file_name
+            source.write_text(
+                "program malformed_expression is\n"
+                "    variable value : integer;\n"
+                "begin\n"
+                f"    value := {expression};\n"
+                "end program.\n",
+                encoding="utf-8",
+            )
+            malformed_expression = run_compiler(str(source))
+            check(
+                malformed_expression.returncode == 1,
+                f"{file_name} exit was {malformed_expression.returncode}, expected 1",
+            )
+            check(
+                malformed_expression.stdout.count(expected_diagnostic) == 1,
+                f"{file_name} expected one focused diagnostic: "
+                f"{malformed_expression.stdout!r}",
+            )
+            check(
+                'Type ""' not in malformed_expression.stdout,
+                f"{file_name} polluted the type-checker state: "
+                f"{malformed_expression.stdout!r}",
+            )
+            check(
+                malformed_expression.stdout.count("Error on line") <= 3,
+                f"{file_name} produced an error cascade: "
+                f"{malformed_expression.stdout!r}",
+            )
+            check(
+                malformed_expression.stderr == "",
+                f"unexpected {file_name} stderr: {malformed_expression.stderr!r}",
+            )
+
     recovery_cases = (
         (
             "docs/audit/probes/resync/hang.src",
