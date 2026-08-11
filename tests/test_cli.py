@@ -45,6 +45,17 @@ def main() -> int:
     )
     check(no_args.stderr == "", f"unexpected no-arg stderr: {no_args.stderr!r}")
 
+    incomplete_emit = run_compiler("--emit-c", "output.c")
+    check(
+        incomplete_emit.returncode == 1,
+        f"incomplete emit exit was {incomplete_emit.returncode}, expected 1",
+    )
+    check(
+        incomplete_emit.stdout == f"Error!\nUsage: {COMPILER} <file to compile>\n",
+        f"unexpected incomplete-emit stdout: {incomplete_emit.stdout!r}",
+    )
+    check(incomplete_emit.stderr == "", f"unexpected incomplete-emit stderr: {incomplete_emit.stderr!r}")
+
     extra_args = run_compiler("one.src", "two.src")
     check(
         extra_args.returncode == 1,
