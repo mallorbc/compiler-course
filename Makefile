@@ -6,7 +6,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -g -Wall -Wextra -Werror=return-type -MMD -MP
 
 #everything except main.o, so the unit test binary can supply its own main
-CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o BuiltinCatalog.o IR.o IRBuilder.o RestrictedCEmitter.o
+CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o BuiltinCatalog.o IR.o IRBuilder.o RestrictedCEmitter.o NativeToolchain.o
 UNIT_SRCS = $(wildcard tests/unit/*.cpp)
 UNIT_BIN = tests/unit_tests
 
@@ -37,6 +37,9 @@ IRBuilder.o: IRBuilder.cpp IRBuilder.h IR.h BuiltinCatalog.h SemanticTypes.h
 RestrictedCEmitter.o: RestrictedCEmitter.cpp RestrictedCEmitter.h IR.h SemanticTypes.h BuiltinCatalog.h
 	$(CXX) -c RestrictedCEmitter.cpp $(CXXFLAGS)
 
+NativeToolchain.o: NativeToolchain.cpp NativeToolchain.h RestrictedCEmitter.h
+	$(CXX) -c NativeToolchain.cpp $(CXXFLAGS)
+
 
 CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h
 	$(CXX) -c CustomFunctions.cpp $(CXXFLAGS)
@@ -65,11 +68,14 @@ check: compiler
 codegen: compiler
 	python3 tests/test_generated_c.py
 
-test: unit cli check codegen
+native: compiler
+	python3 tests/test_native.py
+
+test: unit cli check codegen native
 
 clean:
 	rm -f *.o *.d compiler $(UNIT_BIN) $(UNIT_BIN).d
 
-.PHONY: clean unit cli check codegen test
+.PHONY: clean unit cli check codegen native test
 
 -include $(wildcard *.d)

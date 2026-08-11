@@ -4,6 +4,8 @@
 #include <fstream>
 #include <filesystem>
 #include <system_error>
+#include <cstdlib>
+#include "NativeToolchain.h"
 #include "RestrictedCEmitter.h"
 #include "scanner.h"
 #include "token.h"
@@ -44,26 +46,47 @@ const char *codegen_status_name(RestrictedCStatus status)
     return "invalid-ir";
 }
 
+const char *native_status_name(NativeToolchainStatus status)
+{
+    switch (status)
+    {
+    case NativeToolchainStatus::Success: return "success";
+    case NativeToolchainStatus::InvalidInput: return "invalid-input";
+    case NativeToolchainStatus::IoError: return "io-error";
+    case NativeToolchainStatus::LaunchError: return "launch-error";
+    case NativeToolchainStatus::CompilerError: return "compiler-error";
+    }
+    return "invalid-input";
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
 {
-    const bool normal_check_only = argc == 2;
-    const bool emit_c = argc == 4 && std::string(argv[1]) == "--emit-c";
+    const std::string first_argument = argc > 1 ? argv[1] : std::string();
+    const bool reserved_option = first_argument == "--emit-c" ||
+        first_argument == "-o" || first_argument == "--output" ||
+        first_argument == "--native";
+    const bool normal_check_only = argc == 2 && !reserved_option;
+    const bool emit_c = argc == 4 && first_argument == "--emit-c";
+    const bool emit_native = argc == 4 &&
+        (first_argument == "-o" || first_argument == "--output" ||
+         first_argument == "--native");
     //The legacy one-argument form is intentionally byte-for-byte unchanged.
-    if (!normal_check_only && !emit_c)
+    if (!normal_check_only && !emit_c && !emit_native)
     {
         std::cout << "Error!\nUsage: " << argv[0] << " <file to compile>\n";
         return 1;
     }
 
-    const std::string source_arg = emit_c ? argv[3] : argv[1];
+    const std::string source_arg = (emit_c || emit_native) ? argv[3] : argv[1];
     const std::filesystem::path source_path(source_arg);
-    const std::filesystem::path output_path = emit_c ?
+    const std::filesystem::path output_path = (emit_c || emit_native) ?
         std::filesystem::path(argv[2]) : std::filesystem::path();
-    if (emit_c && paths_alias(source_path, output_path))
+    if ((emit_c || emit_native) && paths_alias(source_path, output_path))
     {
-        std::cerr << "codegen: io-error: output aliases source\n";
+        std::cerr << (emit_native ? "native" : "codegen")
+                  << ": io-error: output aliases source\n";
         return 1;
     }
 
@@ -80,6 +103,7 @@ int main(int argc, char *argv[])
         std::cout << "Error!\nUnable to open source file: " << source_arg << "\n";
         return 1;
     }
+    source_file.close();
 
     parser *file_parser;
     file_parser = new parser(source_arg);
@@ -89,13 +113,14 @@ int main(int argc, char *argv[])
     //first_scan->test();
     if (file_parser->error_count() > 0)
     {
-        if (emit_c)
+        if (emit_c || emit_native)
         {
-            std::cerr << "codegen: frontend-error\n";
+            std::cerr << (emit_native ? "native" : "codegen")
+                      << ": frontend-error\n";
         }
         return 1;
     }
-    if (!emit_c)
+    if (!emit_c && !emit_native)
     {
         return 0;
     }
@@ -103,7 +128,7 @@ int main(int argc, char *argv[])
     {
         const char *status = file_parser->ir_status() == ir::ModuleStatus::Unsupported ?
                                  "unsupported" : "invalid-ir";
-        std::cerr << "codegen: " << status;
+        std::cerr << (emit_native ? "native" : "codegen") << ": " << status;
         if (!file_parser->ir_reason().empty())
         {
             std::cerr << ": " << file_parser->ir_reason();
@@ -112,16 +137,41 @@ int main(int argc, char *argv[])
         return 1;
     }
     RestrictedCEmitter emitter;
-    const RestrictedCResult emitted = emitter.emit_to_file(file_parser->ir_module(), output_path);
+    const RestrictedCResult emitted = emit_native ? emitter.emit(file_parser->ir_module()) :
+        emitter.emit_to_file(file_parser->ir_module(), output_path);
+    if (emit_native && file_parser->Lexer != nullptr)
+    {
+        file_parser->Lexer->source.close();
+    }
     if (!emitted.succeeded())
     {
-        std::cerr << "codegen: " << codegen_status_name(emitted.status);
+        std::cerr << (emit_native ? "native" : "codegen") << ": "
+                  << codegen_status_name(emitted.status);
         if (!emitted.diagnostic.empty())
         {
             std::cerr << ": " << emitted.diagnostic;
         }
         std::cerr << "\n";
         return 1;
+    }
+    if (emit_native)
+    {
+        const char *configured_compiler = std::getenv("CC");
+        const std::string host_compiler = configured_compiler == nullptr ||
+            configured_compiler[0] == '\0' ? "cc" : configured_compiler;
+        NativeToolchain toolchain;
+        const NativeToolchainResult native = toolchain.compile(
+            emitted, source_path, output_path, host_compiler);
+        if (!native.succeeded())
+        {
+            std::cerr << "native: " << native_status_name(native.status);
+            if (!native.diagnostic.empty())
+            {
+                std::cerr << ": " << native.diagnostic;
+            }
+            std::cerr << "\n";
+            return 1;
+        }
     }
     return 0;
 }

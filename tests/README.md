@@ -145,9 +145,13 @@ fallthrough paths, guarded procedure division, String pools and persistent
 downward heap, checked array elements, aggregate copies/conversions, exact
 by-value array calls,
 lifted unary/binary operations, scalar broadcasts, expanded frames, and
-capacity collisions) with an available host C
-compiler (test-only; production never invokes one). `make test` runs the unit,
-CLI, golden, and generated-C layers.
+capacity collisions) with an available host C compiler. Stage 7 adds
+`test_native_toolchain.cpp` for the isolated host adapter and
+`test_native.py` for its real/fake compiler process boundary: exact argv and
+typed `-lm`, hostile paths, non-shell `CC`, failed/malformed products, sentinel
+preservation, aliases/symlinks, runtime I/O and traps, recursive procedures,
+and 32 concurrent atomic publishers. `make native` runs that process layer;
+`make test` runs the unit, CLI, golden, generated-C, and native layers.
 
 Conventions for adding unit tests:
 
