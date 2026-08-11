@@ -36,26 +36,24 @@ Every `*.src` found recursively under `testPgms/` (14) and `docs/audit/probes/`
 (196) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
 holds one stray non-`.src` file, which the `*.src` glob naturally excludes.
 
-**The baseline is only valid for the default build** (plain `make`: `-g`, no
-optimization). Building with `-O2` changes the recorded output of 13 programs
-whose behaviour rests on residual undefined behaviour (uninitialized reads —
-the LX-5 class). If you change CXXFLAGS and see unexplained reds, that is the
-reason; do not `--update` over them without understanding the diff.
+The manifest is canonically produced with the default build (`make`, `-g`, no
+optimization). Optimized, warning-strict, and sanitizer builds are additional
+validation configurations; they should verify the same recorded output, not be
+used to regenerate it. Never run `--update` merely to hide a configuration-
+specific difference.
 
-Directory names do **not** imply pass/fail. Three programs in `correct/`
-legitimately exit 1 today. Expectations come only from the recorded baseline,
-never from where a file happens to live.
+Directory names do **not** imply pass/fail. Two professor fixtures in
+`correct/` (`test1.src` and `test1b.src`) are intentionally pinned as frontend
+errors. Expectations come only from the recorded baseline, never from where a
+file happens to live.
 
 ## What "golden" means here
 
-A golden file records the compiler's **current** behaviour, bugs included. It
-is not a statement of what the compiler *should* print. The recorded output
-deliberately preserves:
-
-- trailing blank lines produced by the double-`endl` in the error printer,
-- literal typos in diagnostics (e.g. `Missing keyworkd "program"`),
-- diagnostics on the wrong line number, wrong-statement wording, and every
-  other known defect catalogued in `docs/audit/AUDIT.md`.
+A golden file records the compiler's **current check-only interface**. It is a
+regression oracle, not by itself a language-conformance judgment. Some output
+still preserves historical formatting or wording for compatibility, while the
+dated audit documents describe the state that existed when they were written;
+they are not a claim that every original defect remains live.
 
 **Never hand-edit a golden file to make it look right.** Goldens are checksummed
 in the manifest; an edited golden fails verification with an explicit "edited by
@@ -169,7 +167,9 @@ Conventions for adding unit tests:
   legacy `feed_in_tokens` accumulator as an integration path: TY-2E removed it
   from live expression parsing, and it remains only as compatibility surface
   pending a later cleanup.
-- Tests named `KNOWN-BUG ...` assert **current buggy behaviour** on purpose,
-  citing the audit ID; when the bug is fixed, the failing test is flipped in
-  the same commit. Fixture programs are written via `mkstemp` to `$TMPDIR` and
-  cleaned up — never committed.
+- A `KNOWN-BUG ...` test normally pins current behavior until its fix lands.
+  The retained TY-10 case is different: it documents asymmetry in an inert
+  legacy compatibility helper that live parsing no longer calls. It is
+  compatibility-surface debt, not a supported-language defect. Fixture
+  programs are written via `mkstemp` to `$TMPDIR` and cleaned up—never
+  committed.

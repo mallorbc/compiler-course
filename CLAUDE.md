@@ -1,53 +1,108 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is current project guidance for any coding agent working in this
+repository. The earlier frontend-only description was retired when Issue #1's
+compiler pipeline was completed.
 
-## Overview
+## Project status
 
-Hand-written compiler front end for a custom Ada-like language (EECS 6083 course project), in C++ with no compiler-generator tools. This snapshot implements scanning, recursive-descent parsing, and type checking only — **there is no code generation** (the README's "compile to C or LLVM" is aspirational).
+This is a complete handwritten compiler for the EECS 6083 course language. It
+checks source, builds and verifies project-owned typed IR, emits restricted C,
+and can invoke a host C toolchain to publish a native executable. The design is
+deliberately an evolution of the 2019 code, not a replacement frontend.
 
-The assignment PDFs live in `docs/assignment/`: `projectLanguage.pdf` (the BNF grammar and semantics — the authoritative language definition) and `project.pdf` (project requirements, including the codegen expectations). `2023-snapshot/` is the closest recoverable version to the 2019 offering the code was written against; `2024-current/` has the same grammar with cleaner semantics wording. See `docs/assignment/PROVENANCE.md`.
+Authoritative language material is in `docs/assignment/`; use the 2024 document
+for current semantics and `PROVENANCE.md` when vintage behavior matters. The
+completion summary and explicit policy choices are in `docs/FINAL_REPORT.md`.
 
 ## Commands
 
 ```sh
-make                # builds ./compiler (g++ -g -Wall -Wextra -Werror=return-type, no optimization)
-make clean          # removes *.o, compiler, tests/unit_tests
-make unit           # builds + runs the doctest unit suite (tests/unit/)
-make check          # golden-file regression run: all 177 test programs vs recorded baseline (~2s)
-make test           # unit + check — run this before and after any change
-./compiler <file.src>   # compile one source file; diagnostics go to stdout
-python3 tests/run_golden.py --update   # re-record the golden baseline after an INTENDED behavior change (review the diff it prints)
-./test_all.sh       # legacy manual eyeball-runner (sleeps + clears between tests); superseded by make check
+make                          # build ./compiler with C++17
+make clean                    # remove build products
+make unit                     # doctest unit suite
+make cli                      # process-level frontend/CLI checks
+make check                    # 210-program byte-exact golden corpus
+make codegen                  # strict generated-C compile/runtime checks
+make native                   # host-toolchain and native runtime checks
+make test                     # all five layers above
+
+./compiler SOURCE             # check only; no artifact
+./compiler --emit-c OUT.c SOURCE
+./compiler -o OUT SOURCE      # native executable
 ```
 
-The golden baseline (`tests/manifest.json` + `tests/golden/`) records **current** behavior, bugs included — a red `make check` means behavior *changed*, not that the compiler is wrong. Intended changes are re-recorded with `--update` and the diff reviewed in the commit. See `tests/README.md`.
-
-To run a single test, build and invoke directly, e.g. `./compiler testPgms/correct/math.src`. Test programs live in `testPgms/correct/` (professor-provided), `testPgms/custom/`, `testPgms/fail/`, and ~160 audit regression probes under `docs/audit/probes/`. Since Batch 1 the exit code is truthful: 0 = no errors reported, 1 = errors reported, ≥128 = the compiler itself crashed. Note the `correct/` directory name is not authoritative — three of its programs legitimately report errors today (`logicals.src`, `test1.src`, `test1b.src`).
-
-## Known broken state (updated 2026-08, post-Batch 1)
-
-Batch 1 (commit `ccef008`) fixed the 15 minimal-tier defects: the three missing-`return` UB crashes (SIGILL), silent accepts of invalid operators, untruthful exit codes, and all `-Wreturn-type` warnings. The full verified defect inventory is `docs/audit/AUDIT.md`; the remaining fix queue is `docs/audit/FIX-TIERS.md`. Still broken:
-
-- `docs/audit/probes/scanner/t_overflow.src` aborts (uncaught `std::stoi` out-of-range in scanner.cpp — CR-4), and five probe programs hang the compiler (CR-5/LX-3): `probes/resync/hang.src`, `probes/scanner/t_case.src`, `probes/scanner/t_number.src`, `probes/scopes/malformed_end_test.src`, `probes/scopes/minimal_hang_test.src`.
-- `Typechecker::check_assignment_statement` is a stub that always returns true — final LHS-vs-RHS assignment type checking never runs. `check_loop_statement` is dead code; `parse_loop_statement` calls `check_if_statement` instead, so loop-condition errors get if-statement wording. Both are slated for the TY-2 type-propagation rebuild (High tier).
-- Procedure calls are never validated against a declared signature (no lookup, no arity/type check). This is also how the built-in I/O procedures (`getInteger`, `putInteger`, etc.) used throughout testPgms "work" — they are not predeclared anywhere.
-- Type propagation is fundamentally stream-shaped, not tree-shaped (parens lose types, call return types don't propagate, unary ops desync the checker, for-conditions unchecked) — the TY-2 rebuild addresses this class.
+Use `python3 tests/run_golden.py --update` only for an intended, reviewed
+check-only behavior change. Never hand-edit golden output files.
 
 ## Architecture
 
-**Single-pass, parser-driven pipeline.** `main.cpp` just constructs `parser(filename)`; the parser constructor (parser.cpp) creates the `scanner`, creates the `Typechecker` (which holds a back-pointer to the parser), runs `parse_program()`, and prints accumulated errors. There are no separate scan/typecheck passes: the parser pulls tokens lazily from the scanner and calls the typechecker inline as it parses.
+- `scanner` remains handwritten and lazily supplies the parser's token window.
+- `parser` remains recursive descent and invokes semantic checking while it
+  parses; there is no generated parser or full-AST rewrite.
+- `SymbolTable` owns retained unique lexical scopes. Scope `0` is global; the
+  scanner's lexeme map is only an interning cache. Resolution is current local,
+  owning procedure/self, then source-ordered global.
+- `Typechecker` returns synthesized expression shapes and pure conversion plans.
+  The old streaming accumulator remains inert compatibility surface and must
+  not be reintroduced into live parsing.
+- `SemanticTypes` and `BuiltinCatalog` are the shared semantic vocabulary.
+  The catalog is the only production source for the nine builtin signatures.
+- `IR`/`IRBuilder` provide strong IDs, scalar/array shapes, CFG, calls, storage,
+  verifier invariants, and atomic FrontendError/InvalidIR/Unsupported status.
+- `RestrictedCEmitter` consumes finalized IR only. It knows nothing about
+  scanner/parser tokens and returns C plus typed link metadata.
+- `NativeToolchain` is the sole host-process seam. It uses literal argv with
+  `posix_spawnp`, validates a private product, and atomically renames only after
+  every earlier phase succeeds.
 
-**Token flow.** The parser keeps one-token lookahead (`Current_parse_token` / `Next_parse_token`) refilled via `Get_Valid_Token()` (parser.cpp). At EOF the scanner returns a token of type `T_INVALID` — that is the sentinel checked throughout the parser's loops. Two-character operators (`<=`, `==`, …) are combined by the parser from single-character tokens, not by the scanner.
+Diagnostics are accumulated by the parser and printed to stdout for historical
+compatibility. A diagnostic marks the IR frontend-error state; emit/native
+modes additionally report their phase status on stderr and never publish a
+partial artifact.
 
-**One shared symbol table, and a dual-purpose token struct.** The single live `SymbolTable` is owned by the scanner (`scanner.h`) and mutated by the parser through `Lexer->symbol_table`. The `token` struct (token.h) is both the lexer's token type and the symbol table's entry type — it carries lexical fields plus `scope_id`, `identifer_type`, `identifier_data_type`, `procedure_params`, etc. The scanner itself inserts new identifiers into the table during lexing.
+## Supported and excluded behavior
 
-**Scoping.** `SymbolTable` maps `scope_id -> ScopeTable` (per-scope map of name → token). Scope 0 is the program scope; each `procedure` entered bumps `current_scope_id` via `parser::update_scopes(true)` and tears down via `update_scopes(false)` at `end procedure`. Two gotchas:
-- `number_of_scopes` is decremented on scope exit, so **scope ids are reused** by later sibling procedures — they are not unique across the program.
-- `global` declarations go into a separate pseudo-scope with id **-1** (not scope 0); lookups special-case it.
+Supported code generation includes all four primitive types, all nine
+builtins, scalar and aggregate expressions/conversions, checked arrays,
+conditionals, finite loops, procedures, nested declarations, recursion, manual
+frames, and deterministic typed fallthrough defaults.
 
-After mutating a token, the parser must call `SymbolTable::resync_tables` to write it back into the right `ScopeTable`; procedure tokens are additionally written one scope up so the name is visible both inside its body and in the declaring scope.
+Do not silently broaden these deliberate boundaries:
 
-**Type checking is interleaved, streaming.** As the expression grammar descends (`parse_expression → parse_arithOp → parse_relation → parse_term → parse_factor`), the parser feeds every operand/operator token to `Typechecker::feed_in_tokens`, which accumulates until it has a full operation and then runs `is_valid_operation()` (the type-compatibility matrix). `set_statement_type` is called at the start of each statement to classify it and reset state. Note: the synthesized result type returned by `feed_in_tokens` is discarded at most call sites — the `resolved_token` that bubbles up to if/loop/return checks is the innermost factor's token, not the whole expression's type.
+- LLVM is a future IR consumer; no LLVM dependency belongs in the frontend.
+- Vintage primitive `type` aliases remain accepted and lower as their
+  underlying primitive. Enum/unresolved types remain frontend-valid but are
+  atomically Unsupported by the 2024-target backend.
+- Nested procedures do not capture enclosing procedure locals. The recovered
+  spec does not define that ABI; globals and self recursion are supported.
+- `return` is procedure-only. The canonical `put*` signatures return Bool
+  success/failure, following the displayed signatures where the prose differs.
+- Conditions and procedure return values are scalar, and direct array
+  assignment never broadcasts.
+- The restricted machine is a fixed 64 MiB word-addressed model. Runtime bounds,
+  integer division by zero, frame, and String-heap exhaustion terminate the
+  generated program with status 1.
+- Native mode is POSIX/Linux; keep platform policy isolated from the IR/emitter.
 
-**Error handling.** All diagnostics funnel through `parser::generate_error_report` into an `error_reports` vector printed at the end; there is no warning/error distinction. Recovery is panic-mode: `resync_parser(parser_state)` (a large switch keyed by the `parser_state` enum in parser.h, mirroring grammar productions) skips to a synchronizing token and re-dispatches; `resync_status` suppresses duplicate reports meanwhile. The typechecker reports line numbers from `Lexer->current_line` (the scanner's lookahead position), so reported lines can trail the actual offending code.
+Some professor fixtures contain source-level mistakes. In particular,
+`recursiveFib.src` publishes successfully but drives recursion negative and
+hits frame capacity; `test1.src` and `test1b.src` are frontend-invalid. Tests
+pin those observed outcomes rather than repairing the fixtures.
+
+## Change rules
+
+- Preserve the recognizable scanner/parser/typechecker organization unless a
+  requirement genuinely forces a change.
+- Production compiler-core functionality must remain project-owned. Test-only
+  libraries are permitted; doctest is currently vendored under `tests/vendor/`.
+- Prefer backend-neutral semantics in IR over C-specific parser behavior.
+- Keep failures atomic: invalid source exposes no usable IR, and failed emit or
+  native publication leaves no new output.
+- Run `make test` before committing. For memory-sensitive work also run the
+  ASan+UBSan recipe recorded in `docs/FINAL_VERIFICATION.md`.
+- `master` and tag `v0-course-baseline` are the frozen 2019 baseline. Work stays
+  on `finish-compiler`; do not merge or push without Blake's explicit approval.
+- `docs/audit/AUDIT.md`, `docs/audit/raw/`, and dated notes are historical
+  evidence. Add current corrections to the final report or a new dated note
+  instead of rewriting what those snapshots observed.

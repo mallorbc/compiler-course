@@ -29,13 +29,15 @@ one `-lm` only when the emitter's reachable dependency set contains
 
 `waitpid` retries interruption. Launch errors, signals, nonzero exits, and a
 zero exit without a nonempty, direct, link-count-one regular file carrying an
-execute bit all fail the transaction. Immediately before publication, the
+execute bit and executable by the current effective identity (`X_OK`) all fail
+the transaction. Immediately before publication, the
 driver rechecks that the final path is missing or a direct regular file and is
 distinct from the source and resolved host compiler. It then uses one `rename`
 to replace/publish the executable atomically. Every earlier failure preserves an
 existing output, and the private directory is removed on every return path.
-Bounds, division, frame, or heap failures are runtime behavior of a successfully
-published executable; they do not retroactively make compilation fail.
+Bounds, integer division by zero, frame, or heap failures are runtime behavior
+of a successfully published executable; they do not retroactively make
+compilation fail.
 
 This seam intentionally targets standard Linux/POSIX facilities:
 `posix_spawnp`, `waitpid`, `mkdtemp`, `lstat`, executable permission bits,
@@ -53,5 +55,7 @@ missing and signaled compilers, all malformed product kinds, non-shell hostile
 Real-`cc` tests run Integer/control/recursive procedures, all four runtime value
 types and canonical I/O, String and numeric arrays, checked-bound failure,
 `sqrt`, hostile Unicode/newline/metacharacter paths, deterministic replacement,
-and 32 concurrent writers. The check-only corpus remains 210 cases (98 OK, 112
-ERRORS), and generated-C strict builds remain a separate independent oracle.
+all eleven professor `correct/` fixtures with their pinned success/rejection
+outcomes, and 32 concurrent writers. The check-only corpus remains 210 cases
+(98 OK, 112 ERRORS), and generated-C strict builds remain a separate
+independent oracle.

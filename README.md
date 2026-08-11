@@ -1,75 +1,139 @@
-# Compiler-Course
-Repository for EECS 6083.
+# Compiler Course
 
-In this project I was tasked with writing a complete compiler for a custom language spec without using any compiler tools. 
-The compiler will compile the custom language to C or LLVM.  I was allowed to use any language of my choice and chose C++. 
+This repository contains a completed handwritten compiler for the EECS 6083
+course language. It keeps the original 2019 C++ organization—scanner,
+recursive-descent parser, parser-driven type checking, and symbol tables—while
+adding a typed intermediate representation, an inspectable restricted-C
+backend, and native executable production on standard Linux.
 
-## Assignment Documents
-The assignment PDFs were never committed while I was taking the class (~2019). They were recovered from the web in July 2026: the professor's course page is still live, and the Wayback Machine holds pre-2024 snapshots. See [docs/assignment/](docs/assignment/) for the language specification (`projectLanguage.pdf`), the project description (`project.pdf`), and [PROVENANCE.md](docs/assignment/PROVENANCE.md) for where each copy came from and how close it is to the 2019 original.
+The compiler core is project-owned. It uses no parser, scanner, type-checker,
+IR, or code-generation library. The only vendored third-party component is
+doctest, used by the unit-test binary only.
 
-## Compiling the Compiler
-Compiling this compiler uses g++.
+The assignment PDFs were not committed in 2019. Recovered copies and their
+provenance are in [docs/assignment/](docs/assignment/); the 2024 document is the
+current semantic target, with the surviving 2019 behavior called out where it
+differs. The implementation and verification summary is in
+[docs/FINAL_REPORT.md](docs/FINAL_REPORT.md).
 
-```cli
-g++ <all source files> -o <output binary> -g(used for debugging)
-```
+## Requirements
 
-Alternatively, use the make command along with the Makefile to ease this process. 
-```cli
+- A standard Linux/POSIX environment
+- GNU Make and a C++17 compiler (`g++` by default)
+- Python 3.10 or newer for the test harness
+- A C11 host compiler (`cc` by default) for generated-C and native modes
+
+Production C++ uses the standard library plus the small POSIX process and file
+boundary isolated in `NativeToolchain`. Generated programs use standard C11
+and add the platform math library only when reachable `sqrt` code requires it.
+
+## Build and use
+
+```sh
 make
 ```
 
-This command will compile all the files together and create an excutable called "compiler".  After running this command, run the following to clean the workspace and prepare for another compilation:
+The legacy one-argument form checks a source file and writes no artifact:
 
-```cli
-make clean
-```
-## Usage of Compiler
-After the compiler is compiled, it can be used but running the executable in the cli, along with passing along a text file to be compiled.
-
-```cli
-./<name of binary> <name of file to compile>
+```sh
+./compiler program.src
 ```
 
-The one-argument form remains a check-only frontend invocation. The current
-restricted-C backend can be requested explicitly for Integer, Bool, Float, and
-String Programs and procedures, including scalar control flow/I/O, `sqrt`, and
-typed procedure fallthrough (deterministic Integer `0`, Float `+0.0`, Bool
-`false`, or empty String), plus Stage 6D1 array storage, checked indexing, whole
-copies/conversions, and exact by-value user-procedure parameters, plus Stage 6D2
-elementwise unary/binary operators and scalar broadcast. The backend can still
-be requested as C source without invoking a host compiler.
-Float is carried as an exact
-IEEE binary32 word in the fixed `int32_t` memory/register model.  String values
-are word-index handles to one-byte-per-word, zero-terminated immutable data in
-that same memory; an array occupies one MM word per element, including String
-handle elements.  Consumers of
-the emitter API must map `RestrictedCLink::Math` to their platform math-library
-link option when present:
+Restricted C can be inspected directly:
 
-```cli
-./compiler --emit-c <output.c> <source file>
+```sh
+./compiler --emit-c program.c program.src
 ```
 
-On standard Linux, Stage 7 can instead compile and atomically publish a native
-executable (the three option spellings are equivalent):
+Or compile and atomically publish a native executable:
 
-```cli
-./compiler -o <output> <source file>
-./compiler --output <output> <source file>
-./compiler --native <output> <source file>
+```sh
+./compiler -o program program.src
+./program
 ```
 
-Native mode uses `cc` by default. `CC` may select one executable path or name;
-its value is never split into shell words, and `CFLAGS`/`LDFLAGS` are not read.
-The driver passes `-std=c11`, private absolute temporary input/output paths, and
-one trailing `-lm` only when the emitter reports the typed Math dependency. It
-uses `posix_spawnp` rather than a shell and replaces an existing regular output
-only after the compiler succeeds and its product is validated. Direct or
-dangling output symlinks, directories, missing parents, and source/output or
-host-compiler/output aliases are rejected. See the
-[Stage 7 note](docs/notes/2026-08-11-stage7-native-driver.md) for the transaction
-and POSIX portability boundary.
+`--output` and `--native` are aliases for `-o`. Native mode uses `cc` unless
+`CC` names one literal executable or path. It never invokes a shell, never
+splits `CC` into flags, and deliberately ignores `CFLAGS` and `LDFLAGS`. A
+failed frontend, backend, host compilation, or product validation leaves an
+existing output unchanged and does not create a previously absent output.
 
-## Testing the Compiler
-The shell script *test_all.sh* builds the compiler using the make file, then proceeds to test the compiler using the script and test files. These test files are located in testPgms/correct, which are test files provided by the professor, and in testPgms/custom for a correct test file that I made, and testPgms/fail which are files that I made that do not work.
+## Supported language
+
+The compiler supports:
+
+- case-insensitive identifiers, comments, literals, and the recovered program
+  grammar;
+- global/local variables, shadowing, nested procedure declarations, exact
+  parameters, calls, recursion, and typed returns;
+- `Integer`, `Float`, `Bool`, and `String` values;
+- unary, arithmetic, logical/bitwise, relational, and equality expressions
+  with the specified conversions;
+- assignment, `if`/`else`, the course's two-clause `for`, and `return`;
+- all nine canonical builtins: four getters, four putters, and `sqrt`;
+- inclusive-bound arrays, checked indexing, whole snapshots/copies/conversions,
+  exact by-value procedure arguments, lifted operators, and scalar broadcast.
+
+Typed procedures that reach `end procedure` without an explicit return produce
+the deterministic default for their scalar type. This preserves professor
+fixtures accepted by the original frontend; the compatibility rule is emitted
+as ordinary typed IR rather than hidden backend behavior.
+
+`return` is valid only inside a procedure. The canonical catalog follows the
+displayed assignment signatures for `put*`: each returns a Bool indicating
+runtime output success, despite contradictory prose elsewhere in the handout.
+
+## Architecture
+
+```text
+scanner -> recursive-descent parser + symbol/type semantics
+        -> verified typed IR
+        -> pure restricted-C emitter
+        -> isolated native toolchain adapter -> executable
+```
+
+`SemanticTypes`, `BuiltinCatalog`, `IR`, and `IRBuilder` form a frontend-
+independent contract. `RestrictedCEmitter` is one consumer; a future LLVM
+backend can consume the same verified IR without replacing the frontend.
+
+Generated C deliberately resembles the course target: one `main`, a fixed
+64 MiB `int32_t` memory, numeric registers and labels, explicit gotos, manual
+procedure frames, and a downward persistent String heap. Source identifiers do
+not leak into the generated user-flow labels or storage layout.
+
+## Testing
+
+Run the complete gate with:
+
+```sh
+make test
+```
+
+It runs the doctest unit suite, CLI tests, all 210 byte-exact golden programs,
+strict generated-C compilation/runtime tests, and native toolchain/runtime
+tests. The current golden split is 98 successful frontend programs and 112
+expected-error programs, with no crash or timeout entries. See
+[tests/README.md](tests/README.md) for focused commands and baseline rules.
+
+The legacy `test_all.sh` runner remains for historical/manual use; it is not the
+authoritative gate.
+
+## Deliberate boundaries
+
+- LLVM emission and optimization are future backends, not part of Issue #1.
+- The vintage `type`/enum syntax is outside the 2024 grammar. Primitive aliases
+  are preserved and lower as their underlying primitive; enum/unresolved types
+  remain frontend-valid but atomically unsupported by restricted-C/native code
+  generation.
+- Nested procedures resolve current locals, self, and source-ordered globals;
+  enclosing-procedure local capture is not invented because the recovered spec
+  defines no static-link/capture rule.
+- Conditions and procedure results are scalar; assignment itself does not
+  broadcast. These are language contracts, not missing array lowering.
+- Native publication targets POSIX/Linux. The direct destination is checked
+  fail-closed, but eliminating a hostile same-privilege replacement of an
+  ancestor path component would require a Linux-specific dirfd/`renameat2`
+  policy.
+
+Historical audit snapshots remain under [docs/audit/](docs/audit/), and the
+incremental implementation decisions are recorded in [docs/notes/](docs/notes/).

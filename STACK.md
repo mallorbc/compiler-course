@@ -1,16 +1,31 @@
 # Stack ledger
 
-Trunk: `master` (tag `v0-course-baseline` = 2019 submission + recovered assignment docs).
-Nothing merges to master without Blake's explicit go.
+Trunk is `master`; tag `v0-course-baseline` is the frozen 2019 submission plus
+recovered assignment documents. Nothing merges to `master` without Blake's
+explicit approval. The completed implementation is layered on
+`finish-compiler` and remains local until an explicit push request.
 
-| # | Branch | Purpose | Gates run | Collapse-eligible |
-|---|--------|---------|-----------|-------------------|
-| 1 | `finish-compiler` | Baseline audit: verified defect inventory + spec provenance before any fixes (docs/audit/AUDIT.md) | Full build (3 -Wreturn-type warnings recorded); 14-program test matrix (6 crash — documented); 49 claims adversarially verified, 0 refuted; ~160 probe programs recorded with outcomes | Pending Blake review |
-| 2 | `finish-compiler` (Batch 1 commits) | Minimal-tier fixes: all 15 from FIX-TIERS.md (3 crash fixes, silent-accepts now error, truthful exit codes, warning-clean build) | 177-program before/after matrix: crashes 30→1, professor programs crashing 6→0, build warnings 3→0, zero regressions; per-fix adversarial verification 15/15 CORRECT (REJ-5 after one-line completion) — docs/notes/2026-07-10-batch1-results.md | Pending Blake review |
-| 3 | `finish-compiler` (Batch 2 commit) | Test harness: golden-file runner over all 177 programs (committed baseline 89/82/1/5), doctest unit layer (20 cases/213 assertions), `-Wall -Wextra -Werror=return-type -MMD -MP` build, `make test` gate. Zero compiler-source changes. | make test green ×2 + concurrent double-run + fresh-checkout reproduction; 8+ seeded regressions all caught (2 verifier lenses + critic); 2 blockers found+fixed pre-commit — docs/notes/2026-08-03-batch2-results.md. Note: `-Wall/-Wextra` reveal 41 warnings (filed WARN-1); "warnings 3→0" in row 2 was for the plain 2019 flags. | Pending Blake review |
+| Layer | Commits / purpose | Durable gate |
+|---|---|---|
+| Baseline audit | `8380cb5`–`a26acec`: recovered specs, verified defect inventory, fix tiers | 49 claims and the original crash/hang matrix recorded under `docs/audit/` |
+| Batches 1–2 | `ccef008`, `83c1cc3`: minimal crash fixes and permanent golden/doctest harness | 177-program historical baseline plus 20 initial unit cases |
+| Stage 1 | `467bbe0`–`27e6e95`: CLI/scanner safety, deterministic recovery, grammar chains, diagnostics and typing | zero hangs/crashes; warning-clean default build; expanded scanner/parser units |
+| Stage 2 | `2f288a5`–`0c6723d`: retained scopes, synthesized types, exact calls, assignments, conditions, arrays and returns | semantic matrices and 210-program golden corpus |
+| Stage 4 | `e16e1ff`–`bfbab88`: backend-neutral typed IR, verifier, restricted-C emitter, first runtime call | direct IR mutation tests and strict deterministic C11 output |
+| Stage 5 | `4872c46`–`456a9dd`: Program/procedure CFG, loops, calls, recursion and manual activation frames | dominance/CFG adversaries plus native-equivalent procedure runtimes |
+| Stage 6 | `4d81803`–`267c17f`: all scalar runtimes, Strings, checked arrays, lifted operations and typed fallthrough | strict runtime/helper/capacity matrices for all language value types |
+| Stage 7 | `f67bfd6`: safe host toolchain adapter and atomic native publication | fake/real toolchains, hostile paths, signals, malformed products, concurrency |
+| Final grammar gate | `87b1db5`: require scanner-confirmed EOF after the final program period | 147 unit cases / 3,405 assertions; CLI; 210 goldens; generated C; all professor/native outcomes |
+| Final ownership gate | `c02f253`: deterministic parser/scanner/typechecker/IR-builder lifetime with unchanged public seams | strict C++ and default full suites; ASan+UBSan; LeakSanitizer host limitation recorded |
 
-Next planned layers (queue in docs/audit/FIX-TIERS.md):
-Batch 3 low-tier fixes (16 + CLI-1/LX-6/TY-11/WARN-1 from Batch 2
-discoveries) → medium items individually → TY-2 type-propagation rebuild
-(design doc first) → codegen → runtime. Critical-tier decisions pending
-Blake: type/enum policy, codegen target.
+The current pipeline is:
+
+```text
+handwritten frontend -> verified typed IR -> restricted C -> native executable
+```
+
+Issue #1 implementation is complete in the local branch. Optimized, sanitizer,
+and portability evidence is recorded in `docs/FINAL_VERIFICATION.md`; only its
+final tracked-export reproduction remains to be filled after the documentation
+commit. Pushing, updating the GitHub issue, and any merge to `master` remain
+separate user-authorized actions.

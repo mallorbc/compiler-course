@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Golden-file regression harness for the EECS 6083 compiler front end.
+"""Golden-file regression harness for the EECS 6083 compiler check-only mode.
 
 Runs ./compiler over every test program in the repo and compares the observed
 behaviour (exit status class, exit code, stdout bytes, stderr emptiness)
@@ -467,10 +467,11 @@ def cmd_update(args: argparse.Namespace) -> int:
     entries = {path: entries[path] for path in sorted(entries)}
     manifest = {
         "manifest_version": MANIFEST_VERSION,
-        "note": ("Recorded CURRENT compiler behaviour, bugs included. "
-                 "Valid only for the default build (plain `make`, no -O); "
-                 "optimization levels change UB-carrying programs' output. "
-                 "Regenerate with: python3 tests/run_golden.py --update"),
+        "note": ("Recorded current check-only compiler behaviour. "
+                 "The default build is the canonical baseline producer; "
+                 "optimized and sanitizer builds verify rather than regenerate it. "
+                 "Regenerate only for an intended reviewed change with: "
+                 "python3 tests/run_golden.py --update"),
         "default_timeout_sec": DEFAULT_TIMEOUT_SEC,
         "timeout_budget_sec": TIMEOUT_BUDGET_SEC,
         "program_roots": list(PROGRAM_ROOTS),
@@ -594,7 +595,7 @@ def matches(rel_path: str, needle: str | None) -> bool:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="run_golden.py",
-        description="Golden-file regression harness for the compiler front end.",
+        description="Golden-file regression harness for compiler check-only mode.",
     )
     parser.add_argument(
         "--update", action="store_true",

@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "note": "Recorded CURRENT compiler behaviour, bugs included. Valid only for the default build (plain `make`, no -O); optimization levels change UB-carrying programs' output. Regenerate with: python3 tests/run_golden.py --update",
+  "note": "Recorded current check-only compiler behaviour. The default build is the canonical baseline producer; optimized and sanitizer builds verify rather than regenerate it. Regenerate only for an intended reviewed change with: python3 tests/run_golden.py --update",
   "default_timeout_sec": 30.0,
   "timeout_budget_sec": 2.0,
   "program_roots": [

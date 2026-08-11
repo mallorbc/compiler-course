@@ -1,4 +1,16 @@
-# Fix tiers — execution queue derived from AUDIT.md
+# Fix tiers — historical execution queue derived from AUDIT.md
+
+> **Completion status (2026-08-11):** This file began as the pre-fix queue and
+> retains its original IDs/order as audit provenance. Issue #1 implementation
+> is now complete through Stage 7 plus the final EOF grammar gate. All
+> applicable Minimal, Low, Medium, and High items below are implemented and
+> covered by the current test suite. `CODEGEN` and `RUNTIME` are complete for
+> the 2024 target. `POLICY-1` is resolved as a preservation boundary: vintage
+> primitive `type` aliases lower as their underlying primitives, while enum or
+> unresolved types remain frontend-valid but atomically Unsupported. The whole
+> vintage syntax is outside the 2024 grammar. Dated “candidate” and
+> “next” wording below describes the plan at the time, not remaining work; see
+> `docs/FINAL_REPORT.md` for current status and deliberate limits.
 
 *2026-07-10. Every confirmed audit finding assigned a tier. The tier measures
 **fix complexity/ceremony** — how much design thinking, testing, tooling, or
@@ -41,7 +53,7 @@ Tier definitions:
 | LX-4 | Record a string token's starting line; fix line-0 EOF token | probes/scanner/t_unterm_string.src |
 | LX-5 | Default-initialize `token::identifier_data_type` (token.h:126) | build + existing probes |
 
-## Low — 16 items (Batch 3 candidate, after harness)
+## Low — 16 items (**DONE**, Stages 1–2)
 
 | ID | Fix | Notes |
 |----|-----|-------|
@@ -62,7 +74,7 @@ Tier definitions:
 | LX-2 | Floor `nested_comment_counter` at 0; report stray `*/` (scanner.cpp:565) | leak probe exists |
 | LX-3 | Report multi-decimal numbers instead of silently discarding (scanner.cpp:373) | probes/scanner/t_number.src |
 
-## Medium — 9 items (each its own focused effort)
+## Medium — 9 items (**DONE**, Stages 1–2)
 
 | ID | Work | Notes / dependencies |
 |----|------|----------------------|
@@ -81,15 +93,15 @@ Tier definitions:
 | ID | Work | Subsumes |
 |----|------|----------|
 | TY-2 | **DONE through Stage 2F frontend consumers**: each `parse_*` expression function returns its synthesized type; the live parser no longer uses the `feed_in_tokens` side-channel; assignment/return/condition consumers retain pure scalar/array conversion plans | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry). Conversion plans deliberately stop before backend casts, IR, or runtime representation. |
-| TY-8 | **DONE through Stage 6D2 bounded expression slice**: canonical inclusive bounds, checked element access, MM allocation, snapshots/copies, elementwise casts and operators, scalar broadcast, and exact by-value array calls | Array conditions/results/returns and assignment broadcast remain excluded; compile-time OOB folding is intentionally unnecessary because checks execute at runtime |
+| TY-8 | **DONE through Stage 6D2 bounded expression slice**: canonical inclusive bounds, checked element access, MM allocation, aggregate expression results, snapshots/copies, elementwise casts and operators, scalar broadcast, and exact by-value array calls | Array-valued conditions and procedure return types are language-illegal; assignment broadcast remains excluded; compile-time OOB folding is unnecessary because checks execute at runtime |
 
-## Critical — 3 items (blocked on Blake)
+## Critical — 3 items (**RESOLVED** for Issue #1)
 
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
-| POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for Program/procedure CFG/manual frames; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String; **Stage 6D1/6D2 DONE** for array representation, checked elements, copies/conversions, exact calls, lifted operators, and scalar broadcast; **Stage 6E DONE** for explicit typed IR completion of source procedure fallthrough; **Stage 7 DONE** for safe standard-Linux host compilation and atomic executable publication | Aggregate returns/conditions and nested captures remain separate |
-| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`; Stage 6D1/6D2 add one-word-per-element arrays, flat copy/conversion/operator loops, by-value frames, and bounds/division/capacity exits; Stage 6E reuses those paths for deterministic scalar fallthrough defaults; Stage 7 maps dependency-exact Math to one trailing `-lm` through the isolated native adapter | Aggregate returns/conditions remain separate |
+| POLICY-1 | **RESOLVED:** preserve vintage `type`/enum parsing without inventing enum runtime semantics outside the 2024 target | Primitive aliases lower as their underlying types; enum/unresolved uses finalize atomically Unsupported |
+| CODEGEN | **DONE:** typed IR, Program/procedure CFG, manual frames, scalar and array lowering, safe restricted-C publication, and standard-Linux native executable production | LLVM is a future IR consumer; scalar conditions/returns are the language contract, not an aggregate-codegen omission |
+| RUNTIME | **DONE:** all nine builtins, four scalar types, persistent Strings, checked/lifted arrays, exact by-value frames, typed fallthrough, dependency-exact `-lm`, and controlled runtime traps | Nested enclosing-local capture remains excluded because the recovered spec defines no static-link semantics |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
 
@@ -100,7 +112,7 @@ asserts the current buggy behaviour and gets flipped in the fixing commit:
 | ID | Tier | Defect |
 |----|------|--------|
 | LX-6 | Minimal | A number token ending a line is stamped one line late: `build_number_token` counts the terminating newline before setting `line_found` (scanner.cpp:395-416). Fold into the ER-3 line-attribution batch. |
-| TY-10 | — (subsumed by TY-2) | `token_types_compatible_at_all` is asymmetric: `ident<float>` on the left accepts a *string* or *bool* literal on the right (Typechecker.cpp:891-913) while the mirrored pair is rejected. |
+| TY-10 | — (subsumed by TY-2) | Historical asymmetry in `token_types_compatible_at_all`; live parsing no longer calls this legacy compatibility helper, so it remains dead compatibility-surface debt rather than supported-language behavior. |
 | TY-11 | Minimal | `give_token_type_name(typechecker_null)` returns `""` — missing switch case, flagged by the build's one `-Wswitch` warning (Typechecker.cpp:1151). Source of the `type ""` wording in current diagnostics. |
 | CLI-1 | Low | `./compiler <nonexistent path>` infinite-loops: a failed `open` sets failbit, not eofbit, so `Get_token`'s `source.eof()` guard never trips (verified hang; no CLI path — no-args or bad-path — has any test coverage). Guard in main.cpp or the scanner ctor, then add coverage. |
 
@@ -114,7 +126,8 @@ unused-but-set / switch / comment). Two are live defect evidence: the
 discarded result. Warning cleanup = **WARN-1 (Low)**, natural companion to
 Batch 3.
 
-Test-infrastructure follow-ups (not compiler defects; queue as touched):
+Historical test-infrastructure follow-ups (not compiler defects; several were
+completed by later stages):
 
 - TESTS-1 (Low): golden coverage for CLI paths (no args, nonexistent file) —
   blocked on CLI-1's fix defining sane behaviour to record.
@@ -122,13 +135,13 @@ Test-infrastructure follow-ups (not compiler defects; queue as touched):
   (no parser back-pointer) and encode the scope-id-reuse and global-(-1)
   gotchas TY-2/codegen will lean on.
 - TESTS-3 (Low): CI — run `make test` on push so the gate outlives attention.
-- TESTS-4 (Low): record build config (CXXFLAGS, g++ version) in the manifest;
-  the baseline is only valid for the default `-g` build (`-O2` moves 13
-  UB-carrying programs — see tests/README.md).
+- TESTS-4 (Low): record build config (CXXFLAGS, g++ version) in the manifest.
+  At Batch 2, `-O2` moved 13 UB-carrying programs; the repaired compiler's
+  optimized final gate is recorded separately in `docs/FINAL_VERIFICATION.md`.
 - TESTS-5 (defer): cache unit-test objects (doctest.h recompiles every run).
 - TESTS-6 (defer): distinct exit code for worker infrastructure exceptions.
 
-## Suggested batch order
+## Historical suggested batch order
 
 1. **Batch 1 = Minimal tier** (15 fixes, one branch layer, verified against
    existing probes + the 6 formerly-crashing test programs).
