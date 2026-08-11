@@ -24,6 +24,8 @@ conditional and avoids a duplicate missing-`then` error after a missing `)`.
 One optional `else` is accepted; any repeated `else` tokens are consumed with
 one focused repeated-else diagnostic so following statements still parse.
 
-`parser::can_generate_code()` is intentionally minimal: code generation is
-allowed exactly when no recorded diagnostics exist. It does not consult the
-legacy `errors_occured` flag. Backend and IR work remain separate decisions.
+`parser::frontend_valid()` is intentionally minimal: it is true exactly when
+no diagnostics were recorded and does not consult the legacy `errors_occured`
+flag. Stage 4A changes `can_generate_code()` to the stricter finalized-IR
+readiness predicate; frontend-valid programs that need control-flow or array
+lowering therefore remain clean but are not yet code-generatable.

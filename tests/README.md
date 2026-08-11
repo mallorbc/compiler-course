@@ -132,7 +132,9 @@ produce identical results.
 `tests/vendor/`, see its README for provenance). It pins the **stable**
 contracts around the handwritten scanner/parser: the scanner's token stream
 (`test_scanner.cpp`), `Tolower_string`, synthesized-expression helpers, and
-parser-backed semantic cases. `make test` runs the unit, CLI, and golden
+parser-backed semantic cases. `test_ir.cpp` covers the project-owned Stage 4A
+IR builder, verifier, catalog, and parser seam without adding an output
+backend. `make test` runs the unit, CLI, and golden
 layers.
 
 Conventions for adding unit tests:

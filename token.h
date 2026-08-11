@@ -1,5 +1,6 @@
 #ifndef TOKEN_H
 #define TOKEN_H
+#include "SemanticTypes.h"
 #include <string>
 #include <vector>
 
@@ -71,38 +72,6 @@ enum identifier_types
     I_TYPE = 3,
     I_PROGRAM_NAME = 4
 };
-
-enum data_types
-{
-    TYPE_NONE = 0,
-    TYPE_INT = 1,
-    TYPE_FLOAT = 2,
-    TYPE_STRING = 3,
-    TYPE_BOOL = 4
-};
-
-//A value shape is the complete static shape of a value.  Declarations retain
-//this information in their token fields; synthesized expression tokens carry
-//the same fields without becoming declarations.  Array bounds are inclusive:
-//an array declared with [N] has legal indices 0 through N.
-struct value_shape
-{
-    data_types element_type = TYPE_NONE;
-    bool is_array = false;
-    int array_upper_bound = -1;
-};
-
-inline bool operator==(const value_shape &left, const value_shape &right)
-{
-    return left.element_type == right.element_type &&
-           left.is_array == right.is_array &&
-           left.array_upper_bound == right.array_upper_bound;
-}
-
-inline bool operator!=(const value_shape &left, const value_shape &right)
-{
-    return !(left == right);
-}
 
 class token
 {

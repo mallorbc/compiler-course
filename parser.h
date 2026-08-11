@@ -2,6 +2,7 @@
 #define PARSER_H
 #include "token.h"
 #include "Typechecker.h"
+#include "IRBuilder.h"
 #include <iostream>
 #include <cstddef>
 #include <string>
@@ -50,6 +51,21 @@ enum parser_state
 // };
 class Typechecker;
 
+//These are parser/IR composition values, not frontend tokens.  Keeping the
+//IDs here prevents declaration/occurrence tokens from accidentally becoming
+//backend objects while the handwritten recursive descent remains intact.
+struct lowered_expression
+{
+    token_and_status semantics;
+    ir::ValueId value;
+};
+
+struct lowered_destination
+{
+    token_and_status semantics;
+    ir::StorageId storage;
+};
+
 class parser
 {
 public:
@@ -86,7 +102,11 @@ public:
     void generate_error_report_previous_token(std::string error_message);
     void print_errors();
     int error_count();
+    bool frontend_valid() const noexcept;
     bool can_generate_code() const noexcept;
+    ir::ModuleStatus ir_status() const noexcept;
+    const ir::Module &ir_module() const noexcept;
+    const std::string &ir_reason() const noexcept;
 
     //parsing parts of the program
     bool parse_program();
@@ -122,33 +142,33 @@ public:
     ///bool parse_assignment_statement(token token_for_context);
     bool parse_assignment_statement(token destination_token);
 
-    token_and_status parse_assignment_destination(token destination_token);
+    lowered_destination parse_assignment_destination(token destination_token);
     bool parse_optional_index(const token &base_occurrence, bool base_resolved,
                               const value_shape &base_shape,
-                              token_and_status &base_result);
+                              lowered_expression &base_result);
 
     bool parse_if_statement(const token &if_token);
     bool parse_loop_statement();
     bool parse_return_statement(const token &return_token);
 
     // bool parse_expression(token token_for_context);
-    token_and_status parse_expression();
-    token_and_status parse_arithOp();
-    token_and_status parse_relation();
-    token_and_status parse_term();
-    token_and_status parse_factor();
+    lowered_expression parse_expression();
+    lowered_expression parse_arithOp();
+    lowered_expression parse_relation();
+    lowered_expression parse_term();
+    lowered_expression parse_factor();
 
     bool parse_bound(int &upper_bound, bool &semantic_valid);
     bool parse_array_suffix(token &candidate, bool &semantic_valid);
     bool parse_number();
-    token_and_status parse_name(token identifier_token);
+    lowered_expression parse_name(token identifier_token);
 
-    bool parse_argument_list(std::vector<token_and_status> &arguments);
+    bool parse_argument_list(std::vector<lowered_expression> &arguments);
 
-    token_and_status parse_procedure_call(const token &callee_occurrence,
-                                          const token &canonical_callee,
-                                          bool callee_resolved,
-                                          const token_and_status &callee_result);
+    lowered_expression parse_procedure_call(const token &callee_occurrence,
+                                            const token &canonical_callee,
+                                            bool callee_resolved,
+                                            const lowered_expression &callee_result);
 
     bool resync_parser(parser_state state);
 
@@ -178,6 +198,7 @@ public:
     void report_duplicate_declaration(const token &occurrence);
 
     Typechecker *type_checker;
+    ir::IRBuilder *ir_builder = nullptr;
 };
 
 #endif // !PARSER_H

@@ -88,7 +88,7 @@ Tier definitions:
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Target choice — LLVM IR vs "restricted C" output — then the full B-rung build | biggest remaining scope; needs its own design doc + layer plan |
+| CODEGEN | Target choice — LLVM IR vs "restricted C" output — then the full B-rung build | Stage 4A supplies a typed scalar IR seam; target emission and multi-block/runtime lowering remain a separate decision |
 | RUNTIME | The 9 builtins (getInteger…sqrt) + runtime system (A rung) | shape depends on CODEGEN choice; includes predeclaring builtins in the symbol table |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)

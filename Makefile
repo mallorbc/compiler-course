@@ -6,7 +6,7 @@ CXX = g++
 CXXFLAGS = -std=c++17 -g -Wall -Wextra -Werror=return-type -MMD -MP
 
 #everything except main.o, so the unit test binary can supply its own main
-CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o
+CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o BuiltinCatalog.o IR.o IRBuilder.o
 UNIT_SRCS = $(wildcard tests/unit/*.cpp)
 UNIT_BIN = tests/unit_tests
 
@@ -24,6 +24,15 @@ parser.o: parser.cpp parser.h token.h
 
 SymbolTable.o: SymbolTable.cpp SymbolTable.h token.h
 	$(CXX) -c SymbolTable.cpp $(CXXFLAGS)
+
+BuiltinCatalog.o: BuiltinCatalog.cpp BuiltinCatalog.h SemanticTypes.h
+	$(CXX) -c BuiltinCatalog.cpp $(CXXFLAGS)
+
+IR.o: IR.cpp IR.h SemanticTypes.h BuiltinCatalog.h
+	$(CXX) -c IR.cpp $(CXXFLAGS)
+
+IRBuilder.o: IRBuilder.cpp IRBuilder.h IR.h BuiltinCatalog.h SemanticTypes.h
+	$(CXX) -c IRBuilder.cpp $(CXXFLAGS)
 
 
 CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h

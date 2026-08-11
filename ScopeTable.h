@@ -1,19 +1,11 @@
 #ifndef SCOPETABLE_H
 #define SCOPETABLE_H
 
+#include "SemanticTypes.h"
 #include "token.h"
 
 #include <string>
 #include <unordered_map>
-
-//A declaration is owned by exactly one scope.  References deliberately use a
-//scope/name pair rather than a pointer: unordered_map rehashing must never
-//invalidate parser state retained for later code generation.
-struct SymbolRef
-{
-    int scope_id = 0;
-    std::string name;
-};
 
 class ScopeTable
 {

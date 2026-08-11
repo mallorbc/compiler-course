@@ -1,28 +1,21 @@
 #include "SymbolTable.h"
+#include "BuiltinCatalog.h"
 
 #include <unordered_set>
 
 namespace
 {
 
-value_shape scalar_shape(data_types type)
-{
-    value_shape shape;
-    shape.element_type = type;
-    return shape;
-}
-
-token builtin_procedure(const std::string &name, data_types return_type,
-                        const std::vector<value_shape> &parameters)
+token builtin_procedure(const BuiltinSpec &spec)
 {
     token builtin;
     builtin.type = T_IDENTIFIER;
-    builtin.stringValue = name;
+    builtin.stringValue = spec.spelling;
     builtin.global_scope = true;
     builtin.scope_id = 0;
     builtin.identifer_type = I_PROCEDURE;
-    builtin.identifier_data_type = return_type;
-    builtin.procedure_params = parameters;
+    builtin.identifier_data_type = spec.return_shape.element_type;
+    builtin.procedure_params = spec.parameter_shapes;
     return builtin;
 }
 
@@ -36,16 +29,11 @@ SymbolTable::SymbolTable()
 
     //Builtin calls use the same canonical declarations and exact signature
     //validation as source procedures.
-    const std::vector<token> builtins = {
-        builtin_procedure("getbool", TYPE_BOOL, {}),
-        builtin_procedure("getinteger", TYPE_INT, {}),
-        builtin_procedure("getfloat", TYPE_FLOAT, {}),
-        builtin_procedure("getstring", TYPE_STRING, {}),
-        builtin_procedure("putbool", TYPE_BOOL, {scalar_shape(TYPE_BOOL)}),
-        builtin_procedure("putinteger", TYPE_BOOL, {scalar_shape(TYPE_INT)}),
-        builtin_procedure("putfloat", TYPE_BOOL, {scalar_shape(TYPE_FLOAT)}),
-        builtin_procedure("putstring", TYPE_BOOL, {scalar_shape(TYPE_STRING)}),
-        builtin_procedure("sqrt", TYPE_FLOAT, {scalar_shape(TYPE_INT)})};
+    std::vector<token> builtins;
+    for (const BuiltinSpec &spec : builtin_catalog())
+    {
+        builtins.push_back(builtin_procedure(spec));
+    }
     declare_all(0, builtins);
 }
 

@@ -1730,7 +1730,10 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     parser valid(valid_fixture.name());
     valid_capture.restore();
     CHECK(valid.error_reports.empty());
-    CHECK(valid.can_generate_code());
+    CHECK(valid.frontend_valid());
+    CHECK_FALSE(valid.can_generate_code()); // if lowering is intentionally Stage 4B.
+    CAPTURE(valid.ir_reason());
+    CHECK(valid.ir_status() == ir::ModuleStatus::Unsupported);
 
     temp_source_file recovered_rparam(
         "program branches is\n"
@@ -1834,6 +1837,291 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     CHECK_FALSE(has_error(child, "Missing \";\" to end statement in if statement"));
 }
 
+TEST_CASE("Stage 4A parser publishes scalar straight-line IR without changing frontend validity")
+{
+    temp_source_file scalar_fixture(
+        "program lowered is\n"
+        "variable result : integer;\n"
+        "begin\n"
+        "    result := 1 + 2 * 3;\n"
+        "end program.\n");
+    captured_stdout scalar_capture;
+    parser scalar(scalar_fixture.name());
+    scalar_capture.restore();
+    CHECK(scalar.frontend_valid());
+    CAPTURE(scalar.ir_reason());
+    CHECK(scalar.can_generate_code());
+    CHECK(scalar.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(scalar.ir_module().functions.size() == 10);
+    REQUIRE(scalar.ir_module().storages.size() == 1);
+    const ir::Function &scalar_program = scalar.ir_module().functions[0];
+    CHECK(scalar_program.kind == ir::FunctionKind::Program);
+    CHECK(scalar_program.return_type.element_type == TYPE_NONE);
+    const ir::Terminator *scalar_terminator =
+        std::get_if<ir::Terminator>(&scalar_program.blocks[0].terminator);
+    REQUIRE(scalar_terminator != NULL);
+    CHECK(std::holds_alternative<ir::HaltTerminator>(*scalar_terminator));
+    std::size_t scalar_stores = 0;
+    std::size_t scalar_destination_loads = 0;
+    for (const ir::Instruction &instruction : scalar_program.blocks[0].instructions)
+    {
+        if (const ir::Store *store = std::get_if<ir::Store>(&instruction))
+        {
+            scalar_stores++;
+            for (const ir::Instruction &candidate : scalar_program.blocks[0].instructions)
+            {
+                const ir::Load *load = std::get_if<ir::Load>(&candidate);
+                if (load != NULL && load->source == store->destination)
+                {
+                    scalar_destination_loads++;
+                }
+            }
+        }
+    }
+    CHECK(scalar_stores == 1);
+    CHECK(scalar_destination_loads == 0);
+    CHECK(ir::verify_module(scalar.ir_module()).valid);
+
+    temp_source_file load_store_fixture(
+        "program loads is\n"
+        "variable source : integer;\n"
+        "variable destination : integer;\n"
+        "begin\n"
+        "    source := 1;\n"
+        "    destination := source;\n"
+        "end program.\n");
+    captured_stdout load_store_capture;
+    parser load_store(load_store_fixture.name());
+    load_store_capture.restore();
+    REQUIRE(load_store.can_generate_code());
+    const ir::Function &load_store_program = load_store.ir_module().functions[0];
+    std::size_t loads = 0;
+    std::size_t stores = 0;
+    bool loaded_destination = false;
+    for (const ir::Instruction &instruction : load_store_program.blocks[0].instructions)
+    {
+        if (const ir::Load *load = std::get_if<ir::Load>(&instruction))
+        {
+            loads++;
+            loaded_destination = loaded_destination || load->source == ir::StorageId(1);
+        }
+        stores += std::holds_alternative<ir::Store>(instruction) ? 1U : 0U;
+    }
+    CHECK(loads == 1);
+    CHECK(stores == 2);
+    CHECK_FALSE(loaded_destination);
+
+    temp_source_file procedure_fixture(
+        "program calls is\n"
+        "variable result : integer;\n"
+        "procedure addone : integer(variable value : integer)\n"
+        "begin\n"
+        "    return value + 1;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    result := addone(2);\n"
+        "end program.\n");
+    captured_stdout procedure_capture;
+    parser procedure(procedure_fixture.name());
+    procedure_capture.restore();
+    CHECK(procedure.frontend_valid());
+    CHECK(procedure.can_generate_code());
+    CHECK(procedure.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(procedure.ir_module().functions.size() == 11);
+    const ir::Function &procedure_function = procedure.ir_module().functions[10];
+    const SymbolRef addone_ref{0, "addone"};
+    CHECK(procedure_function.symbol == addone_ref);
+    REQUIRE(procedure_function.parameters.size() == 1);
+    CHECK(procedure.ir_module().storages[procedure_function.parameters[0].index].kind ==
+          ir::StorageKind::Parameter);
+    const ir::Terminator *procedure_terminator =
+        std::get_if<ir::Terminator>(&procedure_function.blocks[0].terminator);
+    REQUIRE(procedure_terminator != NULL);
+    CHECK(std::holds_alternative<ir::ReturnTerminator>(*procedure_terminator));
+    bool saw_call = false;
+    for (const ir::Instruction &instruction : procedure.ir_module().functions[0].blocks[0].instructions)
+    {
+        saw_call = saw_call || std::holds_alternative<ir::Call>(instruction);
+    }
+    CHECK(saw_call);
+    CHECK(ir::verify_module(procedure.ir_module()).valid);
+
+    temp_source_file recursive_fixture(
+        "program recursion is\n"
+        "variable result : integer;\n"
+        "procedure self : integer(variable value : integer)\n"
+        "begin\n"
+        "    return self(value);\n"
+        "end procedure;\n"
+        "begin\n"
+        "    result := self(1);\n"
+        "end program.\n");
+    captured_stdout recursive_capture;
+    parser recursive(recursive_fixture.name());
+    recursive_capture.restore();
+    REQUIRE(recursive.frontend_valid());
+    REQUIRE(recursive.can_generate_code());
+    REQUIRE(recursive.ir_module().functions.size() == 11);
+    const ir::Function &self = recursive.ir_module().functions[10];
+    bool saw_recursive_call = false;
+    for (const ir::Instruction &instruction : self.blocks[0].instructions)
+    {
+        const ir::Call *call = std::get_if<ir::Call>(&instruction);
+        saw_recursive_call = saw_recursive_call ||
+                             (call != NULL && call->callee == self.id);
+    }
+    CHECK(saw_recursive_call);
+    CHECK(ir::verify_module(recursive.ir_module()).valid);
+
+    temp_source_file nested_fixture(
+        "program scopes is\n"
+        "variable result : integer;\n"
+        "procedure outer : integer(variable input : integer)\n"
+        "global variable shared : integer;\n"
+        "variable local : integer;\n"
+        "procedure inner : integer(variable value : integer)\n"
+        "begin\n"
+        "    return value;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    local := input;\n"
+        "    shared := inner(local);\n"
+        "    return shared;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    result := outer(result);\n"
+        "end program.\n");
+    captured_stdout nested_capture;
+    parser nested(nested_fixture.name());
+    nested_capture.restore();
+    REQUIRE(nested.frontend_valid());
+    REQUIRE(nested.can_generate_code());
+    REQUIRE(nested.ir_module().functions.size() == 12);
+    bool saw_global = false;
+    bool saw_local = false;
+    bool saw_parameter = false;
+    for (const ir::Storage &storage : nested.ir_module().storages)
+    {
+        saw_global = saw_global || (storage.symbol.name == "shared" &&
+                                    storage.symbol.scope_id == 0 &&
+                                    storage.kind == ir::StorageKind::Global &&
+                                    storage.owner == nested.ir_module().functions[0].id);
+        saw_local = saw_local || (storage.symbol.name == "local" &&
+                                   storage.symbol.scope_id > 0 &&
+                                   storage.kind == ir::StorageKind::Local &&
+                                   storage.owner != nested.ir_module().functions[0].id);
+        saw_parameter = saw_parameter || (storage.symbol.name == "input" &&
+                                           storage.symbol.scope_id > 0 &&
+                                           storage.kind == ir::StorageKind::Parameter &&
+                                           storage.owner != nested.ir_module().functions[0].id);
+    }
+    CHECK(saw_global);
+    CHECK(saw_local);
+    CHECK(saw_parameter);
+    CHECK(ir::verify_module(nested.ir_module()).valid);
+
+    temp_source_file cast_fixture(
+        "program casts is\n"
+        "variable source : integer;\n"
+        "variable target : float;\n"
+        "begin\n"
+        "    source := 1;\n"
+        "    target := source;\n"
+        "end program.\n");
+    captured_stdout cast_capture;
+    parser cast(cast_fixture.name());
+    cast_capture.restore();
+    REQUIRE(cast.can_generate_code());
+    bool saw_int_to_float = false;
+    for (const ir::Instruction &instruction : cast.ir_module().functions[0].blocks[0].instructions)
+    {
+        const ir::Cast *conversion = std::get_if<ir::Cast>(&instruction);
+        saw_int_to_float = saw_int_to_float ||
+                           (conversion != NULL && conversion->operation == ir::CastOp::IntToFloat);
+    }
+    CHECK(saw_int_to_float);
+}
+
+TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
+{
+    temp_source_file if_fixture(
+        "program branches is\n"
+        "begin\n"
+        "    if (true) then\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout if_capture;
+    parser conditional(if_fixture.name());
+    if_capture.restore();
+    CHECK(conditional.frontend_valid());
+    CHECK_FALSE(conditional.can_generate_code());
+    CHECK(conditional.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(conditional.ir_module().functions.empty());
+    CHECK(conditional.ir_module().storages.empty());
+
+    temp_source_file array_fixture(
+        "program arrays is\n"
+        "variable values : integer[0];\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout array_capture;
+    parser array(array_fixture.name());
+    array_capture.restore();
+    CHECK(array.frontend_valid());
+    CHECK_FALSE(array.can_generate_code());
+    CHECK(array.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(array.ir_module().functions.empty());
+
+    temp_source_file mixed_call_fixture(
+        "program mixed is\n"
+        "variable result : float;\n"
+        "procedure identity : float(variable value : float)\n"
+        "begin\n"
+        "    return value;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    result := identity(1 + 2.0);\n"
+        "end program.\n");
+    captured_stdout mixed_call_capture;
+    parser mixed_call(mixed_call_fixture.name());
+    mixed_call_capture.restore();
+    CHECK(mixed_call.frontend_valid());
+    CHECK(mixed_call.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(mixed_call.ir_module().functions.empty());
+
+    temp_source_file mixed_binary_fixture(
+        "program mixed_binary is\n"
+        "variable result : float;\n"
+        "begin\n"
+        "    result := 1 + 2.0;\n"
+        "end program.\n");
+    captured_stdout mixed_binary_capture;
+    parser mixed_binary(mixed_binary_fixture.name());
+    mixed_binary_capture.restore();
+    CHECK(mixed_binary.frontend_valid());
+    CHECK(mixed_binary.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(mixed_binary.ir_module().functions.empty());
+
+    temp_source_file if_call_fixture(
+        "program conditional_call is\n"
+        "variable result : integer;\n"
+        "procedure identity : integer(variable value : integer)\n"
+        "begin\n"
+        "    return value;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        result := identity(result);\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout if_call_capture;
+    parser if_call(if_call_fixture.name());
+    if_call_capture.restore();
+    CHECK(if_call.frontend_valid());
+    CHECK(if_call.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(if_call.ir_module().functions.empty());
+}
+
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
 {
     temp_source_file valid_source(
@@ -1855,6 +2143,9 @@ TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
     parser syntax(syntax_source.name());
     syntax_capture.restore();
     CHECK_FALSE(syntax.can_generate_code());
+    CHECK(syntax.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(syntax.ir_module().functions.empty());
+    CHECK(syntax.ir_module().storages.empty());
 
     temp_source_file scanner_source(
         "program ready is\n"
@@ -1865,6 +2156,9 @@ TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
     parser scanner(scanner_source.name());
     scanner_capture.restore();
     CHECK_FALSE(scanner.can_generate_code());
+    CHECK(scanner.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(scanner.ir_module().functions.empty());
+    CHECK(scanner.ir_module().storages.empty());
 
     temp_source_file semantic_source(
         "program ready is\n"
@@ -1876,4 +2170,7 @@ TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
     parser semantic(semantic_source.name());
     semantic_capture.restore();
     CHECK_FALSE(semantic.can_generate_code());
+    CHECK(semantic.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(semantic.ir_module().functions.empty());
+    CHECK(semantic.ir_module().storages.empty());
 }

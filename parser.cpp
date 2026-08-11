@@ -1,5 +1,7 @@
 #include "parser.h"
 
+#include <algorithm>
+
 namespace
 {
 
@@ -9,6 +11,56 @@ token_and_status invalid_expression_result(bool syntax_valid = true)
     result.valid_parse = syntax_valid;
     result.semantic_valid = false;
     return result;
+}
+
+lowered_expression invalid_lowered_expression(bool syntax_valid = true)
+{
+    lowered_expression result;
+    result.semantics = invalid_expression_result(syntax_valid);
+    return result;
+}
+
+ir::UnaryOp ir_unary_operation(semantic_operator operation)
+{
+    return operation == SEM_NOT ? ir::UnaryOp::Not : ir::UnaryOp::Negate;
+}
+
+ir::BinaryOp ir_binary_operation(semantic_operator operation)
+{
+    switch (operation)
+    {
+    case SEM_ADD: return ir::BinaryOp::Add;
+    case SEM_SUBTRACT: return ir::BinaryOp::Subtract;
+    case SEM_MULTIPLY: return ir::BinaryOp::Multiply;
+    case SEM_DIVIDE: return ir::BinaryOp::Divide;
+    case SEM_LESS: return ir::BinaryOp::Less;
+    case SEM_LESS_EQUAL: return ir::BinaryOp::LessEqual;
+    case SEM_GREATER: return ir::BinaryOp::Greater;
+    case SEM_GREATER_EQUAL: return ir::BinaryOp::GreaterEqual;
+    case SEM_EQUAL: return ir::BinaryOp::Equal;
+    case SEM_NOT_EQUAL: return ir::BinaryOp::NotEqual;
+    case SEM_AND: return ir::BinaryOp::And;
+    case SEM_OR: return ir::BinaryOp::Or;
+    case SEM_NOT:
+    case SEM_NEGATE:
+        break;
+    }
+    return ir::BinaryOp::Add;
+}
+
+bool ir_cast_operation(conversion_kind kind, ir::CastOp &operation)
+{
+    switch (kind)
+    {
+    case conversion_kind::IntToFloat: operation = ir::CastOp::IntToFloat; return true;
+    case conversion_kind::FloatToInt: operation = ir::CastOp::FloatToInt; return true;
+    case conversion_kind::BoolToInt: operation = ir::CastOp::BoolToInt; return true;
+    case conversion_kind::IntToBool: operation = ir::CastOp::IntToBool; return true;
+    case conversion_kind::Invalid:
+    case conversion_kind::Exact:
+        return false;
+    }
+    return false;
 }
 
 token_and_status typed_expression_result(Typechecker *checker, const value_shape &shape,
@@ -40,9 +92,11 @@ parser::parser(std::string file_to_parse)
     Current_parse_token.type = 9999;
     bool valid_parse;
     parse_file = file_to_parse;
+    ir_builder = new ir::IRBuilder();
     Lexer = new scanner(parse_file);
     type_checker = new Typechecker(this);
     valid_parse = parse_program();
+    ir_builder->finalize(valid_parse);
     if (valid_parse)
     {
         if (!error_reports.empty())
@@ -113,6 +167,10 @@ void parser::collect_scanner_diagnostics()
 void parser::add_error_report(std::string error_report)
 {
     error_reports.push_back(error_report);
+    if (ir_builder != NULL)
+    {
+        ir_builder->mark_frontend_error();
+    }
 }
 
 //ready for testing
@@ -174,9 +232,31 @@ int parser::error_count()
     return error_reports.size();
 }
 
-bool parser::can_generate_code() const noexcept
+bool parser::frontend_valid() const noexcept
 {
     return error_reports.empty();
+}
+
+bool parser::can_generate_code() const noexcept
+{
+    return ir_builder != NULL && ir_builder->status() == ir::ModuleStatus::Ready;
+}
+
+ir::ModuleStatus parser::ir_status() const noexcept
+{
+    return ir_builder == NULL ? ir::ModuleStatus::InvalidIR : ir_builder->status();
+}
+
+const ir::Module &parser::ir_module() const noexcept
+{
+    static const ir::Module empty;
+    return ir_builder == NULL ? empty : ir_builder->module();
+}
+
+const std::string &parser::ir_reason() const noexcept
+{
+    static const std::string empty;
+    return ir_builder == NULL ? empty : ir_builder->reason();
 }
 
 //ready for testing
@@ -190,6 +270,10 @@ bool parser::parse_program()
     if (Current_parse_token_type == T_PERIOD)
     {
         valid_parse = true;
+        if (ir_builder != NULL)
+        {
+            ir_builder->emit_halt();
+        }
     }
     else
     {
@@ -234,6 +318,12 @@ bool parser::parse_program_header()
         if (!valid_parse)
         {
             report_duplicate_declaration(Current_parse_token);
+        }
+        else if (ir_builder != NULL)
+        {
+            const SymbolRef program_ref{0, Current_parse_token.stringValue};
+            ir_builder->register_program(program_ref, Current_parse_token.stringValue);
+            ir_builder->seed_external_builtins();
         }
         Current_parse_token = Get_Valid_Token();
     }
@@ -527,6 +617,7 @@ bool parser::parse_procedure_declaration(bool is_global)
     token candidate;
     std::vector<token> parameters;
     std::vector<token> header_symbols;
+    bool entered_ir_function = false;
 
     //A recovery/body scope is always created and later popped exactly once.
     //It remains in SymbolTable for later code generation even after exit.
@@ -569,10 +660,40 @@ bool parser::parse_procedure_declaration(bool is_global)
             const SymbolRef procedure_ref{target_scope_id, candidate.stringValue};
             Lexer->symbol_table.set_scope_owner(body_scope_id, procedure_ref);
             Lexer->symbol_table.declare_all(body_scope_id, body_symbols);
+            if (ir_builder != NULL && ir_builder->emission_enabled())
+            {
+                token canonical_procedure;
+                std::vector<std::pair<SymbolRef, value_shape>> ir_parameters;
+                if (Lexer->symbol_table.lookup_declared(procedure_ref, canonical_procedure))
+                {
+                    for (const token &parameter : parameters)
+                    {
+                        token canonical_parameter;
+                        const SymbolRef parameter_ref{body_scope_id, parameter.stringValue};
+                        if (Lexer->symbol_table.lookup_declared(parameter_ref,
+                                                                canonical_parameter))
+                        {
+                            ir_parameters.push_back(std::make_pair(parameter_ref,
+                                                                   shape_of(canonical_parameter)));
+                        }
+                    }
+                    const ir::FunctionId function = ir_builder->register_procedure(
+                        procedure_ref, canonical_procedure.stringValue,
+                        shape_of(canonical_procedure), ir_parameters);
+                    if (function.valid())
+                    {
+                        entered_ir_function = ir_builder->enter_function(function);
+                    }
+                }
+            }
         }
     }
 
     const bool body_valid = parse_procedure_body();
+    if (ir_builder != NULL && entered_ir_function)
+    {
+        (void)ir_builder->leave_function();
+    }
     parsing_statements = false;
     update_scopes(false);
     (void)parent_scope_id;
@@ -1059,6 +1180,30 @@ bool parser::parse_variable_declaration(bool is_global)
         report_duplicate_declaration(candidate);
         return false;
     }
+    if (ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        token canonical;
+        const SymbolRef reference{target_scope_id, candidate.stringValue};
+        token scope_owner;
+        const bool live_context = current_scope_id == 0 ||
+                                  Lexer->symbol_table.lookup_scope_owner(current_scope_id,
+                                                                          scope_owner);
+        if (live_context && Lexer->symbol_table.lookup_declared(reference, canonical))
+        {
+            const value_shape shape = shape_of(canonical);
+            if (!ir::is_ready_type(shape))
+            {
+                ir_builder->mark_unsupported("arrays or unresolved declaration types need runtime lowering");
+            }
+            else
+            {
+                const ir::StorageKind kind = target_scope_id == 0 ?
+                                                 ir::StorageKind::Global :
+                                                 ir::StorageKind::Local;
+                (void)ir_builder->register_storage(reference, shape, kind);
+            }
+        }
+    }
     return true;
 }
 
@@ -1117,6 +1262,10 @@ bool parser::parse_array_suffix(token &candidate, bool &semantic_valid)
     }
     candidate.is_array = true;
     candidate.array_upper_bound = -1;
+    if (ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        ir_builder->mark_unsupported("arrays require bounds-check lowering");
+    }
     Current_parse_token = Get_Valid_Token();
     if (!parse_bound(candidate.array_upper_bound, semantic_valid))
     {
@@ -1165,6 +1314,11 @@ bool parser::parse_type_declaration(bool is_global)
         report_duplicate_declaration(candidate);
         return false;
     }
+    if (ir_builder != NULL && (candidate.identifier_data_type == TYPE_NONE ||
+                               !enum_symbols.empty()))
+    {
+        ir_builder->mark_unsupported("enum and unresolved types need runtime lowering");
+    }
     return true;
 }
 
@@ -1188,6 +1342,10 @@ bool parser::parse_base_statement()
     }
     else if (Current_parse_token_type == T_IF)
     {
+        if (ir_builder != NULL)
+        {
+            ir_builder->mark_unsupported("if statements require multiple basic blocks");
+        }
         //sets the typchecker up to handle if statements
         const token if_token = Current_parse_token;
         type_checker->set_statement_type(if_token);
@@ -1196,6 +1354,10 @@ bool parser::parse_base_statement()
     }
     else if (Current_parse_token_type == T_FOR)
     {
+        if (ir_builder != NULL)
+        {
+            ir_builder->mark_unsupported("loop statements require multiple basic blocks");
+        }
         //sets the typchecker up to handle loop statements
         type_checker->set_statement_type(Current_parse_token);
         Current_parse_token = Get_Valid_Token();
@@ -1258,12 +1420,12 @@ bool parser::parse_number()
 //refactored 1 time
 bool parser::parse_assignment_statement(token destination_token)
 {
-    token_and_status expression_parse;
-    token_and_status destination_parse;
+    lowered_expression expression_parse;
+    lowered_destination destination_parse;
     //this tracks the state of the parser
     bool valid_parse;
     destination_parse = parse_assignment_destination(destination_token);
-    valid_parse = destination_parse.valid_parse;
+    valid_parse = destination_parse.semantics.valid_parse;
     if (valid_parse)
     {
         if (Current_parse_token_type == T_COLON)
@@ -1280,14 +1442,30 @@ bool parser::parse_assignment_statement(token destination_token)
         {
             Current_parse_token = Get_Valid_Token();
             expression_parse = parse_expression();
-            valid_parse = expression_parse.valid_parse;
-            if (valid_parse && destination_parse.semantic_valid &&
-                expression_parse.semantic_valid && !type_checker->statement_suppressed)
+            valid_parse = expression_parse.semantics.valid_parse;
+            if (valid_parse && destination_parse.semantics.semantic_valid &&
+                expression_parse.semantics.semantic_valid && !type_checker->statement_suppressed)
             {
                 const conversion_plan assignment_plan =
-                    type_checker->check_assignment_statement(destination_parse,
-                                                             expression_parse);
-                (void)assignment_plan;
+                    type_checker->check_assignment_statement(destination_parse.semantics,
+                                                             expression_parse.semantics);
+                if (assignment_plan.valid && ir_builder != NULL &&
+                    destination_parse.storage.valid() && expression_parse.value.valid())
+                {
+                    ir::ValueId value = expression_parse.value;
+                    if (assignment_plan.requires_conversion)
+                    {
+                        ir::CastOp cast;
+                        if (ir_cast_operation(assignment_plan.kind, cast))
+                        {
+                            value = ir_builder->emit_cast(cast, value);
+                        }
+                    }
+                    if (value.valid())
+                    {
+                        (void)ir_builder->emit_store(destination_parse.storage, value);
+                    }
+                }
             }
         }
         else
@@ -1316,8 +1494,8 @@ bool parser::parse_if_statement(const token &if_token)
         generate_error_report_previous_token("Missing \"(\" expected for if statment");
         errors_occured = true;
     }
-    const token_and_status condition = parse_expression();
-    if (!condition.valid_parse)
+    const lowered_expression condition = parse_expression();
+    if (!condition.semantics.valid_parse)
     {
         //The expression production already emitted the focused syntax error.
         //Consume only up to this if's delimiter so a closed malformed
@@ -1335,11 +1513,11 @@ bool parser::parse_if_statement(const token &if_token)
     else if (Current_parse_token_type == T_RPARAM)
     {
         Current_parse_token = Get_Valid_Token();
-        if (has_left_parenthesis && condition.semantic_valid &&
+        if (has_left_parenthesis && condition.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
             const conversion_plan condition_plan = type_checker->check_condition_statement(
-                condition, if_token, condition_context::If);
+                condition.semantics, if_token, condition_context::If);
             (void)condition_plan;
         }
     }
@@ -1353,7 +1531,7 @@ bool parser::parse_if_statement(const token &if_token)
 
     if (Current_parse_token_type != T_THEN)
     {
-        if (condition.valid_parse)
+        if (condition.semantics.valid_parse)
         {
             generate_error_report_previous_token("Missing expected keyword \"then\" for if statements");
             errors_occured = true;
@@ -1457,7 +1635,7 @@ bool parser::parse_if_statement(const token &if_token)
 //refactored 2 times
 bool parser::parse_loop_statement()
 {
-    token_and_status expression_parse;
+    lowered_expression expression_parse;
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
     bool valid_parse = false;
@@ -1480,15 +1658,16 @@ bool parser::parse_loop_statement()
                 Current_parse_token = Get_Valid_Token();
                 type_checker->begin_loop_condition(Current_parse_token);
                 expression_parse = parse_expression();
-                valid_parse = expression_parse.valid_parse;
+                valid_parse = expression_parse.semantics.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
                     Current_parse_token = Get_Valid_Token();
-                    if (expression_parse.valid_parse && expression_parse.semantic_valid &&
+                    if (expression_parse.semantics.valid_parse &&
+                        expression_parse.semantics.semantic_valid &&
                         !type_checker->statement_suppressed)
                     {
                         const conversion_plan loop_condition_plan =
-                            type_checker->check_loop_statement(expression_parse);
+                            type_checker->check_loop_statement(expression_parse.semantics);
                         (void)loop_condition_plan;
                     }
                     while (Current_parse_token_type != T_END)
@@ -1597,12 +1776,12 @@ bool parser::parse_loop_statement()
 //refactored 1 time
 bool parser::parse_return_statement(const token &return_token)
 {
-    const token_and_status expression_parse = parse_expression();
-    if (!expression_parse.valid_parse)
+    const lowered_expression expression_parse = parse_expression();
+    if (!expression_parse.semantics.valid_parse)
     {
         return false;
     }
-    if (!expression_parse.semantic_valid || type_checker->statement_suppressed)
+    if (!expression_parse.semantics.semantic_valid || type_checker->statement_suppressed)
     {
         return true;
     }
@@ -1610,8 +1789,23 @@ bool parser::parse_return_statement(const token &return_token)
     if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
     {
         const conversion_plan return_plan = type_checker->check_return_statement(
-            expression_parse, owner, return_token);
-        (void)return_plan;
+            expression_parse.semantics, owner, return_token);
+        if (return_plan.valid && ir_builder != NULL && expression_parse.value.valid())
+        {
+            ir::ValueId value = expression_parse.value;
+            if (return_plan.requires_conversion)
+            {
+                ir::CastOp cast;
+                if (ir_cast_operation(return_plan.kind, cast))
+                {
+                    value = ir_builder->emit_cast(cast, value);
+                }
+            }
+            if (value.valid())
+            {
+                (void)ir_builder->emit_return(value);
+            }
+        }
     }
     else if (current_scope_id == 0)
     {
@@ -1629,9 +1823,9 @@ bool parser::parse_return_statement(const token &return_token)
 //ready to test
 //already consumes identifier before parsing
 //refactored 1 time
-token_and_status parser::parse_assignment_destination(token destination_token)
+lowered_destination parser::parse_assignment_destination(token destination_token)
 {
-    token_and_status destination_parse;
+    lowered_destination destination_parse;
     const bool resolved_variable = destination_token.identifer_type == I_VARIABLE;
     if (resolved_variable && destination_token.identifier_data_type == TYPE_NONE)
     {
@@ -1644,67 +1838,83 @@ token_and_status parser::parse_assignment_destination(token destination_token)
     if (resolved_variable && destination_token.identifier_data_type != TYPE_NONE &&
         !type_checker->statement_suppressed)
     {
-        destination_parse = typed_expression_result(type_checker, shape_of(destination_token),
-                                                    destination_token);
+        destination_parse.semantics = typed_expression_result(type_checker,
+                                                               shape_of(destination_token),
+                                                               destination_token);
+        if (ir_builder != NULL)
+        {
+            destination_parse.storage = ir_builder->storage_for(
+                SymbolRef{destination_token.scope_id, destination_token.stringValue});
+        }
     }
     const value_shape base_shape = shape_of(destination_token);
+    lowered_expression indexed_destination;
+    indexed_destination.semantics = destination_parse.semantics;
     if (!parse_optional_index(destination_token, resolved_variable, base_shape,
-                              destination_parse))
+                              indexed_destination))
     {
+        destination_parse.semantics = indexed_destination.semantics;
         return destination_parse;
     }
+    destination_parse.semantics = indexed_destination.semantics;
     if (!resolved_variable)
     {
-        destination_parse.valid_parse = true;
-        destination_parse.semantic_valid = false;
-        destination_parse.resolved_token = token();
+        destination_parse.semantics.valid_parse = true;
+        destination_parse.semantics.semantic_valid = false;
+        destination_parse.semantics.resolved_token = token();
     }
     return destination_parse;
 }
 
 bool parser::parse_optional_index(const token &base_occurrence, bool base_resolved,
                                   const value_shape &base_shape,
-                                  token_and_status &base_result)
+                                  lowered_expression &base_result)
 {
     if (Current_parse_token_type != T_LBRACKET)
     {
         return true;
     }
+    if (ir_builder != NULL)
+    {
+        ir_builder->mark_unsupported("array indexes require runtime bounds lowering");
+    }
     Current_parse_token = Get_Valid_Token();
-    const token_and_status index_parse = parse_expression();
+    const lowered_expression index_parse = parse_expression();
     if (Current_parse_token_type != T_RBRACKET)
     {
         generate_error_report_previous_token(
             "Missing closing right bracket to the identifier expression");
         errors_occured = true;
-        base_result = invalid_expression_result(false);
+        base_result = invalid_lowered_expression(false);
         return false;
     }
     Current_parse_token = Get_Valid_Token();
-    base_result.valid_parse = index_parse.valid_parse;
-    if (!index_parse.valid_parse || !base_resolved || !base_result.semantic_valid ||
-        !index_parse.semantic_valid || type_checker->statement_suppressed)
+    base_result.semantics.valid_parse = index_parse.semantics.valid_parse;
+    if (!index_parse.semantics.valid_parse || !base_resolved ||
+        !base_result.semantics.semantic_valid || !index_parse.semantics.semantic_valid ||
+        type_checker->statement_suppressed)
     {
-        base_result.semantic_valid = false;
-        base_result.resolved_token = token();
-        return index_parse.valid_parse;
+        base_result.semantics.semantic_valid = false;
+        base_result.semantics.resolved_token = token();
+        return index_parse.semantics.valid_parse;
     }
-    if (!type_checker->validate_array_index(base_occurrence, base_shape, index_parse))
+    if (!type_checker->validate_array_index(base_occurrence, base_shape,
+                                            index_parse.semantics))
     {
-        base_result.semantic_valid = false;
-        base_result.resolved_token = token();
+        base_result.semantics.semantic_valid = false;
+        base_result.semantics.resolved_token = token();
         return true;
     }
     value_shape element_shape;
     element_shape.element_type = base_shape.element_type;
-    base_result = typed_expression_result(type_checker, element_shape, base_occurrence);
+    base_result.semantics = typed_expression_result(type_checker, element_shape, base_occurrence);
     return true;
 }
 
 //ready to test
 //consumes a token before entering this function
 //all expressions start be thought to start with a ArithOp?
-token_and_status parser::parse_expression()
+lowered_expression parser::parse_expression()
 {
     expression_depth++;
     struct expression_depth_guard
@@ -1715,8 +1925,8 @@ token_and_status parser::parse_expression()
             depth--;
         }
     } depth_guard{expression_depth};
-    token_and_status expression_parse;
-    token_and_status right_parse;
+    lowered_expression expression_parse;
+    lowered_expression right_parse;
     bool has_leading_not = false;
     token not_token;
 
@@ -1747,7 +1957,7 @@ token_and_status parser::parse_expression()
         {
             generate_error_report("Error in expression", operator_token.line_found);
         }
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
 
     if (Current_parse_token_type == T_NOT)
@@ -1758,24 +1968,39 @@ token_and_status parser::parse_expression()
     }
 
     expression_parse = parse_arithOp();
-    if (has_leading_not && expression_parse.valid_parse)
+    if (has_leading_not && expression_parse.semantics.valid_parse)
     {
-        if (expression_parse.semantic_valid && !type_checker->statement_suppressed)
+        if (expression_parse.semantics.semantic_valid && !type_checker->statement_suppressed)
         {
-            expression_parse = type_checker->check_unary_expression(SEM_NOT, not_token,
-                                                                       expression_parse);
+            const token_and_status checked = type_checker->check_unary_expression(
+                SEM_NOT, not_token, expression_parse.semantics);
+            expression_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL && expression_parse.value.valid())
+            {
+                const value_shape input_shape = shape_of(expression_parse.semantics.resolved_token);
+                if (ir::is_ready_type(input_shape))
+                {
+                    expression_parse.value = ir_builder->emit_unary(ir_unary_operation(SEM_NOT),
+                                                                      expression_parse.value);
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("array or unresolved unary expression");
+                    expression_parse.value = ir::ValueId();
+                }
+            }
         }
         else
         {
-            expression_parse.semantic_valid = false;
-            expression_parse.resolved_token = token();
+            expression_parse.semantics.semantic_valid = false;
+            expression_parse.semantics.resolved_token = token();
         }
     }
 
     //The grammar gives '&' and '|' equal precedence.  Each right operand is
     //<arithOp>, not a new expression; the double-operator recovery above is
     //the sole deliberate exception for a focused missing-left diagnostic.
-    while (expression_parse.valid_parse &&
+    while (expression_parse.semantics.valid_parse &&
            (Current_parse_token_type == T_AMPERSAND || Current_parse_token_type == T_VERTICAL_BAR))
     {
         const token operator_token = Current_parse_token;
@@ -1790,27 +2015,45 @@ token_and_status parser::parse_expression()
         {
             right_parse = parse_arithOp();
         }
-        if (!right_parse.valid_parse)
+        if (!right_parse.semantics.valid_parse)
         {
-            expression_parse.valid_parse = false;
-            expression_parse.semantic_valid = false;
-            expression_parse.resolved_token = token();
+            expression_parse.semantics.valid_parse = false;
+            expression_parse.semantics.semantic_valid = false;
+            expression_parse.semantics.resolved_token = token();
             break;
         }
-        if (expression_parse.semantic_valid && right_parse.semantic_valid &&
+        if (expression_parse.semantics.semantic_valid && right_parse.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            expression_parse = type_checker->check_binary_expression(
-                operation, operator_token, expression_parse, right_parse);
+            const value_shape left_shape = shape_of(expression_parse.semantics.resolved_token);
+            const value_shape right_shape = shape_of(right_parse.semantics.resolved_token);
+            const token_and_status checked = type_checker->check_binary_expression(
+                operation, operator_token, expression_parse.semantics, right_parse.semantics);
+            expression_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL)
+            {
+                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
+                    expression_parse.value.valid() && right_parse.value.valid())
+                {
+                    expression_parse.value = ir_builder->emit_binary(
+                        ir_binary_operation(operation), expression_parse.value, right_parse.value);
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    expression_parse.value = ir::ValueId();
+                }
+            }
         }
         else
         {
-            expression_parse.semantic_valid = false;
-            expression_parse.resolved_token = token();
+            expression_parse.semantics.semantic_valid = false;
+            expression_parse.semantics.resolved_token = token();
+            expression_parse.value = ir::ValueId();
         }
     }
 
-    if (!expression_parse.valid_parse && !type_checker->statement_suppressed)
+    if (!expression_parse.semantics.valid_parse && !type_checker->statement_suppressed)
     {
         generate_error_report("Error in expression");
         errors_occured = true;
@@ -1821,10 +2064,10 @@ token_and_status parser::parse_expression()
 //ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with relations?
-token_and_status parser::parse_arithOp()
+lowered_expression parser::parse_arithOp()
 {
-    token_and_status arithop_parse;
-    token_and_status right_parse;
+    lowered_expression arithop_parse;
+    lowered_expression right_parse;
 
     if (Current_parse_token_type == T_PLUS)
     {
@@ -1834,11 +2077,11 @@ token_and_status parser::parse_arithOp()
         generate_error_report("Missing left operand before \"+\" operator",
                               operator_token.line_found);
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
 
     arithop_parse = parse_relation();
-    while (arithop_parse.valid_parse &&
+    while (arithop_parse.semantics.valid_parse &&
            (Current_parse_token_type == T_PLUS || Current_parse_token_type == T_MINUS))
     {
         const token operator_token = Current_parse_token;
@@ -1846,23 +2089,41 @@ token_and_status parser::parse_arithOp()
                                                 SEM_ADD : SEM_SUBTRACT;
         Current_parse_token = Get_Valid_Token();
         right_parse = parse_relation();
-        if (!right_parse.valid_parse)
+        if (!right_parse.semantics.valid_parse)
         {
-            arithop_parse.valid_parse = false;
-            arithop_parse.semantic_valid = false;
-            arithop_parse.resolved_token = token();
+            arithop_parse.semantics.valid_parse = false;
+            arithop_parse.semantics.semantic_valid = false;
+            arithop_parse.semantics.resolved_token = token();
             break;
         }
-        if (arithop_parse.semantic_valid && right_parse.semantic_valid &&
+        if (arithop_parse.semantics.semantic_valid && right_parse.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            arithop_parse = type_checker->check_binary_expression(
-                operation, operator_token, arithop_parse, right_parse);
+            const value_shape left_shape = shape_of(arithop_parse.semantics.resolved_token);
+            const value_shape right_shape = shape_of(right_parse.semantics.resolved_token);
+            const token_and_status checked = type_checker->check_binary_expression(
+                operation, operator_token, arithop_parse.semantics, right_parse.semantics);
+            arithop_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL)
+            {
+                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
+                    arithop_parse.value.valid() && right_parse.value.valid())
+                {
+                    arithop_parse.value = ir_builder->emit_binary(
+                        ir_binary_operation(operation), arithop_parse.value, right_parse.value);
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    arithop_parse.value = ir::ValueId();
+                }
+            }
         }
         else
         {
-            arithop_parse.semantic_valid = false;
-            arithop_parse.resolved_token = token();
+            arithop_parse.semantics.semantic_valid = false;
+            arithop_parse.semantics.resolved_token = token();
+            arithop_parse.value = ir::ValueId();
         }
     }
     return arithop_parse;
@@ -1871,10 +2132,10 @@ token_and_status parser::parse_arithOp()
 //ready to test
 //consumes a token before entering this function
 //all arithOps can be thought to starts with terms?
-token_and_status parser::parse_relation()
+lowered_expression parser::parse_relation()
 {
-    token_and_status relation_parse;
-    token_and_status right_parse;
+    lowered_expression relation_parse;
+    lowered_expression right_parse;
 
     //Prefix relations are always syntax errors.  Still consume the complete
     //operator spelling and one attempted term so statement recovery advances.
@@ -1927,11 +2188,11 @@ token_and_status parser::parse_relation()
         }
         generate_error_report(message, operator_token.line_found);
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
 
     relation_parse = parse_term();
-    while (relation_parse.valid_parse && is_relation_start(Current_parse_token_type))
+    while (relation_parse.semantics.valid_parse && is_relation_start(Current_parse_token_type))
     {
         const token operator_token = Current_parse_token;
         const int operator_type = Current_parse_token_type;
@@ -1984,29 +2245,47 @@ token_and_status parser::parse_relation()
         if (!valid_operator)
         {
             errors_occured = true;
-            relation_parse.valid_parse = false;
-            relation_parse.semantic_valid = false;
-            relation_parse.resolved_token = token();
+            relation_parse.semantics.valid_parse = false;
+            relation_parse.semantics.semantic_valid = false;
+            relation_parse.semantics.resolved_token = token();
             break;
         }
         right_parse = parse_term();
-        if (!right_parse.valid_parse)
+        if (!right_parse.semantics.valid_parse)
         {
-            relation_parse.valid_parse = false;
-            relation_parse.semantic_valid = false;
-            relation_parse.resolved_token = token();
+            relation_parse.semantics.valid_parse = false;
+            relation_parse.semantics.semantic_valid = false;
+            relation_parse.semantics.resolved_token = token();
             break;
         }
-        if (relation_parse.semantic_valid && right_parse.semantic_valid &&
+        if (relation_parse.semantics.semantic_valid && right_parse.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            relation_parse = type_checker->check_binary_expression(
-                operation, operator_token, relation_parse, right_parse);
+            const value_shape left_shape = shape_of(relation_parse.semantics.resolved_token);
+            const value_shape right_shape = shape_of(right_parse.semantics.resolved_token);
+            const token_and_status checked = type_checker->check_binary_expression(
+                operation, operator_token, relation_parse.semantics, right_parse.semantics);
+            relation_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL)
+            {
+                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
+                    relation_parse.value.valid() && right_parse.value.valid())
+                {
+                    relation_parse.value = ir_builder->emit_binary(
+                        ir_binary_operation(operation), relation_parse.value, right_parse.value);
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    relation_parse.value = ir::ValueId();
+                }
+            }
         }
         else
         {
-            relation_parse.semantic_valid = false;
-            relation_parse.resolved_token = token();
+            relation_parse.semantics.semantic_valid = false;
+            relation_parse.semantics.resolved_token = token();
+            relation_parse.value = ir::ValueId();
         }
     }
     return relation_parse;
@@ -2014,10 +2293,10 @@ token_and_status parser::parse_relation()
 
 //ready to test
 //already consumes a token before being parsed
-token_and_status parser::parse_term()
+lowered_expression parser::parse_term()
 {
-    token_and_status term_parse;
-    token_and_status right_parse;
+    lowered_expression term_parse;
+    lowered_expression right_parse;
     if (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH)
     {
         const token operator_token = Current_parse_token;
@@ -2043,13 +2322,13 @@ token_and_status parser::parse_term()
                                   operator_token.line_found);
         }
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
     term_parse = parse_factor();
 
     // <term> ::= <term> (*|/) <factor> | <factor>.  Consume every valid
     // following multiplicative operator left-to-right.
-    while (term_parse.valid_parse &&
+    while (term_parse.semantics.valid_parse &&
            (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH))
     {
         const token operator_token = Current_parse_token;
@@ -2057,23 +2336,41 @@ token_and_status parser::parse_term()
                                                 SEM_MULTIPLY : SEM_DIVIDE;
         Current_parse_token = Get_Valid_Token();
         right_parse = parse_factor();
-        if (!right_parse.valid_parse)
+        if (!right_parse.semantics.valid_parse)
         {
-            term_parse.valid_parse = false;
-            term_parse.semantic_valid = false;
-            term_parse.resolved_token = token();
+            term_parse.semantics.valid_parse = false;
+            term_parse.semantics.semantic_valid = false;
+            term_parse.semantics.resolved_token = token();
             break;
         }
-        if (term_parse.semantic_valid && right_parse.semantic_valid &&
+        if (term_parse.semantics.semantic_valid && right_parse.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            term_parse = type_checker->check_binary_expression(
-                operation, operator_token, term_parse, right_parse);
+            const value_shape left_shape = shape_of(term_parse.semantics.resolved_token);
+            const value_shape right_shape = shape_of(right_parse.semantics.resolved_token);
+            const token_and_status checked = type_checker->check_binary_expression(
+                operation, operator_token, term_parse.semantics, right_parse.semantics);
+            term_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL)
+            {
+                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
+                    term_parse.value.valid() && right_parse.value.valid())
+                {
+                    term_parse.value = ir_builder->emit_binary(
+                        ir_binary_operation(operation), term_parse.value, right_parse.value);
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    term_parse.value = ir::ValueId();
+                }
+            }
         }
         else
         {
-            term_parse.semantic_valid = false;
-            term_parse.resolved_token = token();
+            term_parse.semantics.semantic_valid = false;
+            term_parse.semantics.resolved_token = token();
+            term_parse.value = ir::ValueId();
         }
     }
     return term_parse;
@@ -2081,10 +2378,10 @@ token_and_status parser::parse_term()
 
 //ready to test
 //already consumes a token before being parsed
-token_and_status parser::parse_factor()
+lowered_expression parser::parse_factor()
 {
-    token_and_status expression_parse;
-    token_and_status factor_parse;
+    lowered_expression expression_parse;
+    lowered_expression factor_parse;
     token identifier_token;
     if (Current_parse_token_type == T_LPARAM)
     {
@@ -2099,7 +2396,7 @@ token_and_status parser::parse_factor()
         }
         generate_error_report_previous_token("Missing \")\" to close expresssion factor");
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
     if (Current_parse_token_type == T_IDENTIFIER)
     {
@@ -2108,8 +2405,8 @@ token_and_status parser::parse_factor()
             const token callee_occurrence = Current_parse_token;
             token callee;
             bool callee_resolved = false;
-            token_and_status callee_result;
-            callee_result.valid_parse = true;
+            lowered_expression callee_result;
+            callee_result.semantics.valid_parse = true;
             if (resolve_procedure_use(callee_occurrence, callee))
             {
                 callee_resolved = true;
@@ -2126,9 +2423,8 @@ token_and_status parser::parse_factor()
                 }
                 else
                 {
-                    callee_result = typed_expression_result(type_checker,
-                                                            callee.identifier_data_type,
-                                                            callee_occurrence);
+                    callee_result.semantics = typed_expression_result(
+                        type_checker, shape_of(callee), callee_occurrence);
                 }
             }
             Current_parse_token = Get_Valid_Token();
@@ -2145,41 +2441,73 @@ token_and_status parser::parse_factor()
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
         {
-            factor_parse = typed_expression_result(
+            factor_parse.semantics = typed_expression_result(
                 type_checker,
                 Current_parse_token_type == T_INTEGER_VALUE ? TYPE_INT : TYPE_FLOAT,
                 Current_parse_token);
+            if (ir_builder != NULL && ir_builder->emission_enabled())
+            {
+                const token literal = Current_parse_token;
+                value_shape shape = shape_of(factor_parse.semantics.resolved_token);
+                factor_parse.value = ir_builder->emit_constant(
+                    shape, literal.type == T_INTEGER_VALUE ?
+                               std::variant<int, float, bool, std::string>(literal.intValue) :
+                               std::variant<int, float, bool, std::string>(literal.floatValue));
+            }
             Current_parse_token = Get_Valid_Token();
-            return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
-                                                         factor_parse);
+            const token_and_status checked = type_checker->check_unary_expression(
+                SEM_NEGATE, operator_token, factor_parse.semantics);
+            factor_parse.semantics = checked;
+            if (checked.semantic_valid && ir_builder != NULL && factor_parse.value.valid())
+            {
+                factor_parse.value = ir_builder->emit_unary(ir_unary_operation(SEM_NEGATE),
+                                                             factor_parse.value);
+            }
+            return factor_parse;
         }
         if (Current_parse_token_type == T_IDENTIFIER)
         {
             identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
             factor_parse = parse_name(identifier_token);
-            if (!factor_parse.valid_parse)
+            if (!factor_parse.semantics.valid_parse)
             {
                 return factor_parse;
             }
-            if (factor_parse.semantic_valid && !type_checker->statement_suppressed)
+            if (factor_parse.semantics.semantic_valid && !type_checker->statement_suppressed)
             {
-                return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
-                                                             factor_parse);
+                const token_and_status checked = type_checker->check_unary_expression(
+                    SEM_NEGATE, operator_token, factor_parse.semantics);
+                factor_parse.semantics = checked;
+                if (checked.semantic_valid && ir_builder != NULL && factor_parse.value.valid())
+                {
+                    factor_parse.value = ir_builder->emit_unary(ir_unary_operation(SEM_NEGATE),
+                                                                 factor_parse.value);
+                }
+                return factor_parse;
             }
-            return invalid_expression_result(true);
+            return invalid_lowered_expression(true);
         }
         generate_error_report("Unexpected negative factor is not a name or a number",
                               operator_token.line_found);
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
     if (Current_parse_token_type == T_INTEGER_VALUE || Current_parse_token_type == T_FLOAT_VALUE)
     {
-        factor_parse = typed_expression_result(
+        factor_parse.semantics = typed_expression_result(
             type_checker,
             Current_parse_token_type == T_INTEGER_VALUE ? TYPE_INT : TYPE_FLOAT,
             Current_parse_token);
+        if (ir_builder != NULL)
+        {
+            const token literal = Current_parse_token;
+            factor_parse.value = ir_builder->emit_constant(
+                shape_of(factor_parse.semantics.resolved_token),
+                literal.type == T_INTEGER_VALUE ?
+                    std::variant<int, float, bool, std::string>(literal.intValue) :
+                    std::variant<int, float, bool, std::string>(literal.floatValue));
+        }
         Current_parse_token = Get_Valid_Token();
         return factor_parse;
     }
@@ -2189,26 +2517,39 @@ token_and_status parser::parse_factor()
         {
             generate_error_report("quotation left open", Lexer->quote_opener);
         }
-        factor_parse = typed_expression_result(type_checker, TYPE_STRING, Current_parse_token);
+        factor_parse.semantics = typed_expression_result(type_checker, TYPE_STRING,
+                                                         Current_parse_token);
+        if (ir_builder != NULL)
+        {
+            factor_parse.value = ir_builder->emit_constant(
+                shape_of(factor_parse.semantics.resolved_token), Current_parse_token.stringValue);
+        }
         Current_parse_token = Get_Valid_Token();
         return factor_parse;
     }
     if (Current_parse_token_type == T_TRUE || Current_parse_token_type == T_FALSE)
     {
-        factor_parse = typed_expression_result(type_checker, TYPE_BOOL, Current_parse_token);
+        factor_parse.semantics = typed_expression_result(type_checker, TYPE_BOOL,
+                                                         Current_parse_token);
+        if (ir_builder != NULL)
+        {
+            factor_parse.value = ir_builder->emit_constant(
+                shape_of(factor_parse.semantics.resolved_token),
+                Current_parse_token_type == T_TRUE);
+        }
         Current_parse_token = Get_Valid_Token();
         return factor_parse;
     }
     generate_error_report("Invalid token for factor discovered");
     errors_occured = true;
-    return invalid_expression_result(false);
+    return invalid_lowered_expression(false);
 }
 
 //ready to test
 //already consumes indentifier token before being parsed
-token_and_status parser::parse_name(token identifier_token)
+lowered_expression parser::parse_name(token identifier_token)
 {
-    token_and_status name_parse;
+    lowered_expression name_parse;
     token resolved_identifier;
     const bool resolved = resolve_identifier_use(identifier_token, resolved_identifier);
     if (resolved)
@@ -2226,8 +2567,31 @@ token_and_status parser::parse_name(token identifier_token)
         }
         else
         {
-            name_parse = typed_expression_result(type_checker, shape_of(resolved_identifier),
-                                                 identifier_token);
+            name_parse.semantics = typed_expression_result(type_checker,
+                                                           shape_of(resolved_identifier),
+                                                           identifier_token);
+            if (ir_builder != NULL && ir_builder->emission_enabled())
+            {
+                const value_shape shape = shape_of(resolved_identifier);
+                if (ir::is_ready_type(shape))
+                {
+                    const ir::StorageId storage = ir_builder->storage_for(
+                        SymbolRef{resolved_identifier.scope_id,
+                                  resolved_identifier.stringValue});
+                    if (storage.valid())
+                    {
+                        name_parse.value = ir_builder->emit_load(storage);
+                    }
+                    else
+                    {
+                        ir_builder->mark_invalid("resolved scalar name has no IR storage");
+                    }
+                }
+                else
+                {
+                    ir_builder->mark_unsupported("arrays or unresolved values need runtime lowering");
+                }
+            }
         }
     }
     if (!parse_optional_index(identifier_token, resolved, shape_of(resolved_identifier), name_parse))
@@ -2236,28 +2600,28 @@ token_and_status parser::parse_name(token identifier_token)
     }
     if (!resolved)
     {
-        name_parse.valid_parse = true;
-        name_parse.semantic_valid = false;
-        name_parse.resolved_token = token();
+        name_parse.semantics.valid_parse = true;
+        name_parse.semantics.semantic_valid = false;
+        name_parse.semantics.resolved_token = token();
     }
     return name_parse;
 }
 
 //ready to test
 //consumes one token before starting
-bool parser::parse_argument_list(std::vector<token_and_status> &arguments)
+bool parser::parse_argument_list(std::vector<lowered_expression> &arguments)
 {
-    token_and_status expression_parse;
+    lowered_expression expression_parse;
     bool valid_parse = true;
     expression_parse = parse_expression();
     arguments.push_back(expression_parse);
-    valid_parse = expression_parse.valid_parse;
+    valid_parse = expression_parse.semantics.valid_parse;
     while (Current_parse_token_type == T_COMMA)
     {
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         arguments.push_back(expression_parse);
-        valid_parse = expression_parse.valid_parse && valid_parse;
+        valid_parse = expression_parse.semantics.valid_parse && valid_parse;
     }
 
     return valid_parse;
@@ -2265,14 +2629,14 @@ bool parser::parse_argument_list(std::vector<token_and_status> &arguments)
 
 //ready to test
 //already consumes identifier token before parsing
-token_and_status parser::parse_procedure_call(const token &callee_occurrence,
-                                              const token &canonical_callee,
-                                              bool callee_resolved,
-                                              const token_and_status &callee_result)
+lowered_expression parser::parse_procedure_call(const token &callee_occurrence,
+                                                const token &canonical_callee,
+                                                bool callee_resolved,
+                                                const lowered_expression &callee_result)
 {
-    token_and_status call_parse;
-    call_parse.valid_parse = true;
-    std::vector<token_and_status> arguments;
+    lowered_expression call_parse;
+    call_parse.semantics.valid_parse = true;
+    std::vector<lowered_expression> arguments;
     if (Current_parse_token_type == T_LPARAM)
     {
         Current_parse_token = Get_Valid_Token();
@@ -2282,7 +2646,7 @@ token_and_status parser::parse_procedure_call(const token &callee_occurrence,
         }
         else
         {
-            call_parse.valid_parse = parse_argument_list(arguments);
+            call_parse.semantics.valid_parse = parse_argument_list(arguments);
             if (Current_parse_token_type == T_RPARAM)
             {
                 Current_parse_token = Get_Valid_Token();
@@ -2292,7 +2656,7 @@ token_and_status parser::parse_procedure_call(const token &callee_occurrence,
             {
                 generate_error_report_previous_token("Missing required \")\" for the end of a procedure call");
                 errors_occured = true;
-                return invalid_expression_result(false);
+            return invalid_lowered_expression(false);
             }
         }
     }
@@ -2301,38 +2665,62 @@ token_and_status parser::parse_procedure_call(const token &callee_occurrence,
     {
         generate_error_report_previous_token("Missing required \"(\" for the end of a procedure call");
         errors_occured = true;
-        return invalid_expression_result(false);
+        return invalid_lowered_expression(false);
     }
-    if (!call_parse.valid_parse || !callee_resolved ||
-        canonical_callee.identifer_type != I_PROCEDURE || !callee_result.semantic_valid ||
+    if (!call_parse.semantics.valid_parse || !callee_resolved ||
+        canonical_callee.identifer_type != I_PROCEDURE || !callee_result.semantics.semantic_valid ||
         type_checker->statement_suppressed)
     {
-        call_parse.semantic_valid = false;
-        call_parse.resolved_token = token();
+        call_parse.semantics.semantic_valid = false;
+        call_parse.semantics.resolved_token = token();
         return call_parse;
     }
     for (std::size_t i = 0; i < arguments.size(); i++)
     {
-        if (!arguments[i].valid_parse || !arguments[i].semantic_valid)
+        if (!arguments[i].semantics.valid_parse || !arguments[i].semantics.semantic_valid)
         {
-            call_parse.semantic_valid = false;
-            call_parse.resolved_token = token();
+            call_parse.semantics.semantic_valid = false;
+            call_parse.semantics.resolved_token = token();
             return call_parse;
         }
     }
-    if (!type_checker->validate_procedure_call(canonical_callee, callee_occurrence,
-                                               arguments))
+    std::vector<token_and_status> argument_semantics;
+    for (const lowered_expression &argument : arguments)
     {
-        call_parse.semantic_valid = false;
-        call_parse.resolved_token = token();
+        argument_semantics.push_back(argument.semantics);
+    }
+    if (!type_checker->validate_procedure_call(canonical_callee, callee_occurrence,
+                                               argument_semantics))
+    {
+        call_parse.semantics.semantic_valid = false;
+        call_parse.semantics.resolved_token = token();
         return call_parse;
     }
     //The call return remains a synthetic expression result.  The declaration
     //identity and signature stay in canonical_callee for validation only.
-    call_parse = callee_result;
-    call_parse.resolved_token.line_found = callee_occurrence.line_found;
-    call_parse.resolved_token.column_found = callee_occurrence.column_found;
-    call_parse.resolved_token.first_token_on_line = callee_occurrence.first_token_on_line;
+    call_parse.semantics = callee_result.semantics;
+    call_parse.semantics.resolved_token.line_found = callee_occurrence.line_found;
+    call_parse.semantics.resolved_token.column_found = callee_occurrence.column_found;
+    call_parse.semantics.resolved_token.first_token_on_line = callee_occurrence.first_token_on_line;
+    if (ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        std::vector<ir::ValueId> values;
+        for (const lowered_expression &argument : arguments)
+        {
+            values.push_back(argument.value);
+        }
+        const ir::FunctionId callee = ir_builder->function_for(
+            SymbolRef{canonical_callee.scope_id, canonical_callee.stringValue});
+        if (callee.valid() && std::all_of(values.begin(), values.end(),
+                                          [](ir::ValueId value) { return value.valid(); }))
+        {
+            call_parse.value = ir_builder->emit_call(callee, values);
+        }
+        else
+        {
+            ir_builder->mark_invalid("validated procedure call has no IR callee or argument value");
+        }
+    }
     return call_parse;
 }
 
