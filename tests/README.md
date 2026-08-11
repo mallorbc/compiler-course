@@ -135,9 +135,9 @@ contracts around the handwritten scanner/parser: the scanner's token stream
 parser-backed semantic cases. `test_ir.cpp` covers the project-owned Stage 4A
 IR builder, verifier, catalog, parser seam, Program CFG, and Stage 5C scalar
 procedure/frame-lowering cases.
-`test_codegen.cpp` covers the Stage 4B/4C/5A/5B/5C pure restricted-C emitter, while `test_generated_c.py` drives the
+`test_codegen.cpp` covers the Stage 4B/4C/5A/5B/5C/6A pure restricted-C emitter, while `test_generated_c.py` drives the
 explicit `--emit-c OUTPUT SOURCE` CLI, syntax-checks generated C, and
-test-compiles/runs scalar `putInteger`, branch, finite-loop, and Stage 5C
+test-compiles/runs scalar Integer/Bool runtime I/O, branch, finite-loop, and Stage 5C
 procedure/frame programs (calls, by-value parameters, recursion, early returns,
 and guarded procedure division) with an available host C
 compiler (test-only; production never invokes one). `make test` runs the unit,

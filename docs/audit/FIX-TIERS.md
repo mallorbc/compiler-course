@@ -88,8 +88,8 @@ Tier definitions:
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for scalar Program and procedure `if`/`else`/`for`, returns, calls, and manual-frame recursion | Stage 4A supplies the typed IR seam; Stage 4C runtime has canonical `putInteger`; arrays, remaining builtins, nested captures, and host executable production remain separate |
-| RUNTIME | The 9 builtins (getInteger…sqrt) + runtime system (A rung) | shape depends on CODEGEN choice; includes predeclaring builtins in the symbol table |
+| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for scalar Program and procedure `if`/`else`/`for`, returns, calls, and manual-frame recursion; **Stage 6A DONE** for canonical Integer/Bool I/O | Stage 4A supplies the typed IR seam; arrays, Float/String, `sqrt`, nested captures, and host executable production remain separate |
+| RUNTIME | Stage 6A lowers canonical `getInteger`/`getBool`/`putInteger`/`putBool` with deterministic token input and Bool output results | Float/String builtins, `sqrt`, array runtime, and the host adapter remain separate |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
 

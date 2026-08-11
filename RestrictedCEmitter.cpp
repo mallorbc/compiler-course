@@ -3,6 +3,7 @@
 #include "BuiltinCatalog.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <fstream>
@@ -118,11 +119,94 @@ struct RegisterLayout
 
 struct RuntimeRequirements
 {
-    bool put_integer = false;
+    std::array<bool, static_cast<std::size_t>(BuiltinId::Sqrt) + 1U> builtin_used{};
     bool procedures = false;
     bool procedure_mode = false;
     std::vector<bool> reachable_functions;
+
+    void require(BuiltinId id)
+    {
+        builtin_used[static_cast<std::size_t>(id)] = true;
+    }
+
+    bool uses(BuiltinId id) const
+    {
+        return builtin_used[static_cast<std::size_t>(id)];
+    }
+
+    bool uses_runtime_io() const
+    {
+        return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger) ||
+               uses(BuiltinId::PutBool) || uses(BuiltinId::PutInteger);
+    }
+
+    bool uses_token_input() const
+    {
+        return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger);
+    }
 };
+
+bool supported_external_builtin(BuiltinId id)
+{
+    return id == BuiltinId::GetBool || id == BuiltinId::GetInteger ||
+           id == BuiltinId::PutBool || id == BuiltinId::PutInteger;
+}
+
+RestrictedCResult validate_external_builtin_call(const ir::Module &module,
+                                                 const ir::Function &caller,
+                                                 const ir::Call &call,
+                                                 RuntimeRequirements &runtime)
+{
+    const ir::Function *callee = function_for(module, call.callee);
+    const ir::Value *result = value_for(caller, call.result);
+    if (callee == NULL || result == NULL)
+    {
+        return failure(RestrictedCStatus::InvalidIR,
+                       "restricted C external call has an invalid callee or result");
+    }
+
+    const BuiltinSpec *builtin = find_builtin(callee->name);
+    if (callee->kind != ir::FunctionKind::ExternalBuiltin || builtin == NULL)
+    {
+        return failure(RestrictedCStatus::Unsupported,
+                       "restricted C only lowers canonical Integer and Bool external calls");
+    }
+
+    const SymbolRef expected_reference{0, builtin->spelling};
+    if (callee->symbol != expected_reference || callee->return_type != builtin->return_shape ||
+        callee->parameter_types != builtin->parameter_shapes)
+    {
+        return failure(RestrictedCStatus::Unsupported,
+                       "restricted C external call does not match the builtin catalog");
+    }
+
+    if (result->type != builtin->return_shape ||
+        call.arguments.size() != builtin->parameter_shapes.size())
+    {
+        return failure(RestrictedCStatus::InvalidIR,
+                       "restricted C external call has an invalid result or arity");
+    }
+    for (std::size_t argument_index = 0; argument_index < call.arguments.size(); argument_index++)
+    {
+        const ir::Value *argument = value_for(caller, call.arguments[argument_index]);
+        if (argument == NULL || argument->type != builtin->parameter_shapes[argument_index])
+        {
+            return failure(RestrictedCStatus::InvalidIR,
+                           "restricted C external call has an invalid argument");
+        }
+    }
+
+    if (!supported_external_builtin(builtin->id))
+    {
+        return failure(RestrictedCStatus::Unsupported,
+                       "restricted C does not yet lower this canonical external builtin");
+    }
+
+    runtime.require(builtin->id);
+    RestrictedCResult result_status;
+    result_status.status = RestrictedCStatus::Success;
+    return result_status;
+}
 
 struct ProcedureFrame
 {
@@ -191,6 +275,213 @@ std::string int32_literal(int value)
     return "INT32_C(" + std::to_string(value) + ")";
 }
 
+std::string external_call_expression(const ir::Function &callee, const std::string &argument)
+{
+    const BuiltinSpec *builtin = find_builtin(callee.name);
+    if (builtin == NULL)
+    {
+        return std::string();
+    }
+
+    switch (builtin->id)
+    {
+    case BuiltinId::GetBool:
+        return "R_get_b1()";
+    case BuiltinId::GetInteger:
+        return "R_get_i32()";
+    case BuiltinId::PutBool:
+        return "R_put_b1(" + argument + ")";
+    case BuiltinId::PutInteger:
+        return "R_put_i32(" + argument + ")";
+    default:
+        return std::string();
+    }
+}
+
+void emit_runtime_headers(std::ostringstream &output, const RuntimeRequirements &runtime)
+{
+    if (runtime.uses_token_input())
+    {
+        output << "#include <ctype.h>\n";
+    }
+    if (runtime.uses(BuiltinId::PutInteger))
+    {
+        output << "#include <inttypes.h>\n";
+    }
+    if (runtime.uses_runtime_io())
+    {
+        output << "#include <stdio.h>\n";
+    }
+}
+
+void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements &runtime)
+{
+    if (runtime.uses_token_input())
+    {
+        output << "static int R_next_token_char(void)\n{\n"
+               << "    int r0;\n"
+               << "    do\n"
+               << "    {\n"
+               << "        r0 = getchar();\n"
+               << "    } while (r0 != EOF && isspace((unsigned char)r0));\n"
+               << "    return r0;\n}\n\n"
+               << "static int R_decimal_i32(int r0, int32_t *r1)\n{\n"
+               << "    int r2 = INT32_C(1);\n"
+               << "    int r3 = INT32_C(0);\n"
+               << "    int r4 = INT32_C(0);\n"
+               << "    uint32_t r5 = UINT32_C(0);\n"
+               << "    uint32_t r6;\n"
+               << "    if (r0 == '+' || r0 == '-')\n"
+               << "    {\n"
+               << "        r2 = r0 == '-' ? -INT32_C(1) : INT32_C(1);\n"
+               << "        r0 = getchar();\n"
+               << "    }\n"
+               << "    r6 = r2 < INT32_C(0) ? UINT32_C(2147483648) : UINT32_C(2147483647);\n"
+               << "    while (r0 != EOF && !isspace((unsigned char)r0))\n"
+               << "    {\n"
+               << "        if (r0 < '0' || r0 > '9')\n"
+               << "        {\n"
+               << "            r4 = INT32_C(1);\n"
+               << "        }\n"
+               << "        else\n"
+               << "        {\n"
+               << "            const uint32_t r7 = (uint32_t)(r0 - '0');\n"
+               << "            r3 = INT32_C(1);\n"
+               << "            if (r5 > r6 / UINT32_C(10) ||\n"
+               << "                (r5 == r6 / UINT32_C(10) && r7 > r6 % UINT32_C(10)))\n"
+               << "            {\n"
+               << "                r4 = INT32_C(1);\n"
+               << "            }\n"
+               << "            else if (r4 == INT32_C(0))\n"
+               << "            {\n"
+               << "                r5 = r5 * UINT32_C(10) + r7;\n"
+               << "            }\n"
+               << "        }\n"
+               << "        r0 = getchar();\n"
+               << "    }\n"
+               << "    if (r3 == INT32_C(0) || r4 != INT32_C(0))\n"
+               << "    {\n"
+               << "        return INT32_C(0);\n"
+               << "    }\n"
+               << "    if (r2 < INT32_C(0))\n"
+               << "    {\n"
+               << "        *r1 = r5 == UINT32_C(2147483648) ? INT32_MIN : -(int32_t)r5;\n"
+               << "    }\n"
+               << "    else\n"
+               << "    {\n"
+               << "        *r1 = (int32_t)r5;\n"
+               << "    }\n"
+               << "    return INT32_C(1);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::GetBool))
+    {
+        output << "static void R_skip_token(int r0)\n{\n"
+               << "    while (r0 != EOF && !isspace((unsigned char)r0))\n"
+               << "    {\n"
+               << "        r0 = getchar();\n"
+               << "    }\n}\n\n"
+               << "static int R_bool_word(int r0)\n{\n"
+               << "    int r1;\n"
+               << "    if (tolower((unsigned char)r0) == 't')\n"
+               << "    {\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'r')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'u')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'e')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || isspace((unsigned char)r1))\n"
+               << "        {\n"
+               << "            return INT32_C(1);\n"
+               << "        }\n"
+               << "        R_skip_token(r1);\n"
+               << "        return INT32_C(0);\n"
+               << "    }\n"
+               << "    if (tolower((unsigned char)r0) == 'f')\n"
+               << "    {\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'a')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'l')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 's')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || tolower((unsigned char)r1) != 'e')\n"
+               << "        {\n"
+               << "            R_skip_token(r1);\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        r1 = getchar();\n"
+               << "        if (r1 == EOF || isspace((unsigned char)r1))\n"
+               << "        {\n"
+               << "            return INT32_C(0);\n"
+               << "        }\n"
+               << "        R_skip_token(r1);\n"
+               << "        return INT32_C(0);\n"
+               << "    }\n"
+               << "    R_skip_token(r0);\n"
+               << "    return INT32_C(0);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::GetInteger))
+    {
+        output << "static int32_t R_get_i32(void)\n{\n"
+               << "    int32_t r0 = INT32_C(0);\n"
+               << "    const int r1 = R_next_token_char();\n"
+               << "    return r1 == EOF || !R_decimal_i32(r1, &r0) ? INT32_C(0) : r0;\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::GetBool))
+    {
+        output << "static int32_t R_get_b1(void)\n{\n"
+               << "    int32_t r0 = INT32_C(0);\n"
+               << "    const int r1 = R_next_token_char();\n"
+               << "    if (r1 == EOF)\n"
+               << "    {\n"
+               << "        return INT32_C(0);\n"
+               << "    }\n"
+               << "    if (r1 == '+' || r1 == '-' || (r1 >= '0' && r1 <= '9'))\n"
+               << "    {\n"
+               << "        return R_decimal_i32(r1, &r0) && r0 != INT32_C(0) ? INT32_C(1) : INT32_C(0);\n"
+               << "    }\n"
+               << "    return R_bool_word(r1) ? INT32_C(1) : INT32_C(0);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::PutInteger))
+    {
+        output << "static int32_t R_put_i32(int32_t r0)\n{\n"
+               << "    return printf(\"%\" PRId32 \"\\n\", r0) < 0 ? INT32_C(0) : INT32_C(1);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::PutBool))
+    {
+        output << "static int32_t R_put_b1(int32_t r0)\n{\n"
+               << "    return printf(\"%s\\n\", r0 == INT32_C(0) ? \"false\" : \"true\") < 0 ? "
+               << "INT32_C(0) : INT32_C(1);\n}\n\n";
+    }
+}
+
 //This deliberately lives entirely in the restricted-C backend.  The IR knows
 //only normal calls/returns and canonical storage ownership; frame offsets and
 //the flat-C continuation ABI are not frontend or IR concepts.
@@ -214,11 +505,6 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
     {
         return failure(RestrictedCStatus::Unsupported,
                        "restricted C global storage exceeds the fixed memory capacity");
-    }
-    const BuiltinSpec *put_integer = find_builtin(BuiltinId::PutInteger);
-    if (put_integer == NULL)
-    {
-        return failure(RestrictedCStatus::InvalidIR, "builtin catalog is incomplete");
     }
     runtime.reachable_functions.assign(module.functions.size(), false);
     runtime.reachable_functions[0] = true;
@@ -299,20 +585,21 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
                 if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
                 {
                     const ir::Function *callee = function_for(module, call->callee);
+                    if (callee == NULL)
+                    {
+                        return failure(RestrictedCStatus::InvalidIR,
+                                       "restricted C call has no canonical callee");
+                    }
                     if (callee->kind == ir::FunctionKind::Procedure)
                     {
                         continue;
                     }
-                    const SymbolRef put_reference{0, put_integer->spelling};
-                    if (callee->kind != ir::FunctionKind::ExternalBuiltin ||
-                        callee->symbol != put_reference ||
-                        callee->return_type != put_integer->return_shape ||
-                        callee->parameter_types != put_integer->parameter_shapes)
+                    RestrictedCResult checked =
+                        validate_external_builtin_call(module, function, *call, runtime);
+                    if (!checked.succeeded())
                     {
-                        return failure(RestrictedCStatus::Unsupported,
-                                       "restricted C only lowers canonical putInteger external calls");
+                        return checked;
                     }
-                    runtime.put_integer = true;
                 }
             }
         }
@@ -504,40 +791,12 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
         }
         else if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
         {
-            const ir::Function *callee = function_for(module, call->callee);
-            const BuiltinSpec *put_integer = find_builtin(BuiltinId::PutInteger);
-            const ir::Value *result = value_for(*program, call->result);
-            if (callee == NULL || put_integer == NULL)
+            RestrictedCResult checked =
+                validate_external_builtin_call(module, *program, *call, runtime);
+            if (!checked.succeeded())
             {
-                return failure(RestrictedCStatus::InvalidIR,
-                               "restricted C call has no canonical callee metadata");
+                return checked;
             }
-            const SymbolRef expected_reference{0, put_integer->spelling};
-            if (callee->kind != ir::FunctionKind::ExternalBuiltin ||
-                callee->name != put_integer->spelling || callee->symbol != expected_reference ||
-                callee->return_type != put_integer->return_shape ||
-                callee->parameter_types != put_integer->parameter_shapes)
-            {
-                return failure(RestrictedCStatus::Unsupported,
-                               "restricted C only lowers the canonical putInteger builtin");
-            }
-            if (result == NULL || result->type != put_integer->return_shape ||
-                call->arguments.size() != put_integer->parameter_shapes.size())
-            {
-                return failure(RestrictedCStatus::InvalidIR,
-                               "restricted C putInteger call has an invalid result or arity");
-            }
-            for (std::size_t argument_index = 0; argument_index < call->arguments.size();
-                 argument_index++)
-            {
-                const ir::Value *argument = value_for(*program, call->arguments[argument_index]);
-                if (argument == NULL || argument->type != put_integer->parameter_shapes[argument_index])
-                {
-                    return failure(RestrictedCStatus::InvalidIR,
-                                   "restricted C putInteger call has an invalid argument");
-                }
-            }
-            runtime.put_integer = true;
         }
         else
         {
@@ -834,10 +1093,7 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
 
     std::ostringstream output;
     output << "#include <stdint.h>\n";
-    if (runtime.put_integer)
-    {
-        output << "#include <inttypes.h>\n#include <stdio.h>\n";
-    }
+    emit_runtime_headers(output, runtime);
     output << "\n#define MM_BYTES (" << RestrictedCEmitter::memory_byte_capacity() << "u)\n";
     output << "#define MM_WORDS (MM_BYTES / sizeof(int32_t))\n";
     output << "#define REGISTER_COUNT " << layout.count << "u\n\n";
@@ -845,11 +1101,7 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
            << "(int32_t)(value) : INT32_MIN + (int32_t)((uint32_t)(value) - "
            << "UINT32_C(2147483648)))\n\n";
     output << "int32_t MM[MM_WORDS];\nint32_t Reg[REGISTER_COUNT];\n\n";
-    if (runtime.put_integer)
-    {
-        output << "static int32_t R_put_i32(int32_t r0)\n{\n"
-               << "    return printf(\"%\" PRId32 \"\\n\", r0) < 0 ? INT32_C(0) : INT32_C(1);\n}\n\n";
-    }
+    emit_runtime_support(output, runtime);
     output << "int main(void)\n{\n";
     output << "    " << register_slot(layout.exit) << " = INT32_C(0);\n";
     output << "    Reg[0u] = INT32_C(" << static_words << ");\n";
@@ -1029,17 +1281,25 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                     {
                         if (procedure_function)
                         {
-                            output << "    " << register_slot(layout.temporary_a) << " = "
-                                   << value_read(function, call->arguments[0]) << ";\n";
-                            output << "    " << register_slot(layout.temporary_b) << " = R_put_i32("
-                                   << register_slot(layout.temporary_a) << ");\n";
+                            std::string argument;
+                            if (!call->arguments.empty())
+                            {
+                                argument = register_slot(layout.temporary_a);
+                                output << "    " << argument << " = "
+                                       << value_read(function, call->arguments[0]) << ";\n";
+                            }
+                            output << "    " << register_slot(layout.temporary_b) << " = "
+                                   << external_call_expression(callee, argument) << ";\n";
                             output << "    " << value_write(function, call->result) << " = "
                                    << register_slot(layout.temporary_b) << ";\n";
                         }
                         else
                         {
-                            output << "    " << value_write(function, call->result) << " = R_put_i32("
-                                   << value_read(function, call->arguments[0]) << ");\n";
+                            const std::string argument = call->arguments.empty()
+                                ? std::string()
+                                : value_read(function, call->arguments[0]);
+                            output << "    " << value_write(function, call->result) << " = "
+                                   << external_call_expression(callee, argument) << ";\n";
                         }
                     }
                     else
@@ -1174,11 +1434,7 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
     }
     std::ostringstream output;
     output << "#include <stdint.h>\n";
-    if (runtime.put_integer)
-    {
-        output << "#include <inttypes.h>\n";
-        output << "#include <stdio.h>\n";
-    }
+    emit_runtime_headers(output, runtime);
     output << "\n";
     output << "#define MM_BYTES (" << RestrictedCEmitter::memory_byte_capacity() << "u)\n";
     output << "#define REGISTER_COUNT " << layout.count << "u\n\n";
@@ -1187,12 +1443,7 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
            << "UINT32_C(2147483648)))\n\n";
     output << "int32_t MM[MM_BYTES / sizeof(int32_t)];\n";
     output << "int32_t Reg[REGISTER_COUNT];\n\n";
-    if (runtime.put_integer)
-    {
-        output << "static int32_t R_put_i32(int32_t r0)\n{\n";
-        output << "    return printf(\"%\" PRId32 \"\\n\", r0) < 0 ? INT32_C(0) : INT32_C(1);\n";
-        output << "}\n\n";
-    }
+    emit_runtime_support(output, runtime);
     output << "int main(void)\n{\n";
     output << "    " << register_slot(layout.exit) << " = INT32_C(0);\n";
     output << "    goto L_f0_b0;\n";
@@ -1300,8 +1551,12 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
         }
         else if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
         {
-            output << "    " << value_register(call->result) << " = R_put_i32("
-                   << value_register(call->arguments[0]) << ");\n";
+            const ir::Function &callee = module.functions[call->callee.index];
+            const std::string argument = call->arguments.empty()
+                ? std::string()
+                : value_register(call->arguments[0]);
+            output << "    " << value_register(call->result) << " = "
+                   << external_call_expression(callee, argument) << ";\n";
         }
         }
         const ir::Terminator &terminator = std::get<ir::Terminator>(block.terminator);

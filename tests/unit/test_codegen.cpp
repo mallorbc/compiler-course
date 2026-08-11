@@ -154,6 +154,33 @@ ir::Module put_integer_module()
     return builder.module();
 }
 
+ir::Module integer_bool_runtime_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "runtime_io_program"}, "runtime_io_program").valid());
+    builder.seed_external_builtins();
+
+    const ir::FunctionId get_integer = builder.function_for(SymbolRef{0, "getinteger"});
+    const ir::FunctionId get_bool = builder.function_for(SymbolRef{0, "getbool"});
+    const ir::FunctionId put_integer = builder.function_for(SymbolRef{0, "putinteger"});
+    const ir::FunctionId put_bool = builder.function_for(SymbolRef{0, "putbool"});
+    REQUIRE(get_integer.valid());
+    REQUIRE(get_bool.valid());
+    REQUIRE(put_integer.valid());
+    REQUIRE(put_bool.valid());
+
+    const ir::ValueId integer = builder.emit_call(get_integer, {});
+    const ir::ValueId boolean = builder.emit_call(get_bool, {});
+    REQUIRE(integer.valid());
+    REQUIRE(boolean.valid());
+    REQUIRE(builder.emit_call(put_integer, {integer}).valid());
+    REQUIRE(builder.emit_call(put_bool, {boolean}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 ir::Module branch_module()
 {
     ir::IRBuilder builder;
@@ -383,6 +410,105 @@ TEST_CASE("Stage 4C restricted C lowers only canonical putInteger calls")
     CHECK(malformed.text.empty());
 }
 
+TEST_CASE("Stage 6A restricted C lowers catalog-canonical Integer and Bool runtime calls")
+{
+    RestrictedCEmitter emitter;
+    const ir::Module module = integer_bool_runtime_module();
+    const RestrictedCResult result = emitter.emit(module);
+    REQUIRE(result.succeeded());
+    CHECK(result.text.find("#include <ctype.h>") != std::string::npos);
+    CHECK(result.text.find("#include <inttypes.h>") != std::string::npos);
+    CHECK(result.text.find("#include <stdio.h>") != std::string::npos);
+    CHECK(result.text.find("static int32_t R_get_i32(void)") != std::string::npos);
+    CHECK(result.text.find("static int32_t R_get_b1(void)") != std::string::npos);
+    CHECK(result.text.find("static int32_t R_put_i32(int32_t r0)") != std::string::npos);
+    CHECK(result.text.find("static int32_t R_put_b1(int32_t r0)") != std::string::npos);
+    CHECK(result.text.find("R_decimal_i32") != std::string::npos);
+    CHECK(result.text.find("runtime_io_program") == std::string::npos);
+
+    ir::Module impostor = module;
+    const ir::FunctionId get_integer = ir::FunctionId(2);
+    REQUIRE(impostor.functions[get_integer.index].name == "getinteger");
+    impostor.functions[get_integer.index].symbol = SymbolRef{0, "not_getinteger"};
+    const RestrictedCResult noncanonical = emitter.emit(impostor);
+    CHECK(noncanonical.status == RestrictedCStatus::InvalidIR);
+    CHECK(noncanonical.text.empty());
+
+    ir::Module wrong_arity = module;
+    for (ir::Instruction &instruction : wrong_arity.functions[0].blocks[0].instructions)
+    {
+        if (ir::Call *call = std::get_if<ir::Call>(&instruction))
+        {
+            if (call->callee == get_integer)
+            {
+                call->arguments.push_back(ir::ValueId(ir::FunctionId(0), 0));
+                break;
+            }
+        }
+    }
+    const RestrictedCResult malformed_arity = emitter.emit(wrong_arity);
+    CHECK(malformed_arity.status == RestrictedCStatus::InvalidIR);
+    CHECK(malformed_arity.text.empty());
+
+    ir::Module wrong_type = module;
+    const ir::FunctionId put_bool = ir::FunctionId(5);
+    for (ir::Instruction &instruction : wrong_type.functions[0].blocks[0].instructions)
+    {
+        if (ir::Call *call = std::get_if<ir::Call>(&instruction))
+        {
+            if (call->callee == put_bool)
+            {
+                call->arguments[0] = ir::ValueId(ir::FunctionId(0), 0);
+                break;
+            }
+        }
+    }
+    const RestrictedCResult malformed_type = emitter.emit(wrong_type);
+    CHECK(malformed_type.status == RestrictedCStatus::InvalidIR);
+    CHECK(malformed_type.text.empty());
+
+    ir::IRBuilder unsupported_builder;
+    REQUIRE(unsupported_builder.register_program(SymbolRef{0, "sqrt_program"}, "sqrt_program").valid());
+    unsupported_builder.seed_external_builtins();
+    const ir::ValueId input = unsupported_builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(input.valid());
+    const ir::FunctionId sqrt = unsupported_builder.function_for(SymbolRef{0, "sqrt"});
+    REQUIRE(sqrt.valid());
+    REQUIRE(unsupported_builder.emit_call(sqrt, {input}).valid());
+    REQUIRE(unsupported_builder.emit_halt());
+    unsupported_builder.finalize(true);
+    REQUIRE(unsupported_builder.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult unsupported = emitter.emit(unsupported_builder.module());
+    CHECK(unsupported.status == RestrictedCStatus::Unsupported);
+    CHECK(unsupported.text.empty());
+
+    ir::IRBuilder dead_unsupported_builder;
+    REQUIRE(dead_unsupported_builder.register_program(SymbolRef{0, "dead_runtime"},
+                                                       "dead_runtime").valid());
+    dead_unsupported_builder.seed_external_builtins();
+    const ir::FunctionId hidden = dead_unsupported_builder.register_procedure(
+        SymbolRef{0, "hidden_runtime"}, "hidden_runtime", scalar(TYPE_INT), {});
+    REQUIRE(hidden.valid());
+    REQUIRE(dead_unsupported_builder.enter_function(hidden));
+    const ir::ValueId hidden_input = dead_unsupported_builder.emit_constant(scalar(TYPE_INT), 4);
+    REQUIRE(hidden_input.valid());
+    const ir::FunctionId hidden_sqrt =
+        dead_unsupported_builder.function_for(SymbolRef{0, "sqrt"});
+    REQUIRE(hidden_sqrt.valid());
+    REQUIRE(dead_unsupported_builder.emit_call(hidden_sqrt, {hidden_input}).valid());
+    const ir::ValueId hidden_result =
+        dead_unsupported_builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(dead_unsupported_builder.emit_return(hidden_result));
+    REQUIRE(dead_unsupported_builder.leave_function());
+    REQUIRE(dead_unsupported_builder.emit_halt());
+    dead_unsupported_builder.finalize(true);
+    REQUIRE(dead_unsupported_builder.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult dead_unsupported = emitter.emit(dead_unsupported_builder.module());
+    CHECK(dead_unsupported.status == RestrictedCStatus::Success);
+    CHECK(dead_unsupported.text.find("L_f10_") == std::string::npos);
+    CHECK(dead_unsupported.text.find("R_sqrt") == std::string::npos);
+}
+
 TEST_CASE("Stage 4B fixed memory capacity is an emitter invariant")
 {
     const std::size_t capacity = RestrictedCEmitter::memory_word_capacity();
@@ -432,8 +558,11 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     put_bool_builder.finalize(true);
     REQUIRE(put_bool_builder.status() == ir::ModuleStatus::Ready);
     const RestrictedCResult put_bool_call = emitter.emit(put_bool_builder.module());
-    CHECK(put_bool_call.status == RestrictedCStatus::Unsupported);
-    CHECK(put_bool_call.text.empty());
+    CHECK(put_bool_call.status == RestrictedCStatus::Success);
+    CHECK(put_bool_call.text.find("R_put_b1") != std::string::npos);
+    CHECK(put_bool_call.text.find("R_get_") == std::string::npos);
+    CHECK(put_bool_call.text.find("#include <ctype.h>") == std::string::npos);
+    CHECK(put_bool_call.text.find("#include <inttypes.h>") == std::string::npos);
 
     ir::IRBuilder get_integer_builder;
     REQUIRE(get_integer_builder.register_program(SymbolRef{0, "get_integer_program"}, "get_integer_program").valid());
@@ -446,8 +575,10 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     get_integer_builder.finalize(true);
     REQUIRE(get_integer_builder.status() == ir::ModuleStatus::Ready);
     const RestrictedCResult get_integer_call = emitter.emit(get_integer_builder.module());
-    CHECK(get_integer_call.status == RestrictedCStatus::Unsupported);
-    CHECK(get_integer_call.text.empty());
+    CHECK(get_integer_call.status == RestrictedCStatus::Success);
+    CHECK(get_integer_call.text.find("R_get_i32") != std::string::npos);
+    CHECK(get_integer_call.text.find("R_put_") == std::string::npos);
+    CHECK(get_integer_call.text.find("#include <inttypes.h>") == std::string::npos);
 
     for (data_types unsupported_type : {TYPE_FLOAT, TYPE_STRING})
     {

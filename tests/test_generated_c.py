@@ -74,7 +74,7 @@ def strict_c11_syntax_check(generated: Path) -> None:
 
 
 def strict_c11_compile_and_run(
-    generated: Path, expected_stdout: str, expected_returncode: int = 0
+    generated: Path, expected_stdout: str, expected_returncode: int = 0, stdin_text: str = ""
 ) -> None:
     c_compiler = next(
         (candidate for candidate in ("cc", "gcc", "clang") if shutil.which(candidate)), None
@@ -110,7 +110,7 @@ def strict_c11_compile_and_run(
     execution = subprocess.run(
         [str(executable)],
         cwd=REPO_ROOT,
-        stdin=subprocess.DEVNULL,
+        input=stdin_text,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -191,6 +191,208 @@ def main() -> int:
         for source_identifier in ("Gate4", "answer", "printed", "putInteger"):
             check(source_identifier not in gate4_c, f"Gate4 source name leaked: {source_identifier}")
         strict_c11_compile_and_run(gate4_output, "42\n")
+
+        singleton_cases = (
+            (
+                "get-integer",
+                "program RuntimeGetInteger is\n"
+                "variable value : integer;\n"
+                "begin\n"
+                "    value := getInteger();\n"
+                "end program.\n",
+                "-2147483648\n",
+                "",
+                ("R_get_i32", "R_decimal_i32", "R_next_token_char"),
+                ("R_get_b1", "R_bool_word", "R_skip_token", "R_put_i32", "R_put_b1"),
+            ),
+            (
+                "get-bool",
+                "program RuntimeGetBool is\n"
+                "variable value : bool;\n"
+                "begin\n"
+                "    value := getBool();\n"
+                "end program.\n",
+                "FaLsE\n",
+                "",
+                ("R_get_b1", "R_bool_word", "R_skip_token", "R_decimal_i32"),
+                ("R_get_i32", "R_put_i32", "R_put_b1"),
+            ),
+            (
+                "put-integer",
+                "program RuntimePutInteger is\n"
+                "variable result : bool;\n"
+                "begin\n"
+                "    result := putInteger(2147483647);\n"
+                "end program.\n",
+                "",
+                "2147483647\n",
+                ("R_put_i32",),
+                ("R_get_i32", "R_get_b1", "R_put_b1", "R_decimal_i32"),
+            ),
+            (
+                "put-bool",
+                "program RuntimePutBool is\n"
+                "variable result : bool;\n"
+                "begin\n"
+                "    result := putBool(true);\n"
+                "    if (result) then\n"
+                "        result := putBool(false);\n"
+                "    else\n"
+                "        result := putBool(true);\n"
+                "    end if;\n"
+                "end program.\n",
+                "",
+                "true\nfalse\n",
+                ("R_put_b1",),
+                ("R_get_i32", "R_get_b1", "R_put_i32", "R_decimal_i32"),
+            ),
+        )
+        for name, singleton_source_text, singleton_stdin, singleton_stdout, required, absent in singleton_cases:
+            singleton_source = root / f"stage6a-{name}.src"
+            singleton_output = root / f"stage6a-{name}.c"
+            singleton_source.write_text(singleton_source_text, encoding="utf-8")
+            singleton = run_compiler("--emit-c", str(singleton_output), str(singleton_source))
+            check(singleton.returncode == 0,
+                  f"Stage6A {name} singleton emit failed: {singleton.stderr!r}")
+            singleton_c = singleton_output.read_text(encoding="utf-8")
+            for helper in required:
+                check(helper in singleton_c, f"Stage6A {name} omitted helper {helper}")
+            for helper in absent:
+                check(helper not in singleton_c, f"Stage6A {name} leaked helper {helper}")
+            strict_c11_compile_and_run(
+                singleton_output, singleton_stdout, stdin_text=singleton_stdin
+            )
+
+        runtime_tokens_source = root / "stage6a-tokens.src"
+        runtime_tokens_output = root / "stage6a-tokens.c"
+        runtime_tokens_source.write_text(
+            "program Stage6ATokens is\n"
+            "variable int_slot : integer;\n"
+            "variable flag : bool;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "    int_slot := getInteger();\n"
+            "    printed := putInteger(int_slot);\n"
+            "    flag := getBool();\n"
+            "    printed := putBool(flag);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        runtime_tokens = run_compiler(
+            "--emit-c", str(runtime_tokens_output), str(runtime_tokens_source)
+        )
+        check(runtime_tokens.returncode == 0,
+              f"Stage6A token runtime emit failed: {runtime_tokens.stderr!r}")
+        runtime_tokens_c = runtime_tokens_output.read_text(encoding="utf-8")
+        for helper in ("R_get_i32", "R_get_b1", "R_put_i32", "R_put_b1"):
+            check(helper in runtime_tokens_c, f"Stage6A omitted required helper {helper}")
+        check("#include <ctype.h>" in runtime_tokens_c,
+              "Stage6A token runtime omitted ctype support")
+        for source_identifier in ("Stage6ATokens", "int_slot", "flag", "printed",
+                                  "getInteger", "getBool", "putInteger", "putBool"):
+            check(source_identifier not in runtime_tokens_c,
+                  f"Stage6A source identifier leaked into C: {source_identifier}")
+        strict_c11_compile_and_run(
+            runtime_tokens_output,
+            "2147483647\n-2147483648\n0\n17\n0\n-23\n0\n5\n0\n6\n"
+            "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n0\nfalse\n",
+            stdin_text=(
+                "2147483647 -2147483648 2147483648 17 -2147483649 -23 "
+                "+ 5 12x 6 TRUE fAlSe -2 2147483648 true nope 1"
+            ),
+        )
+        runtime_tokens_repeat = root / "stage6a-tokens-repeat.c"
+        runtime_tokens_second = run_compiler(
+            "--emit-c", str(runtime_tokens_repeat), str(runtime_tokens_source)
+        )
+        check(runtime_tokens_second.returncode == 0,
+              f"second Stage6A token runtime emit failed: {runtime_tokens_second.stderr!r}")
+        check(runtime_tokens_c == runtime_tokens_repeat.read_text(encoding="utf-8"),
+              "Stage6A token runtime C is not deterministic")
+
+        runtime_procedure_source = root / "stage6a-procedure.src"
+        runtime_procedure_output = root / "stage6a-procedure.c"
+        runtime_procedure_source.write_text(
+            "program Stage6AProcedure is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure readAndReport : integer(variable limit : integer)\n"
+            "variable value : integer;\n"
+            "variable flag : bool;\n"
+            "variable did_print : bool;\n"
+            "begin\n"
+            "    value := getInteger();\n"
+            "    flag := getBool();\n"
+            "    if (flag) then\n"
+            "        did_print := putBool(true);\n"
+            "    else\n"
+            "        did_print := putBool(false);\n"
+            "    end if;\n"
+            "    for (limit := 0; limit < 1)\n"
+            "        did_print := putInteger(value);\n"
+            "        limit := limit + 1;\n"
+            "    end for;\n"
+            "    return value;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := readAndReport(0);\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        runtime_procedure = run_compiler(
+            "--emit-c", str(runtime_procedure_output), str(runtime_procedure_source)
+        )
+        check(runtime_procedure.returncode == 0,
+              f"Stage6A procedure runtime emit failed: {runtime_procedure.stderr!r}")
+        runtime_procedure_c = runtime_procedure_output.read_text(encoding="utf-8")
+        check("L_f10_b0:" in runtime_procedure_c,
+              "Stage6A procedure runtime omitted the reachable procedure")
+        check("if (MM[" not in runtime_procedure_c,
+              "Stage6A procedure runtime branches directly on frame memory")
+        check(not re.search(r"MM\[[^\n]+\]\s*=\s*R_", runtime_procedure_c),
+              "Stage6A getter result bypasses a scratch register")
+        check(not re.search(r"R_put_[^(]+\([^\n]*MM\[", runtime_procedure_c),
+              "Stage6A output argument bypasses a scratch register")
+        check(not re.search(r"MM\[[^\n]+\]\s*=\s*MM\[", runtime_procedure_c),
+              "Stage6A procedure runtime emits direct MM-to-MM traffic")
+        strict_c11_compile_and_run(
+            runtime_procedure_output, "true\n12\n12\n", stdin_text="12 TRUE\n"
+        )
 
         procedure_source = root / "stage5c-procedures.src"
         procedure_output = root / "stage5c-procedures.c"
