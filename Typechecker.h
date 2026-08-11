@@ -46,6 +46,7 @@ public:
     token second_token;
     std::vector<token> relation_tokens;
     type_of_statement current_statement_type;
+    token statement_key_token;
 
     Typechecker();
     Typechecker(parser *parent);

@@ -112,7 +112,6 @@ bool SymbolTable::is_reserved_char(char test_char)
 
 bool SymbolTable::make_token_global(token global_token)
 {
-    bool return_value;
     //used as the temporary hold value
     token temp_token;
     //finds the token value using the string key
@@ -133,7 +132,7 @@ bool SymbolTable::is_global_token(token token_to_check)
     return is_global;
 }
 
-bool SymbolTable::token_is_in_global_scope(token token_to_check, int scope_id)
+bool SymbolTable::token_is_in_global_scope(token token_to_check, int)
 {
     bool is_global_scoped = false;
     if (scope_table[-1].is_in_table(token_to_check.stringValue))
@@ -174,7 +173,6 @@ bool SymbolTable::create_new_scope_table(int scope_id)
 
 bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
 {
-    bool token_is_procedure_identifier;
     //this array will hold at least one scope id, more will be added in some cases
     std::vector<int> list_of_scopes;
     //adds the first scope id
@@ -190,7 +188,7 @@ bool SymbolTable::resync_tables(int scope_id, token token_to_sync)
     }
     //holds the id of the current scope in the case we need to add multiple scopes
     int current_scope;
-    for (int i = 0; i < list_of_scopes.size(); i++)
+    for (std::size_t i = 0; i < list_of_scopes.size(); i++)
     {
         current_scope = list_of_scopes[i];
         //temp variableused to update the values of the tokens and map
@@ -244,8 +242,6 @@ bool SymbolTable::remove_scope(int scope_id)
 
 bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 {
-    bool return_value;
-
     token_to_update.scope_id = scope_id;
     token_to_update.procedure_params.clear();
     map[token_to_update.stringValue] = token_to_update;
@@ -260,9 +256,7 @@ bool SymbolTable::update_token_scope_id(token token_to_update, int scope_id)
 
 bool SymbolTable::update_identifier_type(token token_to_update, int scope_id)
 {
-    identifier_types temp_identifier_type = I_NONE;
     token temp_token = token_to_update;
-    bool array_status = false;
     if (token_is_in_global_scope(token_to_update, scope_id))
     {
         token_to_update = get_globabl_token(token_to_update);

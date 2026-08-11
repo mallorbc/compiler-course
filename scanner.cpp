@@ -611,7 +611,15 @@ void scanner::string_value_builder()
     while (true)
     {
         build_string = build_string + current_char;
-        source.get(next_char);
+        if (!source.get(next_char))
+        {
+            //Do not process a stale value from the failed read.  In
+            //particular, an unterminated string ending in a newline used to
+            //re-apply that newline and advance the reported line once more.
+            end_of_file = true;
+            error_detected = true;
+            break;
+        }
         if (next_char == '"')
         {
             build_string = build_string + next_char;
@@ -625,13 +633,6 @@ void scanner::string_value_builder()
             prev_line = current_line;
             current_line++;
             //is_slash_comment = false;
-        }
-        if (source.eof() && quote_status)
-        {
-            //no closing quotation mark;
-            end_of_file = true;
-            error_detected = true;
-            break;
         }
     }
     if (debug)

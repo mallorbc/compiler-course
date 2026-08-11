@@ -85,6 +85,26 @@ TEST_CASE("token_types_compatible_at_all reports the type it resolved each side 
     CHECK(literals.compatible == false);
 }
 
+TEST_CASE("token_types_compatible_at_all recognizes scanner boolean literals")
+{
+    token_types_and_status literals = compatibility_of(literal_of(T_TRUE), literal_of(T_FALSE));
+    CHECK(literals.token_one_type == typechecker_bool);
+    CHECK(literals.token_two_type == typechecker_bool);
+    CHECK(literals.compatible == true);
+
+    token_types_and_status identifier_and_literal = compatibility_of(
+        identifier_of(TYPE_BOOL), literal_of(T_TRUE));
+    CHECK(identifier_and_literal.token_one_type == typechecker_bool);
+    CHECK(identifier_and_literal.token_two_type == typechecker_bool);
+    CHECK(identifier_and_literal.compatible == true);
+
+    token_types_and_status literal_and_identifier = compatibility_of(
+        literal_of(T_FALSE), identifier_of(TYPE_INT));
+    CHECK(literal_and_identifier.token_one_type == typechecker_bool);
+    CHECK(literal_and_identifier.token_two_type == typechecker_int);
+    CHECK(literal_and_identifier.compatible == true);
+}
+
 TEST_CASE("token_types_compatible_at_all rejects an identifier with no declared type")
 {
     token_types_and_status undeclared = compatibility_of(identifier_of(TYPE_NONE), literal_of(T_INTEGER_VALUE));
@@ -106,7 +126,7 @@ TEST_CASE("KNOWN-BUG TY-10: token_types_compatible_at_all is not symmetric")
     CHECK(compatibility_of(literal_of(T_BOOL_VALUE), identifier_of(TYPE_FLOAT)).compatible == false);
 }
 
-TEST_CASE("the typechecker's type predicates and names")
+TEST_CASE("the typechecker's type predicates, conversions, and names")
 {
     Typechecker checker;
 
@@ -121,7 +141,12 @@ TEST_CASE("the typechecker's type predicates and names")
     CHECK(checker.give_token_type_name(typechecker_float) == "Float");
     CHECK(checker.give_token_type_name(typechecker_bool) == "Bool");
     CHECK(checker.give_token_type_name(typechecker_string) == "String");
-    //KNOWN-BUG TY-11: the null type has no case in that switch, so error
-    //messages about an unresolved type name an empty string
-    CHECK(checker.give_token_type_name(typechecker_null) == "");
+    CHECK(checker.give_token_type_name(typechecker_null) == "Unknown");
+
+    token no_type;
+    CHECK(checker.convert_to_typechecker_types(no_type) == typechecker_null);
+    CHECK(checker.convert_to_typechecker_types(identifier_of(TYPE_NONE)) == typechecker_null);
+    CHECK(checker.convert_to_typechecker_types(literal_of(T_STRING_VALUE)) == typechecker_string);
+    CHECK(checker.convert_to_typechecker_types(literal_of(T_TRUE)) == typechecker_bool);
+    CHECK(checker.convert_to_typechecker_types(literal_of(T_FALSE)) == typechecker_bool);
 }

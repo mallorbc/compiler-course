@@ -1,5 +1,5 @@
 The program parsed successfully with errors
-Error on line 5: Procedure is of type "Integer" which is not compatible with return type of ""
+Error on line 4: Procedure is of type "Integer" which is not compatible with return type of "Unknown"
 
 Error on line 7: Missing ":" needed for assignment statement
 

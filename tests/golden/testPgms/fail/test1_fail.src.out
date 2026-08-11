@@ -3,7 +3,7 @@ Error on line 6: Missing ";" to complete declaration
 
 Error on line 14: Missing ";" to end statement in if statement
 
-Error on line 15: Type "Integer" and type "" have no valid operations
+Error on line 15: Type "Integer" and type "Unknown" have no valid operations
 
 Error on line 23: Missing ";" to end statement in loop statement
 

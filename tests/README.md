@@ -1,6 +1,6 @@
 # Golden-file regression harness
 
-`tests/run_golden.py` runs `./compiler` over all 179 test programs in the repo
+`tests/run_golden.py` runs `./compiler` over all 186 test programs in the repo
 and compares what happens against a recorded baseline. It is the tripwire for
 "did my change alter compiler behaviour anywhere I did not intend?"
 
@@ -33,7 +33,7 @@ such as the scanner and parser remains project-owned.
 ## What is covered
 
 Every `*.src` found recursively under `testPgms/` (14) and `docs/audit/probes/`
-(165) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
+(172) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
 holds one stray non-`.src` file, which the `*.src` glob naturally excludes.
 
 **The baseline is only valid for the default build** (plain `make`: `-g`, no
@@ -95,8 +95,8 @@ Manifest entry, verbatim:
 
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
-| `OK`      | exited 0                                 | 97             |
-| `ERRORS`  | exited nonzero, terminated normally      | 82             |
+| `OK`      | exited 0                                 | 98             |
+| `ERRORS`  | exited nonzero, terminated normally      | 88             |
 | `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
 | `TIMEOUT` | still running when the budget expired    | 0              |
 

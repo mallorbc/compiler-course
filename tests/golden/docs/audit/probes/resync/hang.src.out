@@ -1,5 +1,5 @@
 The program parsed successfully with errors
-Error on line 4: Invalid statement; Not an assignment, if, loop, or return
+Error on line 5: Invalid statement; Not an assignment, if, loop, or return
 
 Error on line 4: Missing keyword "end" to close procedure body
 

@@ -84,27 +84,12 @@ void parser::add_error_report(std::string error_report)
 //ready for testing
 void parser::generate_error_report(std::string error_message)
 {
-    std::string full_error_message = "";
-    if (!resync_status)
+    int line_number = Current_parse_token.line_found;
+    if (line_number < 1)
     {
-        if (Lexer->is_nested_commented == false)
-        {
-            if (Current_parse_token.first_token_on_line)
-            {
-                full_error_message = "Error on line " + std::to_string(prev_token.line_found) + ": ";
-            }
-            else
-            {
-                full_error_message = "Error on line " + std::to_string(Current_parse_token.line_found) + ": ";
-            }
-        }
-        else
-        {
-            full_error_message = "Error on line " + std::to_string(Lexer->nested_comment_line) + ": ";
-        }
-        full_error_message = full_error_message + error_message;
-        add_error_report(full_error_message);
+        line_number = prev_token.line_found;
     }
+    generate_error_report(error_message, line_number);
 }
 
 void parser::generate_error_report(std::string error_message, int line_number)
@@ -112,28 +97,38 @@ void parser::generate_error_report(std::string error_message, int line_number)
     std::string full_error_message = "";
     if (!resync_status)
     {
-        if (Lexer->is_nested_commented == false)
+        if (line_number < 1)
         {
-            full_error_message = "Error on line " + std::to_string(line_number) + ": ";
+            line_number = 1;
         }
-        else
-        {
-            full_error_message = "Error on line " + std::to_string(Lexer->nested_comment_line) + ": ";
-        }
+        full_error_message = "Error on line " + std::to_string(line_number) + ": ";
         full_error_message = full_error_message + error_message;
         add_error_report(full_error_message);
     }
 }
 
-void parser::clear_error_reports()
+void parser::generate_error_report_previous_token(std::string error_message)
 {
-    error_reports.clear();
+    int line_number = prev_token.line_found;
+    //An unterminated string is represented by one token at its opening line,
+    //but the omitted delimiter follows the physical end of that token.  The
+    //EOF token is the only source position that preserves that end line.
+    if (prev_token.type == T_STRING_VALUE && Lexer->quote_status &&
+        Current_parse_token.type == T_INVALID)
+    {
+        line_number = Current_parse_token.line_found;
+    }
+    if (line_number < 1)
+    {
+        line_number = Current_parse_token.line_found;
+    }
+    generate_error_report(error_message, line_number);
 }
 
 //ready for testing
 void parser::print_errors()
 {
-    for (int i = 0; i < error_reports.size(); i++)
+    for (std::size_t i = 0; i < error_reports.size(); i++)
     {
         std::cout << error_reports[i] << std::endl
                   << std::endl;
@@ -150,7 +145,6 @@ int parser::error_count()
 bool parser::parse_program()
 {
     //this tracks the state of the parser
-    parser_state state = S_PROGRAM;
     bool valid_parse;
     valid_parse = parse_program_header();
     valid_parse = parse_program_body();
@@ -160,7 +154,7 @@ bool parser::parse_program()
     }
     else
     {
-        generate_error_report("Missing \".\" to end the program");
+        generate_error_report_previous_token("Missing \".\" to end the program");
         errors_occured = true;
         valid_parse = false;
     }
@@ -176,7 +170,6 @@ bool parser::parse_program()
 //refactored 1
 bool parser::parse_program_header()
 {
-    parser_state state = S_PROGRAM_HEADER;
     bool valid_parse;
     Current_parse_token = Get_Valid_Token();
     if (Current_parse_token_type == T_PROGRAM)
@@ -220,7 +213,7 @@ bool parser::parse_program_header()
     }
     else
     {
-        generate_error_report("Expected keyword \"is\" is not found");
+        generate_error_report_previous_token("Expected keyword \"is\" is not found");
         errors_occured = true;
         if (debugging)
         {
@@ -267,7 +260,7 @@ bool parser::parse_program_body()
         {
             if (valid_parse)
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
             }
             valid_parse = resync_parser(state);
@@ -276,7 +269,7 @@ bool parser::parse_program_body()
             {
                 if (Lexer->is_nested_commented)
                 {
-                    generate_error_report("Unclosed block comment detected");
+                    generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                     errors_occured = true;
                 }
                 return false;
@@ -328,7 +321,7 @@ bool parser::parse_program_body()
     }
     else
     {
-        generate_error_report("Missing keyword \"begin\" to begin program statements");
+        generate_error_report_previous_token("Missing keyword \"begin\" to begin program statements");
         errors_occured = true;
         valid_parse = resync_parser(state);
         if (Current_parse_token_type == T_INVALID)
@@ -353,7 +346,7 @@ bool parser::parse_program_body()
         {
             if (valid_parse)
             {
-                generate_error_report("Missing \";\" to end program statement");
+                generate_error_report_previous_token("Missing \";\" to end program statement");
                 errors_occured = true;
             }
             valid_parse = resync_parser(state);
@@ -362,7 +355,7 @@ bool parser::parse_program_body()
             {
                 if (Lexer->is_nested_commented)
                 {
-                    generate_error_report("Unclosed block comment detected");
+                    generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                     errors_occured = true;
                 }
                 return false;
@@ -394,7 +387,7 @@ bool parser::parse_program_body()
     }
     else
     {
-        generate_error_report("Missing keyword \"end\" to end program");
+        generate_error_report_previous_token("Missing keyword \"end\" to end program");
         errors_occured = true;
         valid_parse = resync_parser(state);
     }
@@ -405,7 +398,7 @@ bool parser::parse_program_body()
     }
     else
     {
-        generate_error_report("Missing keyworkd \"program\" to end program");
+        generate_error_report_previous_token("Missing keyworkd \"program\" to end program");
         errors_occured = true;
         valid_parse = resync_parser(state);
         //return false;
@@ -421,7 +414,6 @@ bool parser::parse_base_declaration()
     //tracks whether base declaration is global or not
     bool is_global_declaration = false;
     //this tracks the state of the parser
-    parser_state state = S_BASE_DECLARATION;
     bool valid_parse;
     if (Current_parse_token_type == T_GLOBAL)
     {
@@ -493,7 +485,6 @@ bool parser::parse_base_declaration()
 bool parser::parse_procedure_declaration(bool is_global, bool owns_scope)
 {
     //this tracks the state of the parser
-    parser_state state = S_PROCEDURE_DECLARATION;
     int procedure_scope_id = current_scope_id;
     bool header_valid = parse_procedure_header(is_global);
     bool body_valid = parse_procedure_body();
@@ -515,7 +506,6 @@ bool parser::parse_procedure_header(bool is_global)
     //this variable will hold the string of the procedure name, this will be used to later add the valid parameters of the procedure
     std::string procedure_name = "";
     //this tracks the state of the parser
-    parser_state state = S_PROCEDURE_HEADER;
     bool valid_parse;
     if (Current_parse_token_type == T_IDENTIFIER)
     {
@@ -559,7 +549,7 @@ bool parser::parse_procedure_header(bool is_global)
     }
     else
     {
-        generate_error_report("Expected \":\" before type mark declaration");
+        generate_error_report_previous_token("Expected \":\" before type mark declaration");
         errors_occured = true;
     }
     valid_parse = parse_type_mark(procedure_name, 1);
@@ -588,7 +578,7 @@ bool parser::parse_procedure_header(bool is_global)
         {
             std::cout << "parser failed on parse_procedure_header()" << std::endl;
         }
-        generate_error_report("Missing \"(\" needed to for procedure declaration");
+        generate_error_report_previous_token("Missing \"(\" needed to for procedure declaration");
         errors_occured = true;
         return false;
     }
@@ -628,7 +618,7 @@ bool parser::parse_procedure_body()
         {
             if (valid_parse)
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
             }
             valid_parse = resync_parser(state);
@@ -637,7 +627,7 @@ bool parser::parse_procedure_body()
             {
                 if (Lexer->is_nested_commented)
                 {
-                    generate_error_report("Unclosed block comment detected");
+                    generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                     errors_occured = true;
                 }
                 return false;
@@ -678,7 +668,7 @@ bool parser::parse_procedure_body()
         }
     }
 
-    //after doen parsing any and all declarations, must start parsing statements\
+    //after doen parsing any and all declarations, must start parsing statements
     //need to parse more than one base statement
     //add this if statement in the case that never enters while loop
     if (Current_parse_token_type == T_BEGIN)
@@ -687,7 +677,7 @@ bool parser::parse_procedure_body()
     }
     else
     {
-        generate_error_report("Missing keyword \"begin\" to begin procedure statements");
+        generate_error_report_previous_token("Missing keyword \"begin\" to begin procedure statements");
         errors_occured = true;
         valid_parse = resync_parser(state);
         if (Current_parse_token_type == T_INVALID)
@@ -710,7 +700,7 @@ bool parser::parse_procedure_body()
         {
             if (valid_parse)
             {
-                generate_error_report("Missing \";\" to end program statement");
+                generate_error_report_previous_token("Missing \";\" to end program statement");
                 errors_occured = true;
             }
             valid_parse = resync_parser(state);
@@ -719,7 +709,7 @@ bool parser::parse_procedure_body()
             {
                 if (Lexer->is_nested_commented)
                 {
-                    generate_error_report("Unclosed block comment detected");
+                    generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                     errors_occured = true;
                 }
                 return false;
@@ -764,7 +754,7 @@ bool parser::parse_procedure_body()
     }
     else
     {
-        generate_error_report("Missing keyword \"end\" to close procedure body");
+        generate_error_report_previous_token("Missing keyword \"end\" to close procedure body");
         errors_occured = true;
         valid_parse = false;
         if (Current_parse_token_type != T_BEGIN &&
@@ -779,7 +769,7 @@ bool parser::parse_procedure_body()
     }
     else
     {
-        generate_error_report("Missing keyword \"procedure\" to close procedure body");
+        generate_error_report_previous_token("Missing keyword \"procedure\" to close procedure body");
         errors_occured = true;
         valid_parse = false;
         if (consumed_end && Current_parse_token_type != T_BEGIN &&
@@ -798,7 +788,6 @@ bool parser::parse_procedure_body()
 bool parser::parse_type_mark()
 {
     //this tracks the state of the parser
-    parser_state state = S_TYPE_MARK;
     bool valid_parse;
     //May need to do something once the type is determined
     if (Current_parse_token_type == T_INTEGER_TYPE)
@@ -943,7 +932,6 @@ bool parser::parse_type_mark()
 bool parser::parse_type_mark(std::string identifier_name, int context)
 {
     //this tracks the state of the parser
-    parser_state state = S_TYPE_MARK;
     bool valid_parse;
     //May need to do something once the type is determined
     //the procedure takes a integer input
@@ -1142,7 +1130,6 @@ bool parser::parse_type_mark(std::string identifier_name, int context)
 bool parser::parse_type_mark(std::string procedure_name, std::string variable_name)
 {
     //this tracks the state of the parser
-    parser_state state = S_TYPE_MARK;
     bool valid_parse;
     //May need to do something once the type is determined
     //the procedure takes a integer input
@@ -1312,7 +1299,6 @@ bool parser::parse_type_mark(std::string procedure_name, std::string variable_na
 bool parser::parse_parameter_list(std::string procedure_name)
 {
     //this tracks the state of the parser
-    parser_state state = S_PARAMETER_LIST;
     //The caller leaves the cursor on the `variable` keyword.  Parameters are
     //stored using the ordinary variable-declaration parser, which expects the
     //identifier after that keyword.
@@ -1362,7 +1348,7 @@ bool parser::parse_parameter_list(std::string procedure_name)
     {
         std::cout << "parser failed on parse_parameter_list()" << std::endl;
     }
-    generate_error_report("Missing \")\" to close procedure parameter list");
+    generate_error_report_previous_token("Missing \")\" to close procedure parameter list");
     errors_occured = true;
     return false;
 }
@@ -1375,7 +1361,6 @@ bool parser::parse_variable_declaration(bool is_global)
     //this tracks the name of the variable
     std::string variable_name = "";
     //this tracks the state of the parser
-    parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
     if (Current_parse_token_type == T_IDENTIFIER)
     {
@@ -1429,7 +1414,7 @@ bool parser::parse_variable_declaration(bool is_global)
                 //must have closing right bracket
                 else
                 {
-                    generate_error_report("Missing \"]\" to close the array declaration");
+                    generate_error_report_previous_token("Missing \"]\" to close the array declaration");
                     errors_occured = true;
                     return false;
                 }
@@ -1442,7 +1427,7 @@ bool parser::parse_variable_declaration(bool is_global)
         {
             std::cout << "parser failed on parse_variable_declaration()" << std::endl;
         }
-        generate_error_report("Missing colon for delcaration of variable type");
+        generate_error_report_previous_token("Missing colon for delcaration of variable type");
         errors_occured = true;
         return false;
     }
@@ -1455,7 +1440,6 @@ bool parser::parse_variable_declaration(bool is_global, std::string procedure_na
 {
     std::string identifier_name = "";
     //this tracks the state of the parser
-    parser_state state = S_VARIABLE_DECLARATION;
     bool valid_parse;
     if (Current_parse_token_type == T_IDENTIFIER)
     {
@@ -1508,7 +1492,7 @@ bool parser::parse_variable_declaration(bool is_global, std::string procedure_na
                 //must have closing right bracket
                 else
                 {
-                    generate_error_report("Missing \"]\" to close the array declaration");
+                    generate_error_report_previous_token("Missing \"]\" to close the array declaration");
                     errors_occured = true;
                     return false;
                 }
@@ -1521,7 +1505,7 @@ bool parser::parse_variable_declaration(bool is_global, std::string procedure_na
         {
             std::cout << "parser failed on parse_variable_declaration()" << std::endl;
         }
-        generate_error_report("Missing colon for delcaration of variable type");
+        generate_error_report_previous_token("Missing colon for delcaration of variable type");
         errors_occured = true;
         return false;
     }
@@ -1534,7 +1518,6 @@ bool parser::parse_variable_declaration(bool is_global, std::string procedure_na
 bool parser::parse_bound()
 {
     //this tracks the state of the parser
-    parser_state state = S_BOUND;
     bool valid_parse;
     valid_parse = parse_number();
     if (!valid_parse)
@@ -1553,7 +1536,6 @@ bool parser::parse_type_declaration(bool is_global)
     //tracks the name of the identifier token
     std::string identifier_name = "";
     //this tracks the state of the parser
-    parser_state state = S_TYPE_DECLARATION;
     bool valid_parse;
     //T_TYPE has already been parsed;  May need changed in the future
     if (Current_parse_token_type == T_IDENTIFIER)
@@ -1598,7 +1580,7 @@ bool parser::parse_type_declaration(bool is_global)
         {
             std::cout << "parser failed on parse_type_declaration()" << std::endl;
         }
-        generate_error_report("Missing required \"is\" for type declaration");
+        generate_error_report_previous_token("Missing required \"is\" for type declaration");
         errors_occured = true;
         return false;
     }
@@ -1613,7 +1595,6 @@ bool parser::parse_type_declaration(bool is_global)
 bool parser::parse_base_statement()
 {
     //this tracks the state of the parser
-    parser_state state = S_BASE_STATEMENT;
     bool valid_parse;
     //an identifier means it will be an assignment statement
     if (Current_parse_token_type == T_IDENTIFIER)
@@ -1666,7 +1647,6 @@ bool parser::parse_parameter(std::string procedure_name)
     std::string variable_name = "";
     variable_name = Current_parse_token.stringValue;
     //this tracks the state of the parser
-    parser_state state = S_PARAMETER;
     bool valid_parse;
     valid_parse = parse_variable_declaration(false, procedure_name);
     return valid_parse;
@@ -1676,7 +1656,6 @@ bool parser::parse_parameter(std::string procedure_name)
 bool parser::parse_number()
 {
     //this tracks the state of the parser
-    parser_state state = S_NUMBER;
     bool valid_parse;
     //the token will be either an integer or a float, or and error
     if (Current_parse_token_type == T_INTEGER_VALUE)
@@ -1712,9 +1691,7 @@ bool parser::parse_assignment_statement(token destination_token)
     token_and_status destination_parse;
     token destination_parse_token;
     token expression_parse_token;
-    bool types_match = true;
     //this tracks the state of the parser
-    parser_state state = S_ASSIGNMENT_STATMENT;
     bool valid_parse;
     destination_parse = parse_assignment_destination(destination_token);
     destination_parse_token = destination_parse.resolved_token;
@@ -1730,7 +1707,7 @@ bool parser::parse_assignment_statement(token destination_token)
         }
         else
         {
-            generate_error_report("Missing \":\" needed for assignment statement");
+            generate_error_report_previous_token("Missing \":\" needed for assignment statement");
             errors_occured = true;
             return false;
         }
@@ -1743,11 +1720,11 @@ bool parser::parse_assignment_statement(token destination_token)
             expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
             //we know that this is an assignment statement and we are ending with 2 tokens so we should be good to directly compare here
-            types_match = type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
+            (void)type_checker->check_assignment_statement(destination_parse_token, expression_parse_token);
         }
         else
         {
-            generate_error_report("Missing \"=\" needed for assignment statement");
+            generate_error_report_previous_token("Missing \"=\" needed for assignment statement");
             errors_occured = true;
             return false;
         }
@@ -1798,7 +1775,7 @@ bool parser::parse_if_statement()
         }
         else
         {
-            generate_error_report("Missing \")\" expected for if statment");
+            generate_error_report_previous_token("Missing \")\" expected for if statment");
             errors_occured = true;
             valid_parse = resync_parser(state);
             //return false;
@@ -1809,7 +1786,7 @@ bool parser::parse_if_statement()
         }
         else
         {
-            generate_error_report("Missing expected keyword \"then\" for if statements");
+            generate_error_report_previous_token("Missing expected keyword \"then\" for if statements");
             errors_occured = true;
             valid_parse = resync_parser(state);
             if (Current_parse_token_type == T_INVALID)
@@ -1836,7 +1813,7 @@ bool parser::parse_if_statement()
             {
                 if (valid_parse)
                 {
-                    generate_error_report("Missing \";\" to end statement in if statement");
+                    generate_error_report_previous_token("Missing \";\" to end statement in if statement");
                     errors_occured = true;
                 }
                 valid_parse = resync_parser(state);
@@ -1845,7 +1822,7 @@ bool parser::parse_if_statement()
                 {
                     if (Lexer->is_nested_commented)
                     {
-                        generate_error_report("Unclosed block comment detected");
+                        generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                         errors_occured = true;
                     }
                     return false;
@@ -1883,7 +1860,7 @@ bool parser::parse_if_statement()
         }
         else
         {
-            generate_error_report("Missing keyword \"end\" to end if statement");
+            generate_error_report_previous_token("Missing keyword \"end\" to end if statement");
             errors_occured = true;
             //return false;
         }
@@ -1893,7 +1870,7 @@ bool parser::parse_if_statement()
         }
         else
         {
-            generate_error_report("Missing keyword \"if\"to end if statement");
+            generate_error_report_previous_token("Missing keyword \"if\"to end if statement");
             errors_occured = true;
             //return false;
         }
@@ -1904,7 +1881,7 @@ bool parser::parse_if_statement()
         {
             std::cout << "parser failed on parse_if_statement()" << std::endl;
         }
-        generate_error_report("Missing \"(\" expected for if statment");
+        generate_error_report_previous_token("Missing \"(\" expected for if statment");
         errors_occured = true;
         return false;
     }
@@ -1969,7 +1946,7 @@ bool parser::parse_loop_statement()
                         {
                             if (valid_parse)
                             {
-                                generate_error_report("Missing \";\" to end statement in loop statement");
+                                generate_error_report_previous_token("Missing \";\" to end statement in loop statement");
                                 errors_occured = true;
                             }
                             valid_parse = resync_parser(state);
@@ -1978,7 +1955,7 @@ bool parser::parse_loop_statement()
                             {
                                 if (Lexer->is_nested_commented)
                                 {
-                                    generate_error_report("Unclosed block comment detected");
+                                    generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
                                     errors_occured = true;
                                 }
                                 return false;
@@ -2018,25 +1995,25 @@ bool parser::parse_loop_statement()
                         }
                         else
                         {
-                            generate_error_report("Missing expected keyword \"for\" for end of statement");
+                            generate_error_report_previous_token("Missing expected keyword \"for\" for end of statement");
                             errors_occured = true;
                         }
                     }
                     else
                     {
-                        generate_error_report("Missing expected keyword \"end\" for end of statement");
+                        generate_error_report_previous_token("Missing expected keyword \"end\" for end of statement");
                         errors_occured = true;
                     }
                 }
                 else
                 {
-                    generate_error_report("Missing \")\" for loop declaration");
+                    generate_error_report_previous_token("Missing \")\" for loop declaration");
                     errors_occured = true;
                 }
             }
             else
             {
-                generate_error_report("Missing \";\" for loop assignment statement");
+                generate_error_report_previous_token("Missing \";\" for loop assignment statement");
                 errors_occured = true;
             }
         }
@@ -2048,7 +2025,7 @@ bool parser::parse_loop_statement()
     }
     else
     {
-        generate_error_report("Missing \"(\" required for loop");
+        generate_error_report_previous_token("Missing \"(\" required for loop");
         errors_occured = true;
         //return false;
     }
@@ -2064,7 +2041,6 @@ bool parser::parse_return_statement()
     token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
-    parser_state state = S_RETURN_STATEMENT;
     bool valid_parse;
     expression_parse = parse_expression();
     updated_token = expression_parse.resolved_token;
@@ -2093,7 +2069,6 @@ token_and_status parser::parse_assignment_destination(token destination_token)
     token_and_status destination_parse;
     token_and_status expression_parse;
     //this tracks the state of the parser
-    parser_state state = S_ASSIGNMENT_DESTINATION;
     bool valid_parse;
     //this means that the optional bracketed expression should exist
     if (Current_parse_token_type == T_LBRACKET)
@@ -2117,7 +2092,7 @@ token_and_status parser::parse_assignment_destination(token destination_token)
             {
                 std::cout << "parser failed on parse_assignment_destination()" << std::endl;
             }
-            generate_error_report("Missing closing right bracket to the identifier expression");
+            generate_error_report_previous_token("Missing closing right bracket to the identifier expression");
             errors_occured = true;
             destination_parse.valid_parse = false;
             return destination_parse;
@@ -2142,7 +2117,6 @@ token_and_status parser::parse_expression()
     token_and_status expression_parse;
     token_and_status arithop_parse;
     //this tracks the state of the parser
-    parser_state state = S_EXPRESSION;
     bool valid_parse;
 
     if (Current_parse_token_type == T_AMPERSAND)
@@ -2224,7 +2198,6 @@ token_and_status parser::parse_arithOp()
     token_and_status relation_parse;
 
     //this tracks the state of the parser
-    parser_state state = S_ARITH_OP;
     bool valid_parse;
     //Current_parse_token = Get_Valid_Token();
 
@@ -2299,7 +2272,6 @@ token_and_status parser::parse_relation()
     token_and_status relation_parse;
     token_and_status term_parse;
     //this tracks the state of the parser
-    parser_state state = S_RELATION;
     bool valid_parse = false;
 
     //Handle an operator at the beginning separately so that malformed input
@@ -2481,7 +2453,6 @@ token_and_status parser::parse_term()
     token_and_status factor_parse;
     token_and_status term_parse;
     //this tracks the state of the parser
-    parser_state state = S_TERM;
     bool valid_parse;
     if (Current_parse_token_type == T_MULT || Current_parse_token_type == T_SLASH)
     {
@@ -2547,7 +2518,6 @@ token_and_status parser::parse_factor()
     token_and_status factor_parse;
     token identifier_token;
     //this tracks the state of the parser
-    parser_state state = S_FACTOR;
     bool valid_parse = false;
     if (Current_parse_token_type == T_LPARAM)
     {
@@ -2569,7 +2539,7 @@ token_and_status parser::parse_factor()
             {
                 std::cout << "parser failed on parse_factor()" << std::endl;
             }
-            generate_error_report("Missing \")\" to close expresssion factor");
+            generate_error_report_previous_token("Missing \")\" to close expresssion factor");
             errors_occured = true;
             valid_parse = false;
             factor_parse.valid_parse = valid_parse;
@@ -2649,7 +2619,6 @@ token_and_status parser::parse_factor()
         //means there was never a closing quote
         if (Lexer->quote_status)
         {
-            clear_error_reports();
             generate_error_report("quotation left open", Lexer->quote_opener);
         }
         factor_parse.resolved_token = Current_parse_token;
@@ -2709,7 +2678,6 @@ bool parser::parse_name(token identifier_token)
 {
     token_and_status expression_parse;
     //this tracks the state of the parser
-    parser_state state = S_NAME;
     bool valid_parse;
     if (Current_parse_token_type == T_LBRACKET)
     {
@@ -2734,7 +2702,7 @@ bool parser::parse_name(token identifier_token)
             {
                 std::cout << "parser failed on parse_name()" << std::endl;
             }
-            generate_error_report("Missing require \"]\" for the end of optional expression for name");
+            generate_error_report_previous_token("Missing require \"]\" for the end of optional expression for name");
             errors_occured = true;
             return false;
         }
@@ -2757,7 +2725,6 @@ bool parser::parse_argument_list()
 {
     token_and_status expression_parse;
     //this tracks the state of the parser
-    parser_state state = S_ARGUMENT_LIST;
     bool valid_parse;
     expression_parse = parse_expression();
     valid_parse = expression_parse.valid_parse;
@@ -2778,7 +2745,6 @@ bool parser::parse_argument_list()
 bool parser::parse_procedure_call()
 {
     //this tracks the state of the parser
-    parser_state state = S_PROCEDURE_CALL;
     bool valid_parse;
     if (Current_parse_token_type == T_LPARAM)
     {
@@ -2803,7 +2769,7 @@ bool parser::parse_procedure_call()
                 {
                     std::cout << "parser failed on parse_procedure_call()" << std::endl;
                 }
-                generate_error_report("Missing required \")\" for the end of a procedure call");
+                generate_error_report_previous_token("Missing required \")\" for the end of a procedure call");
                 errors_occured = true;
                 return false;
             }
@@ -2816,7 +2782,7 @@ bool parser::parse_procedure_call()
         {
             std::cout << "parser failed on parse_procedure_call()" << std::endl;
         }
-        generate_error_report("Missing required \"(\" for the end of a procedure call");
+        generate_error_report_previous_token("Missing required \"(\" for the end of a procedure call");
         errors_occured = true;
         return false;
     }
@@ -3304,7 +3270,7 @@ bool parser::resync_parser(parser_state state)
             }
             else
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
                 return_state = false;
             }
@@ -3326,7 +3292,7 @@ bool parser::resync_parser(parser_state state)
             }
             else
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
                 return_state = false;
             }
@@ -3374,7 +3340,7 @@ bool parser::resync_parser(parser_state state)
             }
             else
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
                 return_state = false;
             }
@@ -3396,7 +3362,7 @@ bool parser::resync_parser(parser_state state)
             }
             else
             {
-                generate_error_report("Missing \";\" to complete declaration");
+                generate_error_report_previous_token("Missing \";\" to complete declaration");
                 errors_occured = true;
                 return_state = false;
             }
@@ -3428,7 +3394,7 @@ bool parser::resync_parser(parser_state state)
             }
             else
             {
-                generate_error_report("Missing \";\" to end program statement");
+                generate_error_report_previous_token("Missing \";\" to end program statement");
                 errors_occured = true;
                 return_state = false;
             }

@@ -1,9 +1,13 @@
 The program had parsing errors
+Error on line 5: Missing ";" to end program statement
+
+Error on line 6: Missing ";" to end program statement
+
 Error on line 7: quotation left open
 
-Error on line 10: Missing ";" to end program statement
+Error on line 9: Missing ";" to end program statement
 
-Error on line 10: Invalid statement; Not an assignment, if, loop, or return
+Error on line 9: Invalid statement; Not an assignment, if, loop, or return
 
-Error on line 10: Missing "." to end the program
+Error on line 9: Missing "." to end the program
 

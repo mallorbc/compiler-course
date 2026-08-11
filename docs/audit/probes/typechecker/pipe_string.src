@@ -1,0 +1,7 @@
+program p is
+variable a : string;
+variable b : string;
+variable result : string;
+begin
+result := a | b;
+end program.

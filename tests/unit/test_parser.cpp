@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -308,6 +309,36 @@ TEST_CASE("unterminated comment recovery always clears resync status")
     CHECK(has_error(parsed, "Unclosed block comment detected"));
 }
 
+TEST_CASE("unterminated comments retain their saved opener line")
+{
+    temp_source_file nested_opener(
+        "program p7 is\n"
+        "/* outer comment\n"
+        "   /* inner comment */\n"
+        "variable a : integer;\n"
+        "begin\n"
+        "a := 1;\n"
+        "end program.\n");
+    captured_stdout nested_capture;
+    parser nested(nested_opener.name());
+    nested_capture.restore();
+
+    CHECK(nested.Lexer->current_line == 8);
+    CHECK(has_error(nested, "Error on line 3: Unclosed block comment detected"));
+    CHECK_FALSE(has_error(nested, "Error on line 8: Unclosed block comment detected"));
+
+    temp_source_file first_line_opener(
+        "/* start of comment\n"
+        "x := 5;\n");
+    captured_stdout first_line_capture;
+    parser first_line(first_line_opener.name());
+    first_line_capture.restore();
+
+    CHECK(first_line.Lexer->current_line == 3);
+    CHECK(has_error(first_line, "Error on line 1: Unclosed block comment detected"));
+    CHECK_FALSE(has_error(first_line, "Error on line 3: Unclosed block comment detected"));
+}
+
 TEST_CASE("procedure parameter lists own one closing parenthesis")
 {
     const std::vector<std::string> programs = {
@@ -483,4 +514,82 @@ TEST_CASE("term and relation chains consume every operator")
     capture.restore();
 
     CHECK(parsed.error_count() == 0);
+}
+
+TEST_CASE("parser preserves TY-7 operator error state")
+{
+    const std::vector<std::tuple<std::string, std::string, bool>> cases = {
+        {"variable left : bool;\nvariable right : integer;\nvariable result : bool;\n",
+         "result := left | right;",
+         true},
+        {"variable left : float;\nvariable right : string;\nvariable result : float;\n",
+         "result := left & right;",
+         true},
+        {"variable left : bool;\nvariable right : bool;\nvariable result : bool;\n",
+         "result := left & right;",
+         false}};
+
+    for (std::size_t i = 0; i < cases.size(); i++)
+    {
+        temp_source_file fixture(
+            "program test is\n" + std::get<0>(cases[i]) +
+            "begin\n" + std::get<1>(cases[i]) + "\nend program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.errors_occured == std::get<2>(cases[i]));
+        CHECK(parsed.type_checker->type_error_occured == std::get<2>(cases[i]));
+    }
+}
+
+TEST_CASE("parser diagnostics distinguish offending and omitted-token lines")
+{
+    temp_source_file wrong_token_on_later_line(
+        "program\n"
+        "is\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout wrong_token_capture;
+    parser wrong_token(wrong_token_on_later_line.name());
+    wrong_token_capture.restore();
+    CHECK(has_error(wrong_token, "Error on line 2: Expected \"identifier\" not found"));
+
+    temp_source_file wrong_first_token("unexpected\n");
+    captured_stdout first_token_capture;
+    parser first_token(wrong_first_token.name());
+    first_token_capture.restore();
+    CHECK(has_error(first_token, "Error on line 1: Expected keyword \"Program\" not found"));
+
+    temp_source_file declaration_semicolon(
+        "program test is\n"
+        "variable value : integer\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout declaration_semicolon_capture;
+    parser missing_semicolon(declaration_semicolon.name());
+    declaration_semicolon_capture.restore();
+    CHECK(has_error(missing_semicolon, "Error on line 2: Missing \";\" to complete declaration"));
+}
+
+TEST_CASE("unterminated strings retain earlier parser diagnostics")
+{
+    temp_source_file fixture(
+        "program test is\n"
+        "variable x : integer;\n"
+        "variable s : string;\n"
+        "begin\n"
+        "    x := 2\n"
+        "    x := 3\n"
+        "    s := \"hello\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(has_error(parsed, "Error on line 5: Missing \";\" to end program statement"));
+    CHECK(has_error(parsed, "Error on line 6: Missing \";\" to end program statement"));
+    CHECK(has_error(parsed, "Error on line 7: quotation left open"));
+    CHECK(has_error(parsed, "Error on line 9: Missing \";\" to end program statement"));
+    CHECK(has_error(parsed, "Error on line 9: Missing \".\" to end the program"));
 }

@@ -246,6 +246,47 @@ TEST_CASE("scanner keeps the delimiters and the opening line of a string literal
     }
 }
 
+TEST_CASE("scanner preserves unterminated-string EOF state without reprocessing a stale byte")
+{
+    SUBCASE("physical EOF after ordinary text")
+    {
+        temp_source_file fixture("\"unterminated");
+        scanner lexer(fixture.name());
+
+        token string_token = lexer.Get_token();
+        CHECK(string_token.type == T_STRING_VALUE);
+        CHECK(string_token.stringValue == "\"unterminated");
+        CHECK(string_token.line_found == 1);
+        CHECK(lexer.quote_status == true);
+        CHECK(lexer.current_line == 1);
+
+        token first_sentinel = lexer.Get_token();
+        token second_sentinel = lexer.Get_token();
+        CHECK(first_sentinel.type == T_INVALID);
+        CHECK(second_sentinel.type == T_INVALID);
+        CHECK(first_sentinel.line_found == second_sentinel.line_found);
+    }
+
+    SUBCASE("physical EOF after a newline")
+    {
+        temp_source_file fixture("\"unterminated\n");
+        scanner lexer(fixture.name());
+
+        token string_token = lexer.Get_token();
+        CHECK(string_token.type == T_STRING_VALUE);
+        CHECK(string_token.stringValue == "\"unterminated\n");
+        CHECK(string_token.line_found == 1);
+        CHECK(lexer.quote_status == true);
+        CHECK(lexer.current_line == 2);
+
+        token first_sentinel = lexer.Get_token();
+        token second_sentinel = lexer.Get_token();
+        CHECK(first_sentinel.type == T_INVALID);
+        CHECK(second_sentinel.type == T_INVALID);
+        CHECK(first_sentinel.line_found == second_sentinel.line_found);
+    }
+}
+
 TEST_CASE("scanner emits single character operators as their own ASCII code")
 {
     const std::string operator_chars = "+-*/<>=!:;,()[]{}|&.";

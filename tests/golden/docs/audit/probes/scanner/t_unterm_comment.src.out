@@ -1,9 +1,9 @@
 The program had parsing errors
-Error on line 1: Expected keyword "Program" not found
+Error on line 3: Expected keyword "Program" not found
 
-Error on line 1: Expected keywords "procedure","variable" "type", or "begin" not found
+Error on line 3: Expected keywords "procedure","variable" "type", or "begin" not found
 
 Error on line 1: Unclosed block comment detected
 
-Error on line 1: Missing "." to end the program
+Error on line 3: Missing "." to end the program
 

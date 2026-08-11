@@ -1,5 +1,33 @@
 #include "Typechecker.h"
 
+namespace
+{
+
+bool is_boolean_literal(int token_type)
+{
+    return token_type == T_BOOL_VALUE || token_type == T_TRUE || token_type == T_FALSE;
+}
+
+int valid_line(int line_number)
+{
+    return line_number > 0 ? line_number : 1;
+}
+
+int operation_line(const std::vector<token> &relation_tokens, const token &first_token, const token &second_token)
+{
+    if (!relation_tokens.empty())
+    {
+        return valid_line(relation_tokens.front().line_found);
+    }
+    if (second_token.line_found > 0)
+    {
+        return second_token.line_found;
+    }
+    return valid_line(first_token.line_found);
+}
+
+} // namespace
+
 Typechecker::Typechecker()
 {
     first_token.type = T_NULL;
@@ -36,6 +64,7 @@ bool Typechecker::second_to_first()
 
 bool Typechecker::set_statement_type(token key_token)
 {
+    statement_key_token = key_token;
     //assingment statements start with identifiers
     if (key_token.type == T_IDENTIFIER)
     {
@@ -212,7 +241,6 @@ bool Typechecker::second_relation_token_chains(token token_to_check)
         //only some tokens allow chains
         int previous_token_type = relation_tokens[0].type;
 
-        bool return_value = true;
         switch (previous_token_type)
         {
         case T_ASSIGN:
@@ -275,15 +303,13 @@ token_and_status Typechecker::is_valid_operation()
     std::string token_one_type_name = "";
     std::string token_two_type_name = "";
     std::string error_message = "";
-    int line_error = 0;
+    int line_error = operation_line(relation_tokens, first_token, second_token);
     token_one_type_name = give_token_type_name(token_one_type);
     token_two_type_name = give_token_type_name(token_two_type);
     //this means they are never compatible
     if (!compatible)
     {
         error_message = "Type \"" + token_one_type_name + "\" and type \"" + token_two_type_name + "\" have no valid operations";
-        // line_error = second_token.line_found;
-        line_error = parser_parent->Lexer->current_line;
         parser_parent->errors_occured = true;
         parser_parent->generate_error_report(error_message, line_error);
         error_message = "";
@@ -328,7 +354,7 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", line_error);
                 parser_parent->errors_occured = true;
                 return_value = false;
                 return_object.valid_parse = return_value;
@@ -358,7 +384,7 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", parser_parent->Lexer->current_line);
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", line_error);
                 return_value = false;
                 return_object.valid_parse = return_value;
                 return return_object;
@@ -383,7 +409,7 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Greater than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                parser_parent->generate_error_report("Greater than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", line_error);
             }
 
             break;
@@ -405,7 +431,7 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Less than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                parser_parent->generate_error_report("Less than relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", line_error);
             }
 
             break;
@@ -431,7 +457,7 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", line_error);
                 return_value = false;
                 return_object.valid_parse = return_value;
                 return return_object;
@@ -458,13 +484,55 @@ token_and_status Typechecker::is_valid_operation()
             }
             else
             {
-                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers");
+                parser_parent->generate_error_report("Arithmetic operations must be between floats and integers", line_error);
                 return_value = false;
                 return_object.valid_parse = return_value;
                 return return_object;
             }
 
             break;
+
+        case T_AMPERSAND:
+            if (token_one_type == typechecker_int && token_two_type == typechecker_int)
+            {
+                return_object.resolved_token.type = T_INTEGER_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_INT;
+                return_object.valid_parse = true;
+                return return_object;
+            }
+            if (token_one_type == typechecker_bool && token_two_type == typechecker_bool)
+            {
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
+            }
+            parser_parent->generate_error_report("Bitwise and logical \"&\" operations require two integers or two bools", line_error);
+            parser_parent->errors_occured = true;
+            type_error_occured = true;
+            return_object.valid_parse = false;
+            return return_object;
+
+        case T_VERTICAL_BAR:
+            if (token_one_type == typechecker_int && token_two_type == typechecker_int)
+            {
+                return_object.resolved_token.type = T_INTEGER_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_INT;
+                return_object.valid_parse = true;
+                return return_object;
+            }
+            if (token_one_type == typechecker_bool && token_two_type == typechecker_bool)
+            {
+                return_object.resolved_token.type = T_BOOL_TYPE;
+                return_object.resolved_token.identifier_data_type = TYPE_BOOL;
+                return_object.valid_parse = true;
+                return return_object;
+            }
+            parser_parent->generate_error_report("Bitwise and logical \"|\" operations require two integers or two bools", line_error);
+            parser_parent->errors_occured = true;
+            type_error_occured = true;
+            return_object.valid_parse = false;
+            return return_object;
 
         default:
             return_value = false;
@@ -511,7 +579,7 @@ token_and_status Typechecker::is_valid_operation()
                 }
                 else
                 {
-                    parser_parent->generate_error_report("Greater than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                    parser_parent->generate_error_report("Greater than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", line_error);
                 }
 
                 break;
@@ -533,7 +601,7 @@ token_and_status Typechecker::is_valid_operation()
                 }
                 else
                 {
-                    parser_parent->generate_error_report("Less than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                    parser_parent->generate_error_report("Less than or equal relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", line_error);
                 }
 
                 break;
@@ -562,7 +630,7 @@ token_and_status Typechecker::is_valid_operation()
                 }
                 else
                 {
-                    parser_parent->generate_error_report("Equality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", parser_parent->Lexer->current_line);
+                    parser_parent->generate_error_report("Equality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\" or \"Floats with Floats\"", line_error);
                 }
                 break;
 
@@ -590,7 +658,7 @@ token_and_status Typechecker::is_valid_operation()
                 }
                 else
                 {
-                    parser_parent->generate_error_report("Inequality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\", \"Floats with Floats\", or \"Strings with Strings\"", parser_parent->Lexer->current_line);
+                    parser_parent->generate_error_report("Inequality relations must relate \"Bools with Bools\", \"Bools with Integers\", \"Integers with Floats\", \"Floats with Floats\", or \"Strings with Strings\"", line_error);
                 }
                 break;
             }
@@ -605,7 +673,7 @@ token_and_status Typechecker::is_valid_operation()
     return return_object;
 }
 
-bool Typechecker::check_assignment_statement(token destination_token, token resolved_token)
+bool Typechecker::check_assignment_statement(token, token)
 {
 
     return true;
@@ -761,7 +829,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
-            if (first_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(first_token.type))
             {
                 return_object.token_one_type = typechecker_bool;
                 return_value = true;
@@ -791,7 +859,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_int;
                 return_value = true;
             }
-            if (first_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(first_token.type))
             {
                 return_object.token_one_type = typechecker_bool;
                 return_value = false;
@@ -811,7 +879,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_float;
                 return_value = true;
             }
-            if (first_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(first_token.type))
             {
                 return_object.token_one_type = typechecker_bool;
                 return_value = true;
@@ -841,7 +909,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_one_type = typechecker_float;
                 return_value = false;
             }
-            if (first_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(first_token.type))
             {
                 return_object.token_one_type = typechecker_bool;
                 return_value = false;
@@ -871,7 +939,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -901,7 +969,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -921,7 +989,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -951,7 +1019,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_float;
                 return_value = false;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = false;
@@ -974,6 +1042,8 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
     {
         switch (first_token.type)
         {
+        case T_TRUE:
+        case T_FALSE:
         case T_BOOL_VALUE:
             return_object.token_one_type = typechecker_bool;
             if (second_token.type == T_INTEGER_VALUE)
@@ -981,7 +1051,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -1011,7 +1081,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_int;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = false;
@@ -1031,7 +1101,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -1061,7 +1131,7 @@ token_types_and_status Typechecker::token_types_compatible_at_all()
                 return_object.token_two_type = typechecker_float;
                 return_value = true;
             }
-            if (second_token.type == T_BOOL_VALUE)
+            if (is_boolean_literal(second_token.type))
             {
                 return_object.token_two_type = typechecker_bool;
                 return_value = true;
@@ -1147,9 +1217,13 @@ bool Typechecker::both_are_strings(typechecker_types token_one, typechecker_type
 
 std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
 {
-    std::string return_string;
+    std::string return_string = "Unknown";
     switch (type_to_get)
     {
+    case typechecker_null:
+        return_string = "Unknown";
+        break;
+
     case typechecker_bool:
         return_string = "Bool";
         break;
@@ -1179,7 +1253,7 @@ bool Typechecker::check_return_statement(token resolved_token, token procedure_t
     std::string token_one_type_name = "";
     std::string token_two_type_name = "";
     std::string error_message = "";
-    int line_error = 0;
+    int line_error = valid_line(statement_key_token.line_found);
     clear_tokens(false);
     first_token = resolved_token;
     second_token = procedure_token;
@@ -1192,7 +1266,6 @@ bool Typechecker::check_return_statement(token resolved_token, token procedure_t
     if (!compatible)
     {
         error_message = "Procedure is of type \"" + token_one_type_name + "\" which is not compatible with return type of \"" + token_two_type_name + "\"";
-        line_error = parser_parent->Lexer->current_line;
         parser_parent->errors_occured = true;
         parser_parent->generate_error_report(error_message, line_error);
         error_message = "";
@@ -1220,7 +1293,7 @@ bool Typechecker::check_if_statement(token token_to_check)
     //first check if it is an identifier
     if (type_to_check != typechecker_bool && type_to_check != typechecker_int)
     {
-        parser_parent->generate_error_report("If statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
+        parser_parent->generate_error_report("If statements must resolve to either type Bool or Integer", valid_line(statement_key_token.line_found));
         return_value = false;
         type_error_occured = true;
     }
@@ -1228,31 +1301,12 @@ bool Typechecker::check_if_statement(token token_to_check)
     {
         return_value = true;
     }
-    // if (token_to_check.type == T_IDENTIFIER)
-    // {
-    //     //has to be either an integer or a bool
-    //     if (token_to_check.identifier_data_type == TYPE_BOOL || token_to_check.identifier_data_type == TYPE_INT)
-    //     {
-    //         return_value = true;
-    //     }
-    // }
-    // //if it isn't an identifier the resolved token needs to be resolved from bool or an int
-    // else if (token_to_check.type == T_BOOL_VALUE || token_to_check.type == T_INTEGER_VALUE)
-    // {
-    //     return_value = true;
-    // }
-    // else
-    // {
-    // parser_parent->generate_error_report("If statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
-    // return_value = false;
-    // type_error_occured = true;
-    // }
     return return_value;
 }
 
 typechecker_types Typechecker::convert_to_typechecker_types(token token_to_convert)
 {
-    typechecker_types return_conversion;
+    typechecker_types return_conversion = typechecker_null;
     if (token_to_convert.type == T_IDENTIFIER)
     {
         switch (token_to_convert.identifier_data_type)
@@ -1295,7 +1349,7 @@ typechecker_types Typechecker::convert_to_typechecker_types(token token_to_conve
     {
         return_conversion = typechecker_float;
     }
-    else if (token_to_convert.type == T_STRING_TYPE)
+    else if (token_to_convert.type == T_STRING_VALUE)
     {
         return_conversion = typechecker_string;
     }
@@ -1314,7 +1368,7 @@ bool Typechecker::check_loop_statement(token token_to_check)
     //first check if it is an identifier
     if (type_to_check != typechecker_bool && type_to_check != typechecker_int)
     {
-        parser_parent->generate_error_report("Loop statements must resolve to either type Bool or Integer", parser_parent->Lexer->current_line);
+        parser_parent->generate_error_report("Loop statements must resolve to either type Bool or Integer", valid_line(statement_key_token.line_found));
         return_value = false;
         type_error_occured = true;
     }

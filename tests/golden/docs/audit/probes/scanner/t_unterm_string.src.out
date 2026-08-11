@@ -1,7 +1,11 @@
 The program had parsing errors
+Error on line 1: Expected keyword "Program" not found
+
+Error on line 1: Expected keywords "procedure","variable" "type", or "begin" not found
+
 Error on line 1: quotation left open
 
-Error on line 4: Missing ";" to end program statement
+Error on line 3: Missing ";" to end program statement
 
-Error on line 4: Missing "." to end the program
+Error on line 3: Missing "." to end the program
 

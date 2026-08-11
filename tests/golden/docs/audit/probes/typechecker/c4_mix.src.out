@@ -1,3 +1,5 @@
 The program parsed successfully with errors
-Error on line 8: Type "Integer" and type "String" have no valid operations
+Error on line 7: Bitwise and logical "&" operations require two integers or two bools
+
+Error on line 7: Type "Integer" and type "String" have no valid operations
 

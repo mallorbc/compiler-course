@@ -80,7 +80,7 @@ public:
     void add_error_report(std::string error_report);
     void generate_error_report(std::string error_message);
     void generate_error_report(std::string error_message, int line_number);
-    void clear_error_reports();
+    void generate_error_report_previous_token(std::string error_message);
     void print_errors();
     int error_count();
 
