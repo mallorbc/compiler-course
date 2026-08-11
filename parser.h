@@ -86,6 +86,7 @@ public:
     void generate_error_report_previous_token(std::string error_message);
     void print_errors();
     int error_count();
+    bool can_generate_code() const noexcept;
 
     //parsing parts of the program
     bool parse_program();
@@ -126,9 +127,9 @@ public:
                               const value_shape &base_shape,
                               token_and_status &base_result);
 
-    bool parse_if_statement();
+    bool parse_if_statement(const token &if_token);
     bool parse_loop_statement();
-    bool parse_return_statement();
+    bool parse_return_statement(const token &return_token);
 
     // bool parse_expression(token token_for_context);
     token_and_status parse_expression();

@@ -1,0 +1,9 @@
+The program parsed successfully with errors
+Error on line 4: Procedure is of type "Float" which is not compatible with return type of "Bool"
+
+Error on line 8: Procedure is of type "Integer" which is not compatible with return type of "String"
+
+Error on line 13: Procedure return values must be scalar
+
+Error on line 16: Return statements are only valid inside procedures
+

@@ -1,0 +1,9 @@
+The program parsed successfully with errors
+Error on line 4: Missing ")" expected for if statment
+
+Error on line 5: Missing ";" to end statement in if statement
+
+Error on line 12: Missing ";" to end statement in if statement
+
+Error on line 13: Unexpected repeated "else" in if statement
+

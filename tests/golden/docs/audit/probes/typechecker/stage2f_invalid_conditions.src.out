@@ -1,0 +1,11 @@
+The program parsed successfully with errors
+Error on line 7: If statements must resolve to either type Bool or Integer
+
+Error on line 9: If statements must resolve to either type Bool or Integer
+
+Error on line 11: If statements must resolve to either type Bool or Integer
+
+Error on line 13: Loop statements must resolve to either type Bool or Integer
+
+Error on line 15: Loop statements must resolve to either type Bool or Integer
+

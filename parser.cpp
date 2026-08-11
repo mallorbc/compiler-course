@@ -174,6 +174,11 @@ int parser::error_count()
     return error_reports.size();
 }
 
+bool parser::can_generate_code() const noexcept
+{
+    return error_reports.empty();
+}
+
 //ready for testing
 //refactored 1 time
 bool parser::parse_program()
@@ -1184,9 +1189,10 @@ bool parser::parse_base_statement()
     else if (Current_parse_token_type == T_IF)
     {
         //sets the typchecker up to handle if statements
-        type_checker->set_statement_type(Current_parse_token);
+        const token if_token = Current_parse_token;
+        type_checker->set_statement_type(if_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_if_statement();
+        valid_parse = parse_if_statement(if_token);
     }
     else if (Current_parse_token_type == T_FOR)
     {
@@ -1198,9 +1204,10 @@ bool parser::parse_base_statement()
     else if (Current_parse_token_type == T_RETURN)
     {
         //sets the typchecker up to handle return statements
-        type_checker->set_statement_type(Current_parse_token);
+        const token return_token = Current_parse_token;
+        type_checker->set_statement_type(return_token);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_return_statement();
+        valid_parse = parse_return_statement(return_token);
     }
     else
     {
@@ -1277,8 +1284,10 @@ bool parser::parse_assignment_statement(token destination_token)
             if (valid_parse && destination_parse.semantic_valid &&
                 expression_parse.semantic_valid && !type_checker->statement_suppressed)
             {
-                (void)type_checker->check_assignment_statement(destination_parse,
-                                                               expression_parse);
+                const conversion_plan assignment_plan =
+                    type_checker->check_assignment_statement(destination_parse,
+                                                             expression_parse);
+                (void)assignment_plan;
             }
         }
         else
@@ -1295,141 +1304,152 @@ bool parser::parse_assignment_statement(token destination_token)
 //ready for testing
 //consumes if token before parsing
 //refactored 1 time
-bool parser::parse_if_statement()
+bool parser::parse_if_statement(const token &if_token)
 {
-    token_and_status expression_parse;
-    //this tracks the state of the parser
-    parser_state state = S_IF_STATEMENT;
-    bool valid_parse;
-    if (Current_parse_token_type == T_LPARAM)
+    const bool has_left_parenthesis = Current_parse_token_type == T_LPARAM;
+    if (has_left_parenthesis)
     {
         Current_parse_token = Get_Valid_Token();
-        expression_parse = parse_expression();
-        if (expression_parse.valid_parse && expression_parse.semantic_valid &&
-            !type_checker->statement_suppressed)
+    }
+    else
+    {
+        generate_error_report_previous_token("Missing \"(\" expected for if statment");
+        errors_occured = true;
+    }
+    const token_and_status condition = parse_expression();
+    if (!condition.valid_parse)
+    {
+        //The expression production already emitted the focused syntax error.
+        //Consume only up to this if's delimiter so a closed malformed
+        //conditional remains structurally owned by this parser.
+        while (Current_parse_token_type != T_RPARAM && Current_parse_token_type != T_THEN &&
+               Current_parse_token_type != T_END && Current_parse_token_type != T_INVALID)
         {
-            type_checker->check_if_statement(expression_parse);
+            Current_parse_token = Get_Valid_Token();
         }
-        type_checker->clear_tokens(false);
-        valid_parse = expression_parse.valid_parse;
         if (Current_parse_token_type == T_RPARAM)
         {
             Current_parse_token = Get_Valid_Token();
         }
-        else
+    }
+    else if (Current_parse_token_type == T_RPARAM)
+    {
+        Current_parse_token = Get_Valid_Token();
+        if (has_left_parenthesis && condition.semantic_valid &&
+            !type_checker->statement_suppressed)
         {
-            generate_error_report_previous_token("Missing \")\" expected for if statment");
-            errors_occured = true;
-            valid_parse = resync_parser(state);
-            //return false;
+            const conversion_plan condition_plan = type_checker->check_condition_statement(
+                condition, if_token, condition_context::If);
+            (void)condition_plan;
         }
-        if (Current_parse_token_type == T_THEN)
-        {
-            Current_parse_token = Get_Valid_Token();
-        }
-        else
+    }
+    else if (has_left_parenthesis)
+    {
+        //Do not resynchronise across THEN: it is the next grammar delimiter
+        //and retaining it avoids the historical duplicate missing-then error.
+        generate_error_report_previous_token("Missing \")\" expected for if statment");
+        errors_occured = true;
+    }
+
+    if (Current_parse_token_type != T_THEN)
+    {
+        if (condition.valid_parse)
         {
             generate_error_report_previous_token("Missing expected keyword \"then\" for if statements");
             errors_occured = true;
-            valid_parse = resync_parser(state);
-            if (Current_parse_token_type == T_INVALID)
-            {
-                return false;
-            }
-        }
-        //may need to remove this if statement
-        while (Current_parse_token_type != T_END)
-        {
-            std::size_t iteration_start = token_generation;
-            if (Current_parse_token_type == T_ELSE)
-            {
-                Current_parse_token = Get_Valid_Token();
-            }
-            valid_parse = parse_base_statement();
-            if (Current_parse_token_type == T_SEMICOLON)
-            {
-                //clear out the tokens at the end of a statement
-                type_checker->clear_tokens(false);
-                Current_parse_token = Get_Valid_Token();
-            }
-            else
-            {
-                if (valid_parse)
-                {
-                    generate_error_report_previous_token("Missing \";\" to end statement in if statement");
-                    errors_occured = true;
-                }
-                valid_parse = resync_parser(state);
-                //if have run out of tokens
-                if (Current_parse_token_type == T_INVALID)
-                {
-                    if (Lexer->is_nested_commented)
-                    {
-                        generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
-                        errors_occured = true;
-                    }
-                    return false;
-                }
-            }
-            if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
-                Current_parse_token_type != T_END && Current_parse_token_type != T_IF)
-            {
-                Current_parse_token = Get_Valid_Token();
-            }
-            //conditions to break loop
-            if (valid_parse)
-            {
-                if (Current_parse_token_type == T_END || Current_parse_token_type == T_INVALID)
-                {
-                    break;
-                }
-                if (Current_parse_token_type == T_IF && Next_parse_token_type != T_LPARAM)
-                {
-                    break;
-                }
-            }
-            else
-            {
-                valid_parse = resync_parser(state);
-                if (Current_parse_token_type == T_INVALID)
-                {
-                    return false;
-                }
-            }
-        }
-        if (Current_parse_token_type == T_END)
-        {
-            Current_parse_token = Get_Valid_Token();
-        }
-        else
-        {
-            generate_error_report_previous_token("Missing keyword \"end\" to end if statement");
-            errors_occured = true;
-            //return false;
-        }
-        if (Current_parse_token_type == T_IF)
-        {
-            Current_parse_token = Get_Valid_Token();
-        }
-        else
-        {
-            generate_error_report_previous_token("Missing keyword \"if\"to end if statement");
-            errors_occured = true;
-            //return false;
         }
     }
     else
     {
-        if (debugging)
+        Current_parse_token = Get_Valid_Token();
+    }
+
+    const auto parse_branch = [this]() -> bool {
+        while (Current_parse_token_type != T_ELSE && Current_parse_token_type != T_END &&
+               Current_parse_token_type != T_INVALID)
         {
-            std::cout << "parser failed on parse_if_statement()" << std::endl;
+            const std::size_t iteration_start = token_generation;
+            const bool child_valid = parse_base_statement();
+            if (Current_parse_token_type == T_SEMICOLON)
+            {
+                type_checker->clear_tokens(false);
+                Current_parse_token = Get_Valid_Token();
+                continue;
+            }
+            if (Current_parse_token_type == T_ELSE || Current_parse_token_type == T_END)
+            {
+                if (child_valid)
+                {
+                    generate_error_report_previous_token(
+                        "Missing \";\" to end statement in if statement");
+                    errors_occured = true;
+                }
+                continue;
+            }
+            //A child syntax error owns its own diagnostic; do not add a
+            //secondary missing-semicolon report while seeking this branch's
+            //next delimiter.
+            if (child_valid)
+            {
+                generate_error_report_previous_token(
+                    "Missing \";\" to end statement in if statement");
+                errors_occured = true;
+            }
+            (void)resync_parser(S_IF_STATEMENT);
+            if (Current_parse_token_type == T_SEMICOLON)
+            {
+                Current_parse_token = Get_Valid_Token();
+            }
+            if (Current_parse_token_type == T_INVALID)
+            {
+                return false;
+            }
+            if (token_generation == iteration_start && Current_parse_token_type != T_ELSE &&
+                Current_parse_token_type != T_END)
+            {
+                Current_parse_token = Get_Valid_Token();
+            }
         }
-        generate_error_report_previous_token("Missing \"(\" expected for if statment");
+        return Current_parse_token_type != T_INVALID;
+    };
+
+    if (!parse_branch())
+    {
+        return false;
+    }
+    bool consumed_optional_else = false;
+    bool reported_repeated_else = false;
+    while (Current_parse_token_type == T_ELSE)
+    {
+        if (consumed_optional_else && !reported_repeated_else)
+        {
+            generate_error_report("Unexpected repeated \"else\" in if statement");
+            errors_occured = true;
+            reported_repeated_else = true;
+        }
+        consumed_optional_else = true;
+        Current_parse_token = Get_Valid_Token();
+        if (!parse_branch())
+        {
+            return false;
+        }
+    }
+
+    if (Current_parse_token_type != T_END)
+    {
+        generate_error_report_previous_token("Missing keyword \"end\" to end if statement");
         errors_occured = true;
         return false;
     }
-
-    return valid_parse;
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type != T_IF)
+    {
+        generate_error_report_previous_token("Missing keyword \"if\"to end if statement");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    return true;
 }
 
 //ready to test
@@ -1467,7 +1487,9 @@ bool parser::parse_loop_statement()
                     if (expression_parse.valid_parse && expression_parse.semantic_valid &&
                         !type_checker->statement_suppressed)
                     {
-                        (void)type_checker->check_loop_statement(expression_parse);
+                        const conversion_plan loop_condition_plan =
+                            type_checker->check_loop_statement(expression_parse);
+                        (void)loop_condition_plan;
                     }
                     while (Current_parse_token_type != T_END)
                     {
@@ -1573,23 +1595,35 @@ bool parser::parse_loop_statement()
 //ready to test
 //consumes return token before entering function
 //refactored 1 time
-bool parser::parse_return_statement()
+bool parser::parse_return_statement(const token &return_token)
 {
-    token_and_status expression_parse;
-    //this tracks the state of the parser
-    bool valid_parse;
-    expression_parse = parse_expression();
-    if (expression_parse.valid_parse && expression_parse.semantic_valid &&
-        !type_checker->statement_suppressed)
+    const token_and_status expression_parse = parse_expression();
+    if (!expression_parse.valid_parse)
     {
-        token owner;
-        if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
-        {
-            type_checker->check_return_statement(expression_parse, owner);
-        }
+        return false;
     }
-    valid_parse = expression_parse.valid_parse;
-    return valid_parse;
+    if (!expression_parse.semantic_valid || type_checker->statement_suppressed)
+    {
+        return true;
+    }
+    token owner;
+    if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
+    {
+        const conversion_plan return_plan = type_checker->check_return_statement(
+            expression_parse, owner, return_token);
+        (void)return_plan;
+    }
+    else if (current_scope_id == 0)
+    {
+        generate_error_report("Return statements are only valid inside procedures",
+                              return_token.line_found);
+        errors_occured = true;
+        type_checker->mark_current_statement_invalid();
+    }
+    //A retained recovery scope can be ownerless after a malformed procedure
+    //header.  Its body remains structurally parseable, but it has no return
+    //contract to validate and must not generate a second error.
+    return true;
 }
 
 //ready to test
@@ -2644,6 +2678,12 @@ bool parser::resync_parser(parser_state state)
             // }
             else if (Current_parse_token_type == T_END)
             {
+                return true;
+            }
+            else if (Current_parse_token_type == T_ELSE)
+            {
+                //The current if owns ELSE.  Keep it available to the branch
+                //parser instead of scanning through it as recovery noise.
                 return true;
             }
             else if (Current_parse_token_type == T_IDENTIFIER)

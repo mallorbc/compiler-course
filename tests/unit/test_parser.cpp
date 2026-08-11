@@ -141,7 +141,7 @@ TEST_CASE("recovery status is cleared after an end-token synchronization")
 
     CHECK(parsed.resync_status == false);
     CHECK(has_error(parsed, "Missing \")\" expected for if statment"));
-    CHECK(has_error(parsed, "Missing expected keyword \"then\" for if statements"));
+    CHECK_FALSE(has_error(parsed, "Missing expected keyword \"then\" for if statements"));
 }
 
 TEST_CASE("loop recovery does not suppress a following statement error")
@@ -1650,4 +1650,230 @@ TEST_CASE("TY-8 scalar builtin signatures reject array call arguments exactly")
     CHECK(parsed.error_reports.size() == 1);
     CHECK(has_error(parsed,
                     "Argument 1 to procedure \"putinteger\" has type \"integer[5]\"; expected \"integer\""));
+}
+
+TEST_CASE("Stage 2F return consumers validate conversions and placement")
+{
+    temp_source_file fixture(
+        "program returns is\n"
+        "procedure integerFromFloat : integer()\n"
+        "begin\n"
+        "    return 1.0;\n"
+        "end procedure;\n"
+        "procedure badBool : bool()\n"
+        "begin\n"
+        "    return\n"
+        "        1.0;\n"
+        "end procedure;\n"
+        "procedure noReturn : integer()\n"
+        "begin\n"
+        "end procedure;\n"
+        "begin\n"
+        "    return 1;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 2);
+    CHECK(has_error(parsed,
+                    "Error on line 8: Procedure is of type \"Float\" which is not compatible with return type of \"Bool\""));
+    CHECK(has_error(parsed,
+                    "Error on line 15: Return statements are only valid inside procedures"));
+    CHECK_FALSE(parsed.can_generate_code());
+
+    temp_source_file syntax_failure(
+        "program returns is\n"
+        "begin\n"
+        "    return ();\n"
+        "end program.\n");
+    captured_stdout syntax_capture;
+    parser malformed(syntax_failure.name());
+    syntax_capture.restore();
+    CHECK_FALSE(has_error(malformed, "Return statements are only valid inside procedures"));
+
+    temp_source_file ownerless_recovery(
+        "program returns is\n"
+        "procedure rejected : integer(variable value : integer[-1])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout ownerless_capture;
+    parser ownerless(ownerless_recovery.name());
+    ownerless_capture.restore();
+    CHECK(ownerless.error_reports.size() == 1);
+    CHECK(has_error(ownerless, "Array upper bound must be a non-negative integer"));
+    CHECK_FALSE(has_error(ownerless, "Return statements are only valid inside procedures"));
+}
+
+TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
+{
+    temp_source_file valid_fixture(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "    else\n"
+        "    end if;\n"
+        "    if (i) then\n"
+        "        if (false) then\n"
+        "        else\n"
+        "            i := 1;\n"
+        "        end if;\n"
+        "    else\n"
+        "        i := 2;\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout valid_capture;
+    parser valid(valid_fixture.name());
+    valid_capture.restore();
+    CHECK(valid.error_reports.empty());
+    CHECK(valid.can_generate_code());
+
+    temp_source_file recovered_rparam(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true then\n"
+        "        i := 1;\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout rparam_capture;
+    parser rparam(recovered_rparam.name());
+    rparam_capture.restore();
+    CHECK(rparam.error_reports.size() == 1);
+    CHECK(has_error(rparam, "Missing \")\" expected for if statment"));
+    CHECK_FALSE(has_error(rparam, "Missing expected keyword \"then\" for if statements"));
+
+    temp_source_file delimiter_recovery(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        i := 1\n"
+        "    else\n"
+        "        i := 2\n"
+        "    else\n"
+        "        i := 3\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout delimiter_capture;
+    parser delimiter(delimiter_recovery.name());
+    delimiter_capture.restore();
+    CHECK(delimiter.error_reports.size() == 4);
+    CHECK(count_errors(delimiter, "Missing \";\" to end statement in if statement") == 3);
+    CHECK(count_errors(delimiter, "Unexpected repeated \"else\" in if statement") == 1);
+
+    temp_source_file repeated_else(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "    else\n"
+        "    else\n"
+        "    else\n"
+        "    else\n"
+        "    end if;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout repeated_capture;
+    parser repeated(repeated_else.name());
+    repeated_capture.restore();
+    CHECK(repeated.error_reports.size() == 2);
+    CHECK(count_errors(repeated, "Unexpected repeated \"else\" in if statement") == 1);
+    CHECK(has_error(repeated,
+                    "Assignment target type \"integer\" is not compatible with expression type \"string\""));
+
+    temp_source_file missing_then(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) i := 1; end if;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout then_capture;
+    parser then_missing(missing_then.name());
+    then_capture.restore();
+    CHECK(then_missing.error_reports.size() == 2);
+    CHECK(has_error(then_missing, "Missing expected keyword \"then\" for if statements"));
+    CHECK(has_error(then_missing,
+                    "Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK_FALSE(has_error(then_missing, "Missing keyworkd \"program\""));
+
+    temp_source_file missing_lparam(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if true) then i := 1; end if;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout lparam_capture;
+    parser lparam_missing(missing_lparam.name());
+    lparam_capture.restore();
+    CHECK(lparam_missing.error_reports.size() == 2);
+    CHECK(has_error(lparam_missing, "Missing \"(\" expected for if statment"));
+    CHECK(has_error(lparam_missing,
+                    "Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK_FALSE(has_error(lparam_missing, "Missing keyworkd \"program\""));
+
+    temp_source_file syntax_child(
+        "program branches is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        i := ;\n"
+        "    else\n"
+        "        i := 1;\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout child_capture;
+    parser child(syntax_child.name());
+    child_capture.restore();
+    CHECK_FALSE(has_error(child, "Missing \";\" to end statement in if statement"));
+}
+
+TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
+{
+    temp_source_file valid_source(
+        "program ready is\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout valid_capture;
+    parser valid(valid_source.name());
+    valid_capture.restore();
+    CHECK(valid.can_generate_code());
+    valid.errors_occured = true;
+    CHECK(valid.can_generate_code());
+
+    temp_source_file syntax_source(
+        "program ready is\n"
+        "begin\n"
+        "end program\n");
+    captured_stdout syntax_capture;
+    parser syntax(syntax_source.name());
+    syntax_capture.restore();
+    CHECK_FALSE(syntax.can_generate_code());
+
+    temp_source_file scanner_source(
+        "program ready is\n"
+        "begin\n"
+        "    \"unterminated\n"
+        "end program.\n");
+    captured_stdout scanner_capture;
+    parser scanner(scanner_source.name());
+    scanner_capture.restore();
+    CHECK_FALSE(scanner.can_generate_code());
+
+    temp_source_file semantic_source(
+        "program ready is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    i := \"bad\";\n"
+        "end program.\n");
+    captured_stdout semantic_capture;
+    parser semantic(semantic_source.name());
+    semantic_capture.restore();
+    CHECK_FALSE(semantic.can_generate_code());
 }

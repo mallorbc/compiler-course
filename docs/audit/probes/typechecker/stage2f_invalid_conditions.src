@@ -1,0 +1,17 @@
+program Stage2FInvalidConditions is
+variable i : integer;
+variable f : float;
+variable s : string;
+variable values : integer[2];
+begin
+    if (f) then
+    end if;
+    if (s) then
+    end if;
+    if (values) then
+    end if;
+    for (i := 0; f)
+    end for;
+    for (i := 0; values)
+    end for;
+end program.

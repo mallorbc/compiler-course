@@ -13,6 +13,8 @@
 #include "../../Typechecker.h"
 
 #include <string>
+#include <tuple>
+#include <vector>
 
 namespace
 {
@@ -673,4 +675,172 @@ TEST_CASE("TY-8 procedure signatures require exact array shape")
     const token_and_status scalar = expression_of(scalar_checker, TYPE_INT, occurrence);
     CHECK_FALSE(scalar_checker.validate_procedure_call(canonical, occurrence, {scalar}));
     CHECK(scalar_checker.statement_suppressed);
+}
+
+TEST_CASE("Stage 2F conversion plans are pure, directional, and shape-aware")
+{
+    const value_shape integer = shape_of_type(TYPE_INT);
+    const value_shape floating = shape_of_type(TYPE_FLOAT);
+    const value_shape boolean = shape_of_type(TYPE_BOOL);
+    const value_shape string = shape_of_type(TYPE_STRING);
+    const value_shape unknown = shape_of_type(TYPE_NONE);
+    const value_shape integer_array = shape_of_type(TYPE_INT, true, 2);
+    const value_shape float_array = shape_of_type(TYPE_FLOAT, true, 2);
+    const value_shape bool_array = shape_of_type(TYPE_BOOL, true, 2);
+    const value_shape other_integer_array = shape_of_type(TYPE_INT, true, 3);
+
+    const conversion_plan exact = Typechecker::plan_target_conversion(integer, integer);
+    CHECK(exact.valid);
+    CHECK(exact.kind == conversion_kind::Exact);
+    CHECK(exact.failure == conversion_failure::None);
+    CHECK_FALSE(exact.requires_conversion);
+    CHECK_FALSE(exact.is_elementwise);
+
+    const std::vector<std::tuple<value_shape, value_shape, conversion_kind>> scalar_cases = {
+        {integer, floating, conversion_kind::IntToFloat},
+        {floating, integer, conversion_kind::FloatToInt},
+        {boolean, integer, conversion_kind::BoolToInt},
+        {integer, boolean, conversion_kind::IntToBool}};
+    for (const std::tuple<value_shape, value_shape, conversion_kind> &test_case : scalar_cases)
+    {
+        const conversion_plan plan = Typechecker::plan_target_conversion(
+            std::get<0>(test_case), std::get<1>(test_case));
+        CHECK(plan.valid);
+        CHECK(plan.kind == std::get<2>(test_case));
+        CHECK(plan.requires_conversion);
+        CHECK_FALSE(plan.is_elementwise);
+    }
+
+    const conversion_plan array_conversion = Typechecker::plan_target_conversion(
+        integer_array, float_array);
+    CHECK(array_conversion.valid);
+    CHECK(array_conversion.kind == conversion_kind::IntToFloat);
+    CHECK(array_conversion.requires_conversion);
+    CHECK(array_conversion.is_elementwise);
+    CHECK(array_conversion.source_shape == integer_array);
+    CHECK(array_conversion.target_shape == float_array);
+    CHECK(Typechecker::plan_target_conversion(bool_array, integer_array).valid);
+    CHECK_FALSE(Typechecker::plan_target_conversion(boolean, floating).valid);
+    CHECK(Typechecker::plan_target_conversion(boolean, floating).failure ==
+          conversion_failure::IncompatibleElementTypes);
+    CHECK(Typechecker::plan_target_conversion(string, integer).failure ==
+          conversion_failure::IncompatibleElementTypes);
+    CHECK(Typechecker::plan_target_conversion(integer, integer_array).failure ==
+          conversion_failure::ScalarArrayMismatch);
+    const conversion_plan mismatched_arrays = Typechecker::plan_target_conversion(
+        integer_array, other_integer_array);
+    CHECK(mismatched_arrays.failure == conversion_failure::ArrayBoundMismatch);
+    CHECK_FALSE(mismatched_arrays.is_elementwise);
+    CHECK(Typechecker::plan_target_conversion(unknown, integer).failure ==
+          conversion_failure::UnresolvedShape);
+
+    const conversion_plan integer_condition = Typechecker::plan_condition(integer);
+    CHECK(integer_condition.valid);
+    CHECK(integer_condition.target_shape == boolean);
+    CHECK(integer_condition.kind == conversion_kind::IntToBool);
+    CHECK(integer_condition.requires_conversion);
+    const conversion_plan boolean_condition = Typechecker::plan_condition(boolean);
+    CHECK(boolean_condition.valid);
+    CHECK(boolean_condition.target_shape == boolean);
+    CHECK(boolean_condition.kind == conversion_kind::Exact);
+    CHECK_FALSE(boolean_condition.requires_conversion);
+    const conversion_plan float_condition = Typechecker::plan_condition(floating);
+    CHECK(float_condition.target_shape == boolean);
+    CHECK(float_condition.failure ==
+          conversion_failure::IncompatibleElementTypes);
+    CHECK_FALSE(float_condition.is_elementwise);
+    const conversion_plan array_condition = Typechecker::plan_condition(integer_array);
+    CHECK(array_condition.target_shape == boolean);
+    CHECK(array_condition.failure ==
+          conversion_failure::ScalarArrayMismatch);
+    CHECK_FALSE(array_condition.is_elementwise);
+    const conversion_plan unknown_condition = Typechecker::plan_condition(unknown);
+    CHECK(unknown_condition.target_shape == boolean);
+    CHECK(unknown_condition.failure ==
+          conversion_failure::UnresolvedShape);
+}
+
+TEST_CASE("Stage 2F conversion consumers preserve sentinels without a parser parent")
+{
+    Typechecker checker;
+    token anchor;
+    anchor.type = T_IDENTIFIER;
+    anchor.line_found = 17;
+    const token_and_status integer = expression_of(checker, TYPE_INT, anchor);
+    const token_and_status floating = expression_of(checker, TYPE_FLOAT, anchor);
+    const token_and_status array = expression_of(checker, TYPE_INT, anchor, true, 2);
+
+    token sentinel;
+    sentinel.type = T_IDENTIFIER;
+    sentinel.stringValue = "conversion-sentinel";
+    sentinel.line_found = 4;
+    checker.first_token = sentinel;
+    checker.second_token = floating.resolved_token;
+    checker.relation_tokens = {anchor};
+    const token saved_first = checker.first_token;
+    const token saved_second = checker.second_token;
+    const std::vector<token> saved_relations = checker.relation_tokens;
+
+    const conversion_plan assignment = checker.check_assignment_statement(array, integer);
+    CHECK_FALSE(assignment.valid);
+    CHECK(assignment.failure == conversion_failure::ScalarArrayMismatch);
+    CHECK(checker.statement_suppressed);
+    CHECK(checker.type_error_occured);
+    CHECK(same_token(checker.first_token, saved_first));
+    CHECK(same_token(checker.second_token, saved_second));
+    REQUIRE(checker.relation_tokens.size() == saved_relations.size());
+    CHECK(same_token(checker.relation_tokens[0], saved_relations[0]));
+
+    Typechecker return_checker;
+    token return_anchor;
+    return_anchor.type = T_RETURN;
+    return_anchor.line_found = 23;
+    token procedure;
+    procedure.type = T_IDENTIFIER;
+    procedure.identifier_data_type = TYPE_BOOL;
+    return_checker.first_token = sentinel;
+    return_checker.second_token = floating.resolved_token;
+    return_checker.relation_tokens = {anchor};
+    const conversion_plan return_plan = return_checker.check_return_statement(
+        floating, procedure, return_anchor);
+    CHECK_FALSE(return_plan.valid);
+    CHECK(return_plan.failure == conversion_failure::IncompatibleElementTypes);
+    CHECK(return_checker.statement_suppressed);
+    CHECK(same_token(return_checker.first_token, sentinel));
+    CHECK(same_token(return_checker.second_token, floating.resolved_token));
+    REQUIRE(return_checker.relation_tokens.size() == 1);
+    CHECK(same_token(return_checker.relation_tokens[0], anchor));
+
+    Typechecker condition_checker;
+    condition_checker.first_token = sentinel;
+    condition_checker.second_token = floating.resolved_token;
+    condition_checker.relation_tokens = {anchor};
+    const conversion_plan condition_plan = condition_checker.check_condition_statement(
+        array, anchor, condition_context::If);
+    CHECK_FALSE(condition_plan.valid);
+    CHECK(condition_plan.failure == conversion_failure::ScalarArrayMismatch);
+    CHECK(condition_checker.statement_suppressed);
+    CHECK(same_token(condition_checker.first_token, sentinel));
+    CHECK(same_token(condition_checker.second_token, floating.resolved_token));
+    REQUIRE(condition_checker.relation_tokens.size() == 1);
+    CHECK(same_token(condition_checker.relation_tokens[0], anchor));
+
+    Typechecker invalid_condition_checker;
+    invalid_condition_checker.first_token = sentinel;
+    invalid_condition_checker.second_token = floating.resolved_token;
+    invalid_condition_checker.relation_tokens = {anchor};
+    token_and_status invalid_condition = floating;
+    invalid_condition.semantic_valid = false;
+    const conversion_plan invalid_condition_plan =
+        invalid_condition_checker.check_condition_statement(
+            invalid_condition, anchor, condition_context::If);
+    CHECK_FALSE(invalid_condition_plan.valid);
+    CHECK(invalid_condition_plan.failure == conversion_failure::UnresolvedShape);
+    CHECK(invalid_condition_plan.target_shape == shape_of_type(TYPE_BOOL));
+    CHECK_FALSE(invalid_condition_plan.is_elementwise);
+    CHECK(same_token(invalid_condition_checker.first_token, sentinel));
+    CHECK(same_token(invalid_condition_checker.second_token,
+                     floating.resolved_token));
+    REQUIRE(invalid_condition_checker.relation_tokens.size() == 1);
+    CHECK(same_token(invalid_condition_checker.relation_tokens[0], anchor));
 }

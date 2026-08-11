@@ -147,23 +147,32 @@ void report_statement_error(Typechecker *checker, const std::string &message,
     checker->type_error_occured = true;
 }
 
-bool assignment_types_compatible(data_types destination_type, data_types expression_type)
+conversion_plan invalid_plan(const value_shape &source, const value_shape &target,
+                             conversion_failure failure)
 {
-    if (destination_type == TYPE_NONE || expression_type == TYPE_NONE)
+    conversion_plan result;
+    result.source_shape = source;
+    result.target_shape = target;
+    result.failure = failure;
+    return result;
+}
+
+std::string return_type_name(data_types value_type)
+{
+    switch (value_type)
     {
-        return false;
+    case TYPE_BOOL:
+        return "Bool";
+    case TYPE_FLOAT:
+        return "Float";
+    case TYPE_INT:
+        return "Integer";
+    case TYPE_STRING:
+        return "String";
+    case TYPE_NONE:
+        return "Unknown";
     }
-    if (destination_type == expression_type)
-    {
-        return true;
-    }
-    if ((destination_type == TYPE_BOOL && expression_type == TYPE_INT) ||
-        (destination_type == TYPE_INT && expression_type == TYPE_BOOL))
-    {
-        return true;
-    }
-    return (destination_type == TYPE_INT && expression_type == TYPE_FLOAT) ||
-           (destination_type == TYPE_FLOAT && expression_type == TYPE_INT);
+    return "Unknown";
 }
 
 bool is_ordering_operation(semantic_operator operation)
@@ -1131,31 +1140,101 @@ token_and_status Typechecker::is_valid_operation()
     return return_object;
 }
 
-bool Typechecker::check_assignment_statement(const token_and_status &destination,
-                                              const token_and_status &expression)
+conversion_plan Typechecker::plan_target_conversion(const value_shape &source,
+                                                     const value_shape &target)
 {
-    if (statement_suppressed || !destination.semantic_valid || !expression.semantic_valid)
+    if (!shape_is_resolved(source) || !shape_is_resolved(target))
     {
-        return false;
+        return invalid_plan(source, target, conversion_failure::UnresolvedShape);
+    }
+    if (source.is_array != target.is_array)
+    {
+        return invalid_plan(source, target, conversion_failure::ScalarArrayMismatch);
+    }
+    if (source.is_array && source.array_upper_bound != target.array_upper_bound)
+    {
+        return invalid_plan(source, target, conversion_failure::ArrayBoundMismatch);
     }
 
+    conversion_plan result;
+    result.source_shape = source;
+    result.target_shape = target;
+    result.is_elementwise = source.is_array;
+    result.failure = conversion_failure::None;
+    if (source.element_type == target.element_type)
+    {
+        result.kind = conversion_kind::Exact;
+        result.valid = true;
+        return result;
+    }
+    if (source.element_type == TYPE_INT && target.element_type == TYPE_FLOAT)
+    {
+        result.kind = conversion_kind::IntToFloat;
+    }
+    else if (source.element_type == TYPE_FLOAT && target.element_type == TYPE_INT)
+    {
+        result.kind = conversion_kind::FloatToInt;
+    }
+    else if (source.element_type == TYPE_BOOL && target.element_type == TYPE_INT)
+    {
+        result.kind = conversion_kind::BoolToInt;
+    }
+    else if (source.element_type == TYPE_INT && target.element_type == TYPE_BOOL)
+    {
+        result.kind = conversion_kind::IntToBool;
+    }
+    else
+    {
+        return invalid_plan(source, target, conversion_failure::IncompatibleElementTypes);
+    }
+    result.valid = true;
+    result.requires_conversion = true;
+    return result;
+}
+
+conversion_plan Typechecker::plan_condition(const value_shape &source)
+{
+    const value_shape boolean_target = scalar_shape(TYPE_BOOL);
+    if (!shape_is_resolved(source))
+    {
+        return invalid_plan(source, boolean_target, conversion_failure::UnresolvedShape);
+    }
+    if (source.is_array)
+    {
+        return invalid_plan(source, boolean_target,
+                            conversion_failure::ScalarArrayMismatch);
+    }
+    if (!is_bool_or_integer(source.element_type))
+    {
+        return invalid_plan(source, boolean_target,
+                            conversion_failure::IncompatibleElementTypes);
+    }
+    return plan_target_conversion(source, boolean_target);
+}
+
+void Typechecker::mark_current_statement_invalid()
+{
+    statement_suppressed = true;
+    type_error_occured = true;
+}
+
+conversion_plan Typechecker::check_assignment_statement(const token_and_status &destination,
+                                                         const token_and_status &expression)
+{
     const value_shape destination_shape = shape_of(destination.resolved_token);
     const value_shape expression_shape = shape_of(expression.resolved_token);
-    const data_types destination_type = destination_shape.element_type;
-    const data_types expression_type = expression_shape.element_type;
-    if (!shape_is_resolved(destination_shape) || !shape_is_resolved(expression_shape) ||
-        destination_shape.is_array != expression_shape.is_array)
+    if (statement_suppressed || !destination.semantic_valid || !expression.semantic_valid)
     {
-        report_statement_error(
-            this,
-            "Assignment target shape \"" + shape_name(destination_shape) +
-                "\" is not compatible with expression shape \"" +
-                shape_name(expression_shape) + "\"",
-            destination.resolved_token);
-        return false;
+        return invalid_plan(expression_shape, destination_shape,
+                            conversion_failure::UnresolvedShape);
     }
-    if (destination_shape.is_array &&
-        destination_shape.array_upper_bound != expression_shape.array_upper_bound)
+
+    const conversion_plan plan = plan_target_conversion(expression_shape, destination_shape);
+    if (plan.valid)
+    {
+        return plan;
+    }
+    if (plan.failure == conversion_failure::ArrayBoundMismatch)
     {
         report_statement_error(
             this,
@@ -1164,20 +1243,26 @@ bool Typechecker::check_assignment_statement(const token_and_status &destination
                 "\" is not compatible with expression array upper bound \"" +
                 std::to_string(expression_shape.array_upper_bound) + "\"",
             destination.resolved_token);
-        return false;
     }
-    if (assignment_types_compatible(destination_type, expression_type))
+    else if (plan.failure == conversion_failure::IncompatibleElementTypes)
     {
-        return true;
+        report_statement_error(
+            this,
+            "Assignment target type \"" + procedure_type_name(destination_shape.element_type) +
+                "\" is not compatible with expression type \"" +
+                procedure_type_name(expression_shape.element_type) + "\"",
+            destination.resolved_token);
     }
-
-    report_statement_error(
-        this,
-        "Assignment target type \"" + procedure_type_name(destination_type) +
-            "\" is not compatible with expression type \"" +
-            procedure_type_name(expression_type) + "\"",
-        destination.resolved_token);
-    return false;
+    else
+    {
+        report_statement_error(
+            this,
+            "Assignment target shape \"" + shape_name(destination_shape) +
+                "\" is not compatible with expression shape \"" +
+                shape_name(expression_shape) + "\"",
+            destination.resolved_token);
+    }
+    return plan;
 }
 
 bool Typechecker::are_tokens_full()
@@ -1744,77 +1829,42 @@ std::string Typechecker::give_token_type_name(typechecker_types type_to_get)
     return return_string;
 }
 
-bool Typechecker::check_return_statement(const token_and_status &resolved_value,
-                                         token procedure_token)
+conversion_plan Typechecker::check_return_statement(const token_and_status &resolved_value,
+                                                     token procedure_token,
+                                                     const token &return_anchor)
 {
+    const value_shape resolved_shape = shape_of(resolved_value.resolved_token);
+    const value_shape procedure_shape = shape_of(procedure_token);
     if (statement_suppressed || !resolved_value.semantic_valid)
     {
-        return false;
+        return invalid_plan(resolved_shape, procedure_shape,
+                            conversion_failure::UnresolvedShape);
     }
-    const value_shape resolved_shape = shape_of(resolved_value.resolved_token);
-    if (resolved_shape.is_array)
+    const conversion_plan plan = plan_target_conversion(resolved_shape, procedure_shape);
+    if (plan.valid)
     {
-        report_statement_error(this, "Procedure return values must be scalar",
-                               statement_key_token);
-        return false;
+        return plan;
     }
-    const token resolved_token = resolved_value.resolved_token;
-    bool compatible = false;
-    token_types_and_status checked_tokens;
-    typechecker_types token_one_type;
-    typechecker_types token_two_type;
-    //these two strings will be used to build error messages
-    std::string token_one_type_name = "";
-    std::string token_two_type_name = "";
-    std::string error_message = "";
-    int line_error = valid_line(statement_key_token.line_found);
-    clear_tokens(false);
-    first_token = resolved_token;
-    second_token = procedure_token;
-    checked_tokens = token_types_compatible_at_all();
-    token_one_type = checked_tokens.token_one_type;
-    token_two_type = checked_tokens.token_two_type;
-    compatible = checked_tokens.compatible;
-    token_one_type_name = give_token_type_name(token_one_type);
-    token_two_type_name = give_token_type_name(token_two_type);
-    if (!compatible)
+    if (plan.failure == conversion_failure::ScalarArrayMismatch && resolved_shape.is_array)
     {
-        error_message = "Procedure is of type \"" + token_one_type_name + "\" which is not compatible with return type of \"" + token_two_type_name + "\"";
-        parser_parent->errors_occured = true;
-        parser_parent->generate_error_report(error_message, line_error);
-        error_message = "";
-        //set error message?
-        return false;
+        report_statement_error(this, "Procedure return values must be scalar", return_anchor);
     }
-    //it may be compatible, need to check
     else
     {
-        //the same types always work
-        if (token_one_type == token_two_type)
-        {
-            return true;
-        }
-        //compatible-but-not-equal types are valid returns per spec rule 14
-        return true;
+        report_statement_error(
+            this,
+            "Procedure is of type \"" + return_type_name(resolved_shape.element_type) +
+                "\" which is not compatible with return type of \"" +
+                return_type_name(procedure_shape.element_type) + "\"",
+            return_anchor);
     }
+    return plan;
 }
 
-bool Typechecker::check_if_statement(const token_and_status &token_to_check)
+conversion_plan Typechecker::check_return_statement(const token_and_status &resolved_value,
+                                                     token procedure_token)
 {
-    if (statement_suppressed || !token_to_check.semantic_valid)
-    {
-        return false;
-    }
-    const value_shape shape = shape_of(token_to_check.resolved_token);
-    if (!shape.is_array &&
-        (shape.element_type == TYPE_BOOL || shape.element_type == TYPE_INT))
-    {
-        return true;
-    }
-    report_statement_error(this,
-                           "If statements must resolve to either type Bool or Integer",
-                           statement_key_token);
-    return false;
+    return check_return_statement(resolved_value, procedure_token, statement_key_token);
 }
 
 typechecker_types Typechecker::convert_to_typechecker_types(token token_to_convert)
@@ -1873,20 +1923,39 @@ typechecker_types Typechecker::convert_to_typechecker_types(token token_to_conve
     return return_conversion;
 }
 
-bool Typechecker::check_loop_statement(const token_and_status &token_to_check)
+conversion_plan Typechecker::check_condition_statement(const token_and_status &token_to_check,
+                                                        const token &anchor,
+                                                        condition_context context)
 {
+    const value_shape source_shape = shape_of(token_to_check.resolved_token);
     if (statement_suppressed || !token_to_check.semantic_valid)
     {
-        return false;
+        value_shape boolean_target;
+        boolean_target.element_type = TYPE_BOOL;
+        return invalid_plan(source_shape, boolean_target,
+                            conversion_failure::UnresolvedShape);
     }
-    const value_shape shape = shape_of(token_to_check.resolved_token);
-    if (!shape.is_array &&
-        (shape.element_type == TYPE_BOOL || shape.element_type == TYPE_INT))
+    const conversion_plan plan = plan_condition(source_shape);
+    if (plan.valid)
     {
-        return true;
+        return plan;
     }
+    const std::string context_name = context == condition_context::If ? "If" : "Loop";
     report_statement_error(this,
-                           "Loop statements must resolve to either type Bool or Integer",
-                           statement_key_token);
-    return false;
+                           context_name +
+                               " statements must resolve to either type Bool or Integer",
+                           anchor);
+    return plan;
+}
+
+conversion_plan Typechecker::check_if_statement(const token_and_status &token_to_check)
+{
+    return check_condition_statement(token_to_check, statement_key_token,
+                                     condition_context::If);
+}
+
+conversion_plan Typechecker::check_loop_statement(const token_and_status &token_to_check)
+{
+    return check_condition_statement(token_to_check, statement_key_token,
+                                     condition_context::Loop);
 }

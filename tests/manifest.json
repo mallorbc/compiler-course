@@ -463,8 +463,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync12.src.out",
-      "stdout_bytes": 167,
-      "stdout_sha256": "da93d4e77e83655be7246bb12caa8c8b2bc9a1ad2a8af4da4b8fb219d4efeada",
+      "stdout_bytes": 99,
+      "stdout_sha256": "8995d06bd9fd0d21c0a4494ece999cbc20cb2c3691aa0fe9879072dce3743e82",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync12_ctrl.src": {
@@ -1624,6 +1624,51 @@
       "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/typechecker/sil2_assignment_matrix.src.out",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/stage2f_if_recovery.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/stage2f_if_recovery.src.out",
+      "stdout_bytes": 288,
+      "stdout_sha256": "a75a6de51f6dc1a9e295e3b160585986d08237a815b1e146e6c23f7e060b5677",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/stage2f_invalid_conditions.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/stage2f_invalid_conditions.src.out",
+      "stdout_bytes": 431,
+      "stdout_sha256": "fd0bbc64a4fcf9d2d726860f1e2b4d4a8949c7c02eee3ba4cbc1c2815745b670",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/stage2f_invalid_returns.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/stage2f_invalid_returns.src.out",
+      "stdout_bytes": 372,
+      "stdout_sha256": "a6af0553ce9b4c90059c5510b788e57d38f7afc9d1f606fcadd2b502ead3b09e",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/stage2f_valid_conversions.src": {
+      "status": "OK",
+      "exit_code": 0,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/stage2f_valid_conversions.src.out",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/stage2f_valid_if_branches.src": {
+      "status": "OK",
+      "exit_code": 0,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/stage2f_valid_if_branches.src.out",
       "stdout_bytes": 47,
       "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false

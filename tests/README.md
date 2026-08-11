@@ -1,6 +1,6 @@
 # Golden-file regression harness
 
-`tests/run_golden.py` runs `./compiler` over all 205 test programs in the repo
+`tests/run_golden.py` runs `./compiler` over all 210 test programs in the repo
 and compares what happens against a recorded baseline. It is the tripwire for
 "did my change alter compiler behaviour anywhere I did not intend?"
 
@@ -33,7 +33,7 @@ such as the scanner and parser remains project-owned.
 ## What is covered
 
 Every `*.src` found recursively under `testPgms/` (14) and `docs/audit/probes/`
-(191) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
+(196) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
 holds one stray non-`.src` file, which the `*.src` glob naturally excludes.
 
 **The baseline is only valid for the default build** (plain `make`: `-g`, no
@@ -95,8 +95,8 @@ Manifest entry, verbatim:
 
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
-| `OK`      | exited 0                                 | 96             |
-| `ERRORS`  | exited nonzero, terminated normally      | 109            |
+| `OK`      | exited 0                                 | 98             |
+| `ERRORS`  | exited nonzero, terminated normally      | 112            |
 | `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
 | `TIMEOUT` | still running when the budget expired    | 0              |
 
@@ -143,8 +143,9 @@ Conventions for adding unit tests:
   typechecker functions you have verified never dereference the parent (the
   safety argument for the currently-tested surface is written up at the top of
   `test_support.cpp`). The isolated TY-2E helper-preservation, SIL-1
-  signature-validator, Stage 2D statement-check, and TY-8 shape regressions
-  are explicit exceptions because those helpers guard a null parent. Do not exercise the
+  signature-validator, Stage 2D statement-check, TY-8 shape, and Stage 2F
+  conversion-plan regressions are explicit exceptions because those helpers
+  guard a null parent. Do not exercise the
   legacy `feed_in_tokens` accumulator as an integration path: TY-2E removed it
   from live expression parsing, and it remains only as compatibility surface
   pending a later cleanup.

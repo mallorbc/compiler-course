@@ -51,6 +51,50 @@ enum semantic_operator
     SEM_NEGATE
 };
 
+//A conversion plan records frontend compatibility only.  It deliberately
+//contains no lowering instruction or AST value; a later backend can consume
+//the plan without having to rediscover the scalar/array rules.
+enum class conversion_kind
+{
+    Invalid,
+    Exact,
+    IntToFloat,
+    FloatToInt,
+    BoolToInt,
+    IntToBool
+};
+
+enum class conversion_failure
+{
+    None,
+    UnresolvedShape,
+    ScalarArrayMismatch,
+    ArrayBoundMismatch,
+    IncompatibleElementTypes
+};
+
+struct conversion_plan
+{
+    value_shape source_shape;
+    value_shape target_shape;
+    conversion_kind kind = conversion_kind::Invalid;
+    conversion_failure failure = conversion_failure::None;
+    bool valid = false;
+    bool requires_conversion = false;
+    bool is_elementwise = false;
+
+    operator bool() const noexcept
+    {
+        return valid;
+    }
+};
+
+enum class condition_context
+{
+    If,
+    Loop
+};
+
 //this will be used to convert to a single type and for the base check
 struct token_types_and_status
 {
@@ -107,8 +151,27 @@ public:
                                  const token &callee_occurrence,
                                  const std::vector<token_and_status> &arguments);
 
-    bool check_assignment_statement(const token_and_status &destination,
-                                    const token_and_status &expression);
+    //These planners are pure: they neither report diagnostics nor touch the
+    //legacy expression accumulator.  Callers own diagnostic policy.
+    static conversion_plan plan_target_conversion(const value_shape &source,
+                                                  const value_shape &target);
+    static conversion_plan plan_condition(const value_shape &source);
+
+    //Statement consumers return the retained plan for future lowering.  They
+    //report at most one focused error and preserve the legacy accumulator.
+    conversion_plan check_assignment_statement(const token_and_status &destination,
+                                               const token_and_status &expression);
+    conversion_plan check_return_statement(const token_and_status &resolved_token,
+                                           token procedure_token,
+                                           const token &return_anchor);
+    conversion_plan check_return_statement(const token_and_status &resolved_token,
+                                           token procedure_token);
+    conversion_plan check_condition_statement(const token_and_status &token_to_check,
+                                              const token &anchor,
+                                              condition_context context);
+    conversion_plan check_if_statement(const token_and_status &token_to_check);
+    conversion_plan check_loop_statement(const token_and_status &token_to_check);
+    void mark_current_statement_invalid();
     bool are_tokens_full();
     token_types_and_status token_types_compatible_at_all();
 
@@ -118,12 +181,6 @@ public:
     bool is_bool_or_int(typechecker_types token_one, typechecker_types token_two);
     bool both_are_strings(typechecker_types token_one, typechecker_types token_two);
     std::string give_token_type_name(typechecker_types type_to_get);
-    bool check_return_statement(const token_and_status &resolved_token,
-                                token procedure_token);
-    bool check_if_statement(const token_and_status &token_to_check);
-
-    bool check_loop_statement(const token_and_status &token_to_check);
-
     typechecker_types convert_to_typechecker_types(token token_to_convert);
 
     bool debugger = false;

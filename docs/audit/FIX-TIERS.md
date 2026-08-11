@@ -70,7 +70,7 @@ Tier definitions:
 | SIL-1 | Procedure-call validation: callee lookup, arity, argument types — **DONE Stage 2C** | depends on SC-1/SC-4 lookups being trustworthy and REJ-1/2 (multi-param works) |
 | SIL-6 | Duplicate-declaration detection (per scope; global uniqueness per spec) | needs scope-correct lookup (SC-1) |
 | SIL-7 | Real undeclared-identifier diagnostics; stop auto-vivifying blank entries | avoid cascade errors; touches lookup flow |
-| TY-6 | Wire loop-condition checking properly — **DONE Stage 2D** | condition now starts an isolated semantic unit and uses `check_loop_statement` |
+| TY-6 | Wire loop-condition checking properly — **DONE Stage 2D/2F** | loop initialization and condition remain separate; Stage 2F routes both `if` and `for` through the shared pure condition planner |
 | SC-1 | Shadowing: local-scope-first lookup; stop local decls corrupting same-named globals | the global-first short-circuit family in SymbolTable.cpp |
 | SC-2 | Adopt the modern global rule (outermost scope = global) per the 2024 target doc | policy already decided (target 2024-current); vintage note in AUDIT §1 |
 | SC-3 | Make global-path updates persist caller mutations (identifer_type, is_array) (SymbolTable.cpp:265) | same subsystem as SC-1; batch together |
@@ -80,7 +80,7 @@ Tier definitions:
 
 | ID | Work | Subsumes |
 |----|------|----------|
-| TY-2 | **Type-propagation rebuild**: each `parse_*` expression function returns its synthesized type; retire the `feed_in_tokens` accumulator side-channel; real assignment/return/condition checking on top | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry). Scalar SIL-2 assignment validation landed in Stage 2D; lowering-time cast metadata remains deferred. |
+| TY-2 | **DONE through Stage 2F frontend consumers**: each `parse_*` expression function returns its synthesized type; the live parser no longer uses the `feed_in_tokens` side-channel; assignment/return/condition consumers retain pure scalar/array conversion plans | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry). Conversion plans deliberately stop before backend casts, IR, or runtime representation. |
 | TY-8 | **DONE Stage 2E frontend shape layer**: canonical inclusive bounds, index-must-be-integer, exact array call signatures, and elementwise shape checking | Runtime `BoundsCheck`, allocation/copy/broadcast lowering, and compile-time OOB folding remain a codegen slice |
 
 ## Critical — 3 items (blocked on Blake)
