@@ -292,6 +292,13 @@ struct VerificationResult
 //silently acquire aggregate semantics.
 bool is_resolved_value_shape(const value_shape &shape);
 bool is_ready_type(const value_shape &shape);
+bool infer_unary_result_shape(UnaryOp operation, const value_shape &operand,
+                              value_shape &result);
+//Typed Binary operands already have explicit scalar Cast instructions where
+//needed.  This canonical rule admits equal-bound arrays and scalar broadcast,
+//then derives the aggregate Bool result of lifted relations independently.
+bool infer_binary_result_shape(BinaryOp operation, const value_shape &left,
+                               const value_shape &right, value_shape &result);
 VerificationResult verify_module(const Module &module);
 
 } // namespace ir

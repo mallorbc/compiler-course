@@ -26,8 +26,8 @@ This was the Stage 5C boundary.  Stage 6B subsequently lowers scalar Float
 procedures and `sqrt`, and Stage 6C lowers scalar String handles, without
 changing this frame ABI.  Stage 6D1 subsequently makes the same frames
 width-aware for exact by-value array parameters, locals, and aggregate Value
-spans.  Lifted array operators, static-link/capture semantics for nested
-procedures, and fallthrough/no-return
+spans. Stage 6D2 adds lifted array operators within those same spans.
+Static-link/capture semantics for nested procedures and fallthrough/no-return
 procedures remain deliberately outside the supported slice.  Nested declaration emission restores the outer IR context, but
 the existing resolver policy still exposes only current/self and global names;
 no enclosing-local capture was introduced.

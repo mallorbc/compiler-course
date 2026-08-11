@@ -52,5 +52,7 @@ ordering and arithmetic are excluded from typed IR: source attempts are
 frontend errors, while malformed direct IR is InvalidIR.  Well-formed String
 arrays were outside this scalar milestone; Stage 6D1 subsequently represents
 them as spans of String handle words with checked indexing and whole copies.
+Stage 6D2 subsequently lifts String `==` and `!=` content comparison over
+equal-bound arrays and scalar broadcasts; ordering and arithmetic stay errors.
 Noncanonical external calls remain Unsupported.  Production still emits C
 source only and never invokes a host compiler.

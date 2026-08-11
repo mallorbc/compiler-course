@@ -290,6 +290,106 @@ TEST_CASE("Stage 6D1 aggregate IR verifies shapes, exact calls, and linear check
     CHECK_FALSE(ir::verify_module(aggregate_call_result).valid);
 }
 
+TEST_CASE("Stage 6D2 canonical inference verifies lifted operations and broadcasts")
+{
+    value_shape inferred;
+    CHECK(ir::infer_unary_result_shape(ir::UnaryOp::Negate,
+                                       array_shape(TYPE_INT, 2), inferred));
+    CHECK(inferred == array_shape(TYPE_INT, 2));
+    CHECK_FALSE(ir::infer_unary_result_shape(ir::UnaryOp::Not,
+                                             array_shape(TYPE_STRING, 2), inferred));
+    CHECK(ir::infer_binary_result_shape(ir::BinaryOp::Add,
+                                        array_shape(TYPE_INT, 2), scalar(TYPE_INT), inferred));
+    CHECK(inferred == array_shape(TYPE_INT, 2));
+    CHECK(ir::infer_binary_result_shape(ir::BinaryOp::Subtract,
+                                        scalar(TYPE_FLOAT), array_shape(TYPE_FLOAT, 2), inferred));
+    CHECK(inferred == array_shape(TYPE_FLOAT, 2));
+    CHECK(ir::infer_binary_result_shape(ir::BinaryOp::Equal,
+                                        array_shape(TYPE_STRING, 2), scalar(TYPE_STRING), inferred));
+    CHECK(inferred == array_shape(TYPE_BOOL, 2));
+    CHECK_FALSE(ir::infer_binary_result_shape(ir::BinaryOp::Add,
+                                              array_shape(TYPE_INT, 2),
+                                              array_shape(TYPE_INT, 1), inferred));
+    CHECK_FALSE(ir::infer_binary_result_shape(ir::BinaryOp::Add,
+                                              array_shape(TYPE_INT, 2),
+                                              scalar(TYPE_FLOAT), inferred));
+    CHECK_FALSE(ir::infer_binary_result_shape(ir::BinaryOp::Less,
+                                              array_shape(TYPE_STRING, 2),
+                                              scalar(TYPE_STRING), inferred));
+
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "lifted"}, "lifted").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId ints = builder.register_storage(
+        SymbolRef{0, "ints"}, array_shape(TYPE_INT, 2), ir::StorageKind::Global);
+    const ir::StorageId other = builder.register_storage(
+        SymbolRef{0, "other"}, array_shape(TYPE_INT, 2), ir::StorageKind::Global);
+    const ir::StorageId bools = builder.register_storage(
+        SymbolRef{0, "bools"}, array_shape(TYPE_BOOL, 2), ir::StorageKind::Global);
+    const ir::StorageId strings = builder.register_storage(
+        SymbolRef{0, "strings"}, array_shape(TYPE_STRING, 2), ir::StorageKind::Global);
+    REQUIRE(ints.valid());
+    REQUIRE(other.valid());
+    REQUIRE(bools.valid());
+    REQUIRE(strings.valid());
+    const ir::ValueId int_values = builder.emit_load(ints);
+    const ir::ValueId other_values = builder.emit_load(other);
+    const ir::ValueId bool_values = builder.emit_load(bools);
+    const ir::ValueId string_values = builder.emit_load(strings);
+    const ir::ValueId integer = builder.emit_constant(scalar(TYPE_INT), 3);
+    const ir::ValueId text = builder.emit_constant(scalar(TYPE_STRING), std::string("x"));
+    REQUIRE(builder.emit_unary(ir::UnaryOp::Negate, int_values).valid());
+    REQUIRE(builder.emit_unary(ir::UnaryOp::Not, int_values).valid());
+    REQUIRE(builder.emit_unary(ir::UnaryOp::Not, bool_values).valid());
+    REQUIRE(builder.emit_binary(ir::BinaryOp::Add, int_values, other_values).valid());
+    REQUIRE(builder.emit_binary(ir::BinaryOp::Subtract, int_values, integer).valid());
+    REQUIRE(builder.emit_binary(ir::BinaryOp::Multiply, integer, int_values).valid());
+    const ir::ValueId relations =
+        builder.emit_binary(ir::BinaryOp::Less, int_values, integer);
+    const ir::ValueId string_equal =
+        builder.emit_binary(ir::BinaryOp::Equal, string_values, text);
+    REQUIRE(relations.valid());
+    REQUIRE(string_equal.valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    REQUIRE(ir::verify_module(builder.module()).valid);
+    CHECK(builder.module().functions[0].values[relations.index].type ==
+          array_shape(TYPE_BOOL, 2));
+    CHECK(builder.module().functions[0].values[string_equal.index].type ==
+          array_shape(TYPE_BOOL, 2));
+
+    ir::Module wrong_relation_shape = builder.module();
+    wrong_relation_shape.functions[0].values[relations.index].type = scalar(TYPE_BOOL);
+    CHECK_FALSE(ir::verify_module(wrong_relation_shape).valid);
+
+    ir::Module mixed_post_cast = builder.module();
+    ir::Binary *add = std::get_if<ir::Binary>(
+        &mixed_post_cast.functions[0].blocks[0].instructions[10]);
+    REQUIRE(add != NULL);
+    add->right = text;
+    CHECK_FALSE(ir::verify_module(mixed_post_cast).valid);
+
+    ir::Module mismatched_bounds = builder.module();
+    mismatched_bounds.functions[0].values[other_values.index].type.array_upper_bound = 1;
+    CHECK_FALSE(ir::verify_module(mismatched_bounds).valid);
+
+    ir::IRBuilder rejected;
+    REQUIRE(rejected.register_program(SymbolRef{0, "rejected_lift"},
+                                      "rejected_lift").valid());
+    rejected.seed_external_builtins();
+    const ir::StorageId wide = rejected.register_storage(
+        SymbolRef{0, "wide"}, array_shape(TYPE_INT, 2), ir::StorageKind::Global);
+    const ir::StorageId narrow = rejected.register_storage(
+        SymbolRef{0, "narrow"}, array_shape(TYPE_INT, 1), ir::StorageKind::Global);
+    const ir::ValueId wide_value = rejected.emit_load(wide);
+    const ir::ValueId narrow_value = rejected.emit_load(narrow);
+    CHECK_FALSE(rejected.emit_binary(ir::BinaryOp::Add, wide_value, narrow_value).valid());
+    rejected.finalize(true);
+    CHECK(rejected.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(rejected.module().functions.empty());
+}
+
 TEST_CASE("Stage 5A builder forms deterministic Program branch blocks")
 {
     ir::IRBuilder builder;

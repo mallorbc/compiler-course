@@ -33,7 +33,8 @@ This was the Stage 6A boundary.  Stage 6B subsequently adds scalar Float I/O,
 Float arithmetic/conversions, and `sqrt`; Stage 6C subsequently adds scalar
 String line I/O and content equality.  Stage 6D1 subsequently adds checked
 array elements, whole copies/conversions, and exact user-procedure array
-parameters while retaining these scalar I/O contracts.  Lifted array
-operators and other external calls remain atomically Unsupported.  The compiler still emits
+parameters while retaining these scalar I/O contracts. Stage 6D2 subsequently
+adds lifted array operators and scalar broadcast; other external calls remain
+atomically Unsupported. The compiler still emits
 C rather than invoking a host compiler; `tests/test_generated_c.py` alone
 compiles/runs generated C as test tooling.

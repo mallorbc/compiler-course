@@ -112,9 +112,40 @@ bool is_ready_type(const value_shape &shape)
 bool is_resolved_value_shape(const value_shape &shape)
 {
     return (shape.element_type == TYPE_INT || shape.element_type == TYPE_FLOAT ||
-            shape.element_type == TYPE_STRING || shape.element_type == TYPE_BOOL) &&
+           shape.element_type == TYPE_STRING || shape.element_type == TYPE_BOOL) &&
            ((!shape.is_array && shape.array_upper_bound == -1) ||
             (shape.is_array && shape.array_upper_bound >= 0));
+}
+
+bool infer_unary_result_shape(UnaryOp operation, const value_shape &operand,
+                              value_shape &result)
+{
+    if (!is_resolved_value_shape(operand) ||
+        !valid_unary(operation, operand.element_type))
+    {
+        return false;
+    }
+    result = operand;
+    return true;
+}
+
+bool infer_binary_result_shape(BinaryOp operation, const value_shape &left,
+                               const value_shape &right, value_shape &result)
+{
+    if (!is_resolved_value_shape(left) || !is_resolved_value_shape(right) ||
+        left.element_type != right.element_type ||
+        (left.is_array && right.is_array &&
+         left.array_upper_bound != right.array_upper_bound) ||
+        !valid_binary(operation, left.element_type))
+    {
+        return false;
+    }
+    result = left.is_array ? left : right;
+    if (binary_returns_bool(operation))
+    {
+        result.element_type = TYPE_BOOL;
+    }
+    return true;
 }
 
 bool is_program_result_shape(const value_shape &shape)
@@ -708,9 +739,11 @@ VerificationResult verify_module(const Module &module)
                 else if (const Unary *unary = std::get_if<Unary>(&instruction))
                 {
                     const Value *operand = value_for(unary->operand, block_index, instruction_index);
-                    if (operand == NULL || function.values[unary->result.index].type != operand->type ||
-                        operand->type.is_array ||
-                        !valid_unary(unary->operation, operand->type.element_type))
+                    value_shape expected_result;
+                    if (operand == NULL ||
+                        !infer_unary_result_shape(unary->operation, operand->type,
+                                                  expected_result) ||
+                        function.values[unary->result.index].type != expected_result)
                     {
                         return failure("invalid unary instruction");
                     }
@@ -719,13 +752,11 @@ VerificationResult verify_module(const Module &module)
                 {
                     const Value *left = value_for(binary->left, block_index, instruction_index);
                     const Value *right = value_for(binary->right, block_index, instruction_index);
-                    const value_shape expected_result = left == NULL ? value_shape() :
-                        (binary_returns_bool(binary->operation) ?
-                             value_shape{TYPE_BOOL, false, -1} : left->type);
-                    if (left == NULL || right == NULL || left->type != right->type ||
-                        left->type.is_array ||
-                        function.values[binary->result.index].type != expected_result ||
-                        !valid_binary(binary->operation, left->type.element_type))
+                    value_shape expected_result;
+                    if (left == NULL || right == NULL ||
+                        !infer_binary_result_shape(binary->operation, left->type, right->type,
+                                                   expected_result) ||
+                        function.values[binary->result.index].type != expected_result)
                     {
                         return failure("invalid binary instruction");
                     }

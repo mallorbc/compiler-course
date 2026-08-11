@@ -8,43 +8,6 @@ namespace ir
 namespace
 {
 
-bool binary_returns_bool(BinaryOp operation)
-{
-    return operation == BinaryOp::Less || operation == BinaryOp::LessEqual ||
-           operation == BinaryOp::Greater || operation == BinaryOp::GreaterEqual ||
-           operation == BinaryOp::Equal || operation == BinaryOp::NotEqual;
-}
-
-bool valid_unary(UnaryOp operation, data_types type)
-{
-    return (operation == UnaryOp::Negate && (type == TYPE_INT || type == TYPE_FLOAT)) ||
-           (operation == UnaryOp::Not && (type == TYPE_INT || type == TYPE_BOOL));
-}
-
-bool valid_binary(BinaryOp operation, data_types type)
-{
-    switch (operation)
-    {
-    case BinaryOp::Add:
-    case BinaryOp::Subtract:
-    case BinaryOp::Multiply:
-    case BinaryOp::Divide:
-        return type == TYPE_INT || type == TYPE_FLOAT;
-    case BinaryOp::And:
-    case BinaryOp::Or:
-        return type == TYPE_INT || type == TYPE_BOOL;
-    case BinaryOp::Less:
-    case BinaryOp::LessEqual:
-    case BinaryOp::Greater:
-    case BinaryOp::GreaterEqual:
-        return type == TYPE_INT || type == TYPE_FLOAT || type == TYPE_BOOL;
-    case BinaryOp::Equal:
-    case BinaryOp::NotEqual:
-        return type != TYPE_NONE;
-    }
-    return false;
-}
-
 bool cast_matches(CastOp operation, const value_shape &source, value_shape &target)
 {
     if (!is_resolved_value_shape(source))
@@ -705,13 +668,9 @@ ValueId IRBuilder::emit_unary(UnaryOp operation, ValueId operand)
         return ValueId();
     }
     const Value *source = value_for_id(operand);
-    if (source != NULL && source->type.is_array)
-    {
-        mark_unsupported("array unary expressions are deferred");
-        return ValueId();
-    }
-    if (source == NULL || !is_ready_type(source->type) ||
-        !valid_unary(operation, source->type.element_type))
+    value_shape result_type;
+    if (source == NULL ||
+        !infer_unary_result_shape(operation, source->type, result_type))
     {
         mark_invalid("unary operand is invalid");
         return ValueId();
@@ -722,7 +681,7 @@ ValueId IRBuilder::emit_unary(UnaryOp operation, ValueId operand)
         mark_unsupported("post-return statements need control-flow lowering");
         return ValueId();
     }
-    ValueId result = append_value(source->type, ValueLocation::Unary);
+    ValueId result = append_value(result_type, ValueLocation::Unary);
     if (!result.valid())
     {
         return ValueId();
@@ -739,23 +698,12 @@ ValueId IRBuilder::emit_binary(BinaryOp operation, ValueId left, ValueId right)
     }
     const Value *left_value = value_for_id(left);
     const Value *right_value = value_for_id(right);
-    if (left_value != NULL && right_value != NULL &&
-        (left_value->type.is_array || right_value->type.is_array))
-    {
-        mark_unsupported("array binary expressions are deferred");
-        return ValueId();
-    }
+    value_shape result_type;
     if (left_value == NULL || right_value == NULL ||
-        left_value->type != right_value->type ||
-        !valid_binary(operation, left_value->type.element_type))
+        !infer_binary_result_shape(operation, left_value->type, right_value->type, result_type))
     {
         mark_invalid("binary operands are invalid or mixed");
         return ValueId();
-    }
-    value_shape result_type = left_value->type;
-    if (binary_returns_bool(operation))
-    {
-        result_type.element_type = TYPE_BOOL;
     }
     BasicBlock *block = current_block_mut();
     if (block == NULL || !std::holds_alternative<std::monostate>(block->terminator))

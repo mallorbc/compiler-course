@@ -2,9 +2,10 @@
 
 Stage 6D1 carries the Stage 2E inclusive array shape through typed IR and the
 restricted-C word machine.  It is deliberately the representation/index/copy
-slice, not the later lifted-operator slice: whole arrays can be stored, loaded,
-converted, and passed exactly by value, while array unary, binary, and
-broadcast expressions remain atomically Unsupported.
+slice, not the then-later lifted-operator slice: whole arrays can be stored,
+loaded, converted, and passed exactly by value. At the Stage 6D1 boundary,
+array unary, binary, and broadcast expressions remained atomically Unsupported;
+Stage 6D2 now lowers that bounded expression slice.
 
 The canonical resolved-value-shape predicate accepts either a scalar with the
 sentinel bound `-1` or an array with an inclusive nonnegative upper bound.
@@ -59,5 +60,6 @@ expanded frame width.  Nonarray generated C remains byte-identical.
 access.  `recursiveFib.src` also lowers, but its existing `Sub` procedure
 subtracts from an unassigned zero-initialized local, makes the recursive input
 negative, and consequently reaches the ordinary frame-capacity exit; that is
-source behavior, not a missing array operation.  Lifted array unary/binary and
-broadcast lowering remains the explicit Stage 6D2 boundary.
+source behavior, not a missing array operation. Stage 6D2 subsequently adds
+lifted unary/binary operations and scalar broadcast without changing this
+representation, checked-index, or exact-call contract.

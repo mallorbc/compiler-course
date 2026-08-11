@@ -90,24 +90,27 @@ bool is_relational_operation(semantic_operator operation)
            operation == SEM_EQUAL || operation == SEM_NOT_EQUAL;
 }
 
-//Binary semantic checking decides whether a mixed scalar expression is legal.
-//This helper mirrors only the corresponding IR promotion rule: it never
-//converts arrays, unresolved shapes, logical operands, or exact operands.
-bool promote_scalar_binary_operands(ir::IRBuilder *builder, semantic_operator operation,
-                                    const value_shape &left_shape,
-                                    const value_shape &right_shape,
-                                    ir::ValueId &left, ir::ValueId &right)
+//Binary semantic checking owns the source-language shape and type matrix.  This
+//helper mirrors only its explicit operand promotions while preserving each
+//operand's scalar/aggregate shape for broadcasting and elementwise lowering.
+bool promote_binary_operands(ir::IRBuilder *builder, semantic_operator operation,
+                             const value_shape &left_shape,
+                             const value_shape &right_shape,
+                             ir::ValueId &left, ir::ValueId &right)
 {
     if (builder == NULL || !left.valid() || !right.valid())
     {
         return false;
     }
-    if (!ir::is_ready_type(left_shape) || !ir::is_ready_type(right_shape))
+    if (!ir::is_resolved_value_shape(left_shape) ||
+        !ir::is_resolved_value_shape(right_shape) ||
+        (left_shape.is_array && right_shape.is_array &&
+         left_shape.array_upper_bound != right_shape.array_upper_bound))
     {
-        builder->mark_unsupported("array or unresolved binary expression");
+        builder->mark_unsupported("unresolved or mismatched binary expression shape");
         return false;
     }
-    if (left_shape == right_shape)
+    if (left_shape.element_type == right_shape.element_type)
     {
         return true;
     }
@@ -138,7 +141,7 @@ bool promote_scalar_binary_operands(ir::IRBuilder *builder, semantic_operator op
         }
         return left.valid() && right.valid();
     }
-    builder->mark_unsupported("mixed or array binary expression");
+    builder->mark_unsupported("mixed binary expression has no lowering promotion");
     return false;
 }
 
@@ -2328,14 +2331,14 @@ lowered_expression parser::parse_expression()
             if (checked.semantic_valid && ir_builder != NULL && expression_parse.value.valid())
             {
                 const value_shape input_shape = shape_of(expression_parse.semantics.resolved_token);
-                if (ir::is_ready_type(input_shape))
+                if (ir::is_resolved_value_shape(input_shape))
                 {
                     expression_parse.value = ir_builder->emit_unary(ir_unary_operation(SEM_NOT),
                                                                       expression_parse.value);
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("array or unresolved unary expression");
+                    ir_builder->mark_unsupported("unresolved unary expression");
                     expression_parse.value = ir::ValueId();
                 }
             }
@@ -2382,15 +2385,15 @@ lowered_expression parser::parse_expression()
             expression_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
-                                                   expression_parse.value, right_parse.value))
+                if (promote_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                            expression_parse.value, right_parse.value))
                 {
                     expression_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), expression_parse.value, right_parse.value);
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    ir_builder->mark_unsupported("mixed binary expression has no lowering");
                     expression_parse.value = ir::ValueId();
                 }
             }
@@ -2456,15 +2459,15 @@ lowered_expression parser::parse_arithOp()
             arithop_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
-                                                   arithop_parse.value, right_parse.value))
+                if (promote_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                            arithop_parse.value, right_parse.value))
                 {
                     arithop_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), arithop_parse.value, right_parse.value);
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    ir_builder->mark_unsupported("mixed binary expression has no lowering");
                     arithop_parse.value = ir::ValueId();
                 }
             }
@@ -2618,15 +2621,15 @@ lowered_expression parser::parse_relation()
             relation_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
-                                                   relation_parse.value, right_parse.value))
+                if (promote_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                            relation_parse.value, right_parse.value))
                 {
                     relation_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), relation_parse.value, right_parse.value);
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    ir_builder->mark_unsupported("mixed binary expression has no lowering");
                     relation_parse.value = ir::ValueId();
                 }
             }
@@ -2703,15 +2706,15 @@ lowered_expression parser::parse_term()
             term_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
-                                                   term_parse.value, right_parse.value))
+                if (promote_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                            term_parse.value, right_parse.value))
                 {
                     term_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), term_parse.value, right_parse.value);
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("mixed or array binary expression");
+                    ir_builder->mark_unsupported("mixed binary expression has no lowering");
                     term_parse.value = ir::ValueId();
                 }
             }

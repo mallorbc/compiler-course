@@ -896,3 +896,139 @@ TEST_CASE("Stage 6D1 aggregate layout expands spans after the String pool atomic
     CHECK(rejected.text.empty());
     CHECK(rejected.links.empty());
 }
+
+TEST_CASE("Stage 6D2 lifted loops are compact, dependency exact, and verifier atomic")
+{
+    ir::IRBuilder integers;
+    REQUIRE(integers.register_program(SymbolRef{0, "integer_lift"},
+                                      "integer_lift").valid());
+    integers.seed_external_builtins();
+    const ir::StorageId integer_source = integers.register_storage(
+        SymbolRef{0, "source"}, value_shape{TYPE_INT, true, 1000},
+        ir::StorageKind::Global);
+    const ir::StorageId integer_result = integers.register_storage(
+        SymbolRef{0, "result"}, value_shape{TYPE_INT, true, 1000},
+        ir::StorageKind::Global);
+    const ir::ValueId integer_values = integers.emit_load(integer_source);
+    const ir::ValueId one = integers.emit_constant(scalar(TYPE_INT), 1);
+    const ir::ValueId added = integers.emit_binary(ir::BinaryOp::Add, integer_values, one);
+    const ir::ValueId negated = integers.emit_unary(ir::UnaryOp::Negate, added);
+    REQUIRE(integer_values.valid());
+    REQUIRE(added.valid());
+    REQUIRE(negated.valid());
+    REQUIRE(integers.emit_store(integer_result, negated));
+    REQUIRE(integers.emit_halt());
+    integers.finalize(true);
+    REQUIRE(integers.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult integer_c = RestrictedCEmitter().emit(integers.module());
+    REQUIRE(integer_c.succeeded());
+    CHECK(integer_c.links.empty());
+    CHECK(integer_c.text.size() < 20000);
+    CHECK(integer_c.text.find("for (") == std::string::npos);
+    CHECK(integer_c.text.find("while (") == std::string::npos);
+    CHECK(integer_c.text.find("L_f0_s0:") == std::string::npos);
+    CHECK(integer_c.text.find("static int32_t R_") == std::string::npos);
+
+    ir::IRBuilder floats;
+    REQUIRE(floats.register_program(SymbolRef{0, "float_compare"},
+                                    "float_compare").valid());
+    floats.seed_external_builtins();
+    const ir::StorageId float_source = floats.register_storage(
+        SymbolRef{0, "source"}, value_shape{TYPE_FLOAT, true, 1},
+        ir::StorageKind::Global);
+    const ir::StorageId float_result = floats.register_storage(
+        SymbolRef{0, "result"}, value_shape{TYPE_BOOL, true, 1},
+        ir::StorageKind::Global);
+    const ir::ValueId float_values = floats.emit_load(float_source);
+    const ir::ValueId zero = floats.emit_constant(scalar(TYPE_FLOAT), 0.0F);
+    const ir::ValueId compared =
+        floats.emit_binary(ir::BinaryOp::Less, float_values, zero);
+    REQUIRE(compared.valid());
+    REQUIRE(floats.emit_store(float_result, compared));
+    REQUIRE(floats.emit_halt());
+    floats.finalize(true);
+    REQUIRE(floats.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult float_c = RestrictedCEmitter().emit(floats.module());
+    REQUIRE(float_c.succeeded());
+    CHECK(float_c.text.find("R_word_f32") != std::string::npos);
+    CHECK(float_c.text.find("R_f32_word") == std::string::npos);
+    CHECK(float_c.text.find("L_f0_s0:") == std::string::npos);
+
+    ir::IRBuilder strings;
+    REQUIRE(strings.register_program(SymbolRef{0, "string_compare"},
+                                     "string_compare").valid());
+    strings.seed_external_builtins();
+    const ir::StorageId string_source = strings.register_storage(
+        SymbolRef{0, "source"}, value_shape{TYPE_STRING, true, 0},
+        ir::StorageKind::Global);
+    const ir::StorageId string_result = strings.register_storage(
+        SymbolRef{0, "result"}, value_shape{TYPE_BOOL, true, 0},
+        ir::StorageKind::Global);
+    const ir::ValueId string_values = strings.emit_load(string_source);
+    const ir::ValueId text = strings.emit_constant(scalar(TYPE_STRING), std::string("x"));
+    const ir::ValueId equal =
+        strings.emit_binary(ir::BinaryOp::Equal, string_values, text);
+    REQUIRE(equal.valid());
+    REQUIRE(strings.emit_store(string_result, equal));
+    REQUIRE(strings.emit_halt());
+    strings.finalize(true);
+    REQUIRE(strings.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult string_c = RestrictedCEmitter().emit(strings.module());
+    REQUIRE(string_c.succeeded());
+    CHECK(string_c.text.find("R_str_eq") != std::string::npos);
+    CHECK(string_c.text.find("#include <stdio.h>") == std::string::npos);
+    CHECK(string_c.text.find("L_f0_s0:") == std::string::npos);
+
+    ir::Module malformed_string = strings.module();
+    ir::Binary *string_binary = std::get_if<ir::Binary>(
+        &malformed_string.functions[0].blocks[0].instructions[2]);
+    REQUIRE(string_binary != NULL);
+    string_binary->operation = ir::BinaryOp::Add;
+    const RestrictedCResult rejected_string =
+        RestrictedCEmitter().emit(malformed_string);
+    CHECK(rejected_string.status == RestrictedCStatus::InvalidIR);
+    CHECK(rejected_string.text.empty());
+    CHECK(rejected_string.links.empty());
+
+    ir::Module malformed = integers.module();
+    malformed.functions[0].values[added.index].type.array_upper_bound = 999;
+    const RestrictedCResult rejected = RestrictedCEmitter().emit(malformed);
+    CHECK(rejected.status == RestrictedCStatus::InvalidIR);
+    CHECK(rejected.text.empty());
+    CHECK(rejected.links.empty());
+
+    ir::IRBuilder dead;
+    REQUIRE(dead.register_program(SymbolRef{0, "dead_lift"}, "dead_lift").valid());
+    dead.seed_external_builtins();
+    const ir::FunctionId hidden = dead.register_procedure(
+        SymbolRef{0, "hidden"}, "hidden", scalar(TYPE_INT), {});
+    REQUIRE(hidden.valid());
+    REQUIRE(dead.enter_function(hidden));
+    const ir::StorageId hidden_floats = dead.register_storage(
+        SymbolRef{1, "values"}, value_shape{TYPE_FLOAT, true, 1},
+        ir::StorageKind::Local);
+    const ir::StorageId hidden_strings = dead.register_storage(
+        SymbolRef{1, "strings"}, value_shape{TYPE_STRING, true, 1},
+        ir::StorageKind::Local);
+    const ir::ValueId hidden_values = dead.emit_load(hidden_floats);
+    REQUIRE(dead.emit_unary(ir::UnaryOp::Negate, hidden_values).valid());
+    const ir::ValueId hidden_texts = dead.emit_load(hidden_strings);
+    const ir::ValueId hidden_literal =
+        dead.emit_constant(scalar(TYPE_STRING), std::string("dead"));
+    REQUIRE(dead.emit_binary(ir::BinaryOp::Equal, hidden_texts,
+                             hidden_literal).valid());
+    const ir::ValueId hidden_return = dead.emit_constant(scalar(TYPE_INT), 0);
+    REQUIRE(dead.emit_return(hidden_return));
+    REQUIRE(dead.leave_function());
+    REQUIRE(dead.emit_halt());
+    dead.finalize(true);
+    REQUIRE(dead.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult dead_c = RestrictedCEmitter().emit(dead.module());
+    REQUIRE(dead_c.succeeded());
+    CHECK(dead_c.links.empty());
+    CHECK(dead_c.text.find("R_word_f32") == std::string::npos);
+    CHECK(dead_c.text.find("R_f32_word") == std::string::npos);
+    CHECK(dead_c.text.find("R_str_eq") == std::string::npos);
+    CHECK(dead_c.text.find("STRING_EMPTY_HANDLE") == std::string::npos);
+    CHECK(dead_c.text.find("L_f10_") == std::string::npos);
+}

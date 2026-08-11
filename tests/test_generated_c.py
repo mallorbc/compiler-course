@@ -36,13 +36,18 @@ def check(condition: bool, message: str) -> None:
 
 
 def check_flat_array_c(generated: str, fixture: str) -> None:
-    check(not re.search(r"MM\[[^\n;]*\]\s*=\s*MM\[", generated),
-          f"{fixture}: direct MM-to-MM assignment")
-    check(not re.search(r"\b[A-Za-z_]\w*\([^;\n]*MM\[", generated),
+    main_offset = generated.find("int main(void)")
+    check(main_offset != -1, f"{fixture}: generated C has no main")
+    user_generated = generated[main_offset:]
+    direct_store = re.search(r"MM\[[^\n;]*\]\s*=\s*MM\[", user_generated)
+    check(direct_store is None,
+          f"{fixture}: direct MM-to-MM assignment: "
+          f"{direct_store.group(0) if direct_store is not None else ''}")
+    check(not re.search(r"\b[A-Za-z_]\w*\([^;\n]*MM\[", user_generated),
           f"{fixture}: helper receives a direct MM operand")
-    check(not re.search(r"\bif\s*\([^\n)]*MM\[", generated),
+    check(not re.search(r"\bif\s*\([^\n)]*MM\[", user_generated),
           f"{fixture}: branch consumes MM directly")
-    for line in generated.splitlines():
+    for line in user_generated.splitlines():
         stripped = line.strip()
         if " = " not in stripped:
             continue
@@ -1910,6 +1915,365 @@ def main() -> int:
             recursive_frame_output, "", expected_returncode=1, timeout_sec=10.0
         )
 
+        lifted_only_source = root / "stage6d2-lifted-only.src"
+        lifted_only_output = root / "stage6d2-lifted-only.c"
+        lifted_only_source.write_text(
+            "program Stage6D2LiftedOnly is\n"
+            "variable left : integer[2];\n"
+            "variable right : integer[2];\n"
+            "variable result : integer[2];\n"
+            "begin\n"
+            "    result := left + right * 2;\n"
+            "    result := -result;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_only_emit = run_compiler(
+            "--emit-c", str(lifted_only_output), str(lifted_only_source)
+        )
+        check(lifted_only_emit.returncode == 0,
+              f"Stage6D2 lifted-only emit failed: {lifted_only_emit.stderr!r}")
+        lifted_only_c = lifted_only_output.read_text(encoding="utf-8")
+        check("L_f0_s0:" not in lifted_only_c,
+              "Stage6D2 lifted-only program emitted an unreferenced failure label")
+        check("for (" not in lifted_only_c and "while (" not in lifted_only_c,
+              "Stage6D2 lifted-only program emitted a C loop")
+        check_flat_array_c(lifted_only_c, "lifted-only arrays")
+        strict_c11_syntax_check(lifted_only_output)
+        strict_c11_compile_and_run(lifted_only_output, "")
+
+        lifted_matrix_source = root / "stage6d2-lifted-matrix.src"
+        lifted_matrix_output = root / "stage6d2-lifted-matrix.c"
+        lifted_matrix_source.write_text(
+            "program Stage6D2LiftedMatrix is\n"
+            "variable ints : integer[2];\n"
+            "variable other : integer[2];\n"
+            "variable out : integer[2];\n"
+            "variable floats : float[2];\n"
+            "variable float_other : float[2];\n"
+            "variable float_out : float[2];\n"
+            "variable bools : bool[2];\n"
+            "variable bool_other : bool[2];\n"
+            "variable relations : bool[2];\n"
+            "variable strings : string[2];\n"
+            "variable text_other : string[2];\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    ints[0] := 10;\n"
+            "    ints[1] := -2147483647 - 1;\n"
+            "    ints[2] := 6;\n"
+            "    other[0] := 3;\n"
+            "    other[1] := -1;\n"
+            "    other[2] := 2;\n"
+            "    out := ints + other;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := ints - 2;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := 20 - ints;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := ints * other;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := ints / other;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    printed := putInteger(out[1]);\n"
+            "    printed := putInteger(out[2]);\n"
+            "    out := not ints;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := -ints;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := (ints + 1) * 2;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := ints & 6;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := 1 | ints;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    out := ints + 1;\n"
+            "    ints[0] := 99;\n"
+            "    printed := putInteger(out[0]);\n"
+            "    ints := ints + 1;\n"
+            "    printed := putInteger(ints[0]);\n"
+            "    relations := ints < other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := ints <= other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := ints > other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := ints >= other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := ints == other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := ints != other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    bools[0] := true;\n"
+            "    bools[1] := false;\n"
+            "    bools[2] := true;\n"
+            "    bool_other[0] := false;\n"
+            "    bool_other[1] := true;\n"
+            "    bool_other[2] := true;\n"
+            "    relations := not bools;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := bools & bool_other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := bools | bool_other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := bools < true;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := bools == true;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := bools == ints;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    floats[0] := 1.5;\n"
+            "    floats[1] := 0.0;\n"
+            "    floats[2] := -0.0;\n"
+            "    float_other[0] := 2.0;\n"
+            "    float_other[1] := 0.0;\n"
+            "    float_other[2] := 0.0;\n"
+            "    float_out := floats + float_other;\n"
+            "    printed := putFloat(float_out[0]);\n"
+            "    float_out := 2.0 - floats;\n"
+            "    printed := putFloat(float_out[0]);\n"
+            "    float_out := floats * 2.0;\n"
+            "    printed := putFloat(float_out[0]);\n"
+            "    float_out := floats / 2.0;\n"
+            "    printed := putFloat(float_out[0]);\n"
+            "    float_out := -floats;\n"
+            "    printed := putFloat(float_out[0]);\n"
+            "    relations := floats < float_other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    relations := floats == float_other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    float_out := float_other / float_other;\n"
+            "    relations := float_out == float_out;\n"
+            "    printed := putBool(relations[1]);\n"
+            "    relations := float_out != float_out;\n"
+            "    printed := putBool(relations[1]);\n"
+            "    strings[0] := getString();\n"
+            "    strings[1] := \"same\";\n"
+            "    strings[2] := \"other\";\n"
+            "    text_other[0] := \"same\";\n"
+            "    text_other[1] := \"different\";\n"
+            "    text_other[2] := \"other\";\n"
+            "    relations := strings == text_other;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    printed := putBool(relations[1]);\n"
+            "    printed := putBool(relations[2]);\n"
+            "    relations := strings == \"same\";\n"
+            "    printed := putBool(relations[0]);\n"
+            "    printed := putBool(relations[1]);\n"
+            "    printed := putBool(relations[2]);\n"
+            "    relations := \"same\" != strings;\n"
+            "    printed := putBool(relations[0]);\n"
+            "    printed := putBool(relations[2]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_matrix_emit = run_compiler(
+            "--emit-c", str(lifted_matrix_output), str(lifted_matrix_source)
+        )
+        check(lifted_matrix_emit.returncode == 0,
+              f"Stage6D2 lifted matrix emit failed: {lifted_matrix_emit.stdout!r} "
+              f"{lifted_matrix_emit.stderr!r}")
+        lifted_matrix_c = lifted_matrix_output.read_text(encoding="utf-8")
+        check_flat_array_c(lifted_matrix_c, "lifted matrix")
+        check("R_str_eq" in lifted_matrix_c and "R_word_f32" in lifted_matrix_c and
+              "R_f32_word" in lifted_matrix_c,
+              "Stage6D2 lifted matrix omitted reachable typed helpers")
+        strict_c11_compile_and_run(
+            lifted_matrix_output,
+            "13\n8\n10\n30\n3\n-2147483648\n3\n-11\n-10\n22\n2\n11\n11\n100\n"
+            "false\nfalse\ntrue\ntrue\nfalse\ntrue\n"
+            "false\nfalse\ntrue\nfalse\ntrue\nfalse\n"
+            "3.5\n0.5\n3\n0.75\n-1.5\ntrue\nfalse\nfalse\ntrue\n"
+            "true\nfalse\ntrue\ntrue\ntrue\nfalse\nfalse\ntrue\n",
+            stdin_text="same\n",
+        )
+
+        lifted_order_source = root / "stage6d2-lifted-order.src"
+        lifted_order_output = root / "stage6d2-lifted-order.c"
+        lifted_order_source.write_text(
+            "program Stage6D2LiftedOrder is\n"
+            "variable source : integer[2];\n"
+            "variable destination : integer[2];\n"
+            "variable counter : integer;\n"
+            "variable index : integer;\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure mutate : integer()\n"
+            "begin\n"
+            "    counter := counter + 1;\n"
+            "    source[0] := source[0] + 40;\n"
+            "    return counter * 10;\n"
+            "end procedure;\n"
+            "procedure recurse : integer(variable input : integer[2], variable n : integer)\n"
+            "variable adjusted : integer[2];\n"
+            "begin\n"
+            "    adjusted := input + n;\n"
+            "    if (n == 0) then\n"
+            "        return adjusted[0];\n"
+            "    else\n"
+            "        return recurse(adjusted, n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    source[0] := 1;\n"
+            "    source[1] := 2;\n"
+            "    source[2] := 3;\n"
+            "    counter := 0;\n"
+            "    destination := source + mutate();\n"
+            "    printed := putInteger(destination[0]);\n"
+            "    printed := putInteger(source[0]);\n"
+            "    printed := putInteger(counter);\n"
+            "    destination := mutate() + source;\n"
+            "    printed := putInteger(destination[0]);\n"
+            "    printed := putInteger(source[0]);\n"
+            "    printed := putInteger(counter);\n"
+            "    source := source + 1;\n"
+            "    printed := putInteger(source[0]);\n"
+            "    source[0] := 1;\n"
+            "    answer := recurse(source, 3);\n"
+            "    printed := putInteger(answer);\n"
+            "    printed := putInteger(source[0]);\n"
+            "    for (index := 0; index < 3)\n"
+            "        destination := source + index;\n"
+            "        printed := putInteger(destination[0]);\n"
+            "        index := index + 1;\n"
+            "    end for;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_order_emit = run_compiler(
+            "--emit-c", str(lifted_order_output), str(lifted_order_source)
+        )
+        check(lifted_order_emit.returncode == 0,
+              f"Stage6D2 order/recursion emit failed: {lifted_order_emit.stderr!r}")
+        lifted_order_c = lifted_order_output.read_text(encoding="utf-8")
+        check_flat_array_c(lifted_order_c, "lifted order and recursion")
+        strict_c11_compile_and_run(
+            lifted_order_output, "11\n41\n1\n101\n81\n2\n82\n7\n1\n1\n2\n3\n"
+        )
+
+        lifted_divide_source = root / "stage6d2-lifted-divide-failure.src"
+        lifted_divide_output = root / "stage6d2-lifted-divide-failure.c"
+        lifted_divide_source.write_text(
+            "program Stage6D2LiftedDivideFailure is\n"
+            "variable dividend : integer[2];\n"
+            "variable divisor : integer[2];\n"
+            "variable destination : integer[2];\n"
+            "variable printed : bool;\n"
+            "procedure side : integer()\n"
+            "begin\n"
+            "    printed := putInteger(destination[0]);\n"
+            "    return 0;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    dividend[0] := 8;\n"
+            "    dividend[1] := 8;\n"
+            "    dividend[2] := 8;\n"
+            "    divisor[0] := 2;\n"
+            "    divisor[1] := 0;\n"
+            "    divisor[2] := 2;\n"
+            "    destination[0] := 9;\n"
+            "    destination[1] := 9;\n"
+            "    destination[2] := 9;\n"
+            "    destination := dividend / (divisor + side());\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_divide_emit = run_compiler(
+            "--emit-c", str(lifted_divide_output), str(lifted_divide_source)
+        )
+        check(lifted_divide_emit.returncode == 0,
+              f"Stage6D2 divide failure emit failed: {lifted_divide_emit.stderr!r}")
+        lifted_divide_c = lifted_divide_output.read_text(encoding="utf-8")
+        check_flat_array_c(lifted_divide_c, "lifted division failure")
+        strict_c11_compile_and_run(
+            lifted_divide_output, "9\n", expected_returncode=1
+        )
+
+        lifted_compact_source = root / "stage6d2-lifted-compact.src"
+        lifted_compact_output = root / "stage6d2-lifted-compact.c"
+        lifted_compact_source.write_text(
+            "program Stage6D2LiftedCompact is\n"
+            "variable source : integer[100000];\n"
+            "variable result : integer[100000];\n"
+            "begin\n"
+            "    result := source + 1;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_compact_emit = run_compiler(
+            "--emit-c", str(lifted_compact_output), str(lifted_compact_source)
+        )
+        check(lifted_compact_emit.returncode == 0,
+              f"Stage6D2 compact lift emit failed: {lifted_compact_emit.stderr!r}")
+        lifted_compact_c = lifted_compact_output.read_text(encoding="utf-8")
+        check(len(lifted_compact_c) < 20000,
+              "Stage6D2 lifted source grew proportionally with its bound")
+        check("L_f0_s0:" not in lifted_compact_c,
+              "Stage6D2 compact lift emitted an unused failure label")
+        check_flat_array_c(lifted_compact_c, "compact lifted array")
+        strict_c11_compile_and_run(lifted_compact_output, "")
+
+        lifted_capacity_source = root / "stage6d2-lifted-capacity.src"
+        lifted_capacity_output = root / "stage6d2-lifted-capacity.c"
+        lifted_capacity_source.write_text(
+            "program Stage6D2LiftedCapacity is\n"
+            "variable left : integer[4000000];\n"
+            "variable right : integer[4000000];\n"
+            "begin\n"
+            "    left := left + right;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        lifted_capacity_output.write_text("preserve lifted capacity\n", encoding="utf-8")
+        lifted_capacity_emit = run_compiler(
+            "--emit-c", str(lifted_capacity_output), str(lifted_capacity_source)
+        )
+        check(lifted_capacity_emit.returncode != 0 and
+              "codegen: unsupported" in lifted_capacity_emit.stderr,
+              "Stage6D2 over-capacity lifted temporaries were not Unsupported")
+        check(lifted_capacity_output.read_text(encoding="utf-8") ==
+              "preserve lifted capacity\n",
+              "Stage6D2 over-capacity lift replaced its output sentinel")
+
+        dead_lifted_source = root / "stage6d2-dead-lifted.src"
+        dead_lifted_output = root / "stage6d2-dead-lifted.c"
+        dead_lifted_source.write_text(
+            "program Stage6D2DeadLifted is\n"
+            "variable answer : integer;\n"
+            "procedure hidden : integer()\n"
+            "variable huge : float[16777215];\n"
+            "begin\n"
+            "    huge := -huge + 1.0;\n"
+            "    return 1;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := 7;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        dead_lifted_emit = run_compiler(
+            "--emit-c", str(dead_lifted_output), str(dead_lifted_source)
+        )
+        check(dead_lifted_emit.returncode == 0,
+              f"Stage6D2 dead lifted procedure was not pruned: {dead_lifted_emit.stderr!r}")
+        dead_lifted_c = dead_lifted_output.read_text(encoding="utf-8")
+        check("L_f10_" not in dead_lifted_c and "16777216" not in dead_lifted_c and
+              "R_word_f32" not in dead_lifted_c and "R_f32_word" not in dead_lifted_c,
+              "Stage6D2 dead lift contributed labels, layout, or Float helpers")
+        strict_c11_syntax_check(dead_lifted_output)
+
+        ty8_arrays_source = REPO_ROOT / "docs/audit/probes/typechecker/ty8_valid_arrays.src"
+        ty8_arrays_output = root / "stage6d2-ty8-valid-arrays.c"
+        ty8_arrays_emit = run_compiler(
+            "--emit-c", str(ty8_arrays_output), str(ty8_arrays_source)
+        )
+        check(ty8_arrays_emit.returncode == 0,
+              f"Stage6D2 TY-8 array probe emit failed: {ty8_arrays_emit.stderr!r}")
+        ty8_arrays_c = ty8_arrays_output.read_text(encoding="utf-8")
+        check_flat_array_c(ty8_arrays_c, "TY-8 valid array probe")
+        strict_c11_compile_and_run(ty8_arrays_output, "", expected_returncode=1)
+
         hostile_output = root / "hostile ; $ [name].c"
         hostile = run_compiler("--emit-c", str(hostile_output), str(source))
         check(hostile.returncode == 0, f"hostile output path failed: {hostile.stderr!r}")
@@ -1931,23 +2295,31 @@ def main() -> int:
         check("codegen: frontend-error" in frontend.stderr, f"missing frontend codegen error: {frontend.stderr!r}")
         check(sentinel.read_text(encoding="utf-8") == "do not replace\n", "frontend error replaced sentinel")
 
-        unsupported_source = root / "unsupported.src"
-        unsupported_source.write_text(
-            "program unsupported_source is\n"
+        formerly_unsupported_source = root / "stage6d2-formerly-unsupported.src"
+        formerly_unsupported_output = root / "stage6d2-formerly-unsupported.c"
+        formerly_unsupported_source.write_text(
+            "program Stage6D2FormerlyUnsupported is\n"
             "variable values : integer[0];\n"
             "begin\n"
             "    values := values + values;\n"
             "end program.\n",
             encoding="utf-8",
         )
-        unsupported = run_compiler("--emit-c", str(sentinel), str(unsupported_source))
-        check(unsupported.returncode != 0, "unsupported control flow unexpectedly emitted C")
-        check("codegen: unsupported" in unsupported.stderr, f"missing unsupported error: {unsupported.stderr!r}")
-        check(sentinel.read_text(encoding="utf-8") == "do not replace\n", "unsupported input replaced sentinel")
+        formerly_unsupported = run_compiler(
+            "--emit-c", str(formerly_unsupported_output), str(formerly_unsupported_source)
+        )
+        check(formerly_unsupported.returncode == 0,
+              f"Stage6D2 formerly unsupported lift failed: {formerly_unsupported.stderr!r}")
+        formerly_unsupported_c = formerly_unsupported_output.read_text(encoding="utf-8")
+        check("L_f0_s0:" not in formerly_unsupported_c,
+              "Stage6D2 formerly unsupported lift emitted a failure label")
+        check_flat_array_c(formerly_unsupported_c, "formerly unsupported lift")
+        strict_c11_compile_and_run(formerly_unsupported_output, "")
 
-        lifted_array_source = root / "unsupported-lifted-array.src"
+        lifted_array_source = root / "stage6d2-lifted-array.src"
+        lifted_array_output = root / "stage6d2-lifted-array.c"
         lifted_array_source.write_text(
-            "program UnsupportedLiftedArray is\n"
+            "program Stage6D2LiftedArray is\n"
             "variable values : integer[1];\n"
             "variable other : integer[1];\n"
             "begin\n"
@@ -1956,13 +2328,13 @@ def main() -> int:
             encoding="utf-8",
         )
         lifted_array = run_compiler(
-            "--emit-c", str(sentinel), str(lifted_array_source)
+            "--emit-c", str(lifted_array_output), str(lifted_array_source)
         )
-        check(lifted_array.returncode != 0, "lifted array operation unexpectedly emitted C")
-        check("codegen: unsupported" in lifted_array.stderr,
-              f"lifted array operation lacked unsupported status: {lifted_array.stderr!r}")
-        check(sentinel.read_text(encoding="utf-8") == "do not replace\n",
-              "lifted array operation replaced the output sentinel")
+        check(lifted_array.returncode == 0,
+              f"Stage6D2 lifted array failed: {lifted_array.stderr!r}")
+        lifted_array_c = lifted_array_output.read_text(encoding="utf-8")
+        check_flat_array_c(lifted_array_c, "Stage6D2 lifted array")
+        strict_c11_compile_and_run(lifted_array_output, "")
 
         output_directory = root / "output-directory"
         output_directory.mkdir()

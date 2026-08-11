@@ -1899,8 +1899,63 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 }
                 else if (const ir::Unary *unary = std::get_if<ir::Unary>(&instruction))
                 {
+                    const value_shape result_shape =
+                        function.values[unary->result.index].type;
+                    const data_types type =
+                        function.values[unary->operand.index].type.element_type;
+                    if (result_shape.is_array)
+                    {
+                        std::size_t width = 0;
+                        (void)shape_width(result_shape, width);
+                        const std::string prefix =
+                            "L_a" + std::to_string(aggregate_loop_number++) + "_";
+                        const std::string index = register_slot(layout.temporary_a);
+                        const std::string element = register_slot(layout.temporary_b);
+                        const std::string condition = register_slot(layout.temporary_c);
+                        output << "    " << index << " = INT32_C(0);\n";
+                        output << prefix << "0:\n";
+                        output << "    " << condition << " = ((uint32_t)" << index
+                               << " < UINT32_C(" << width
+                               << ")) ? INT32_C(1) : INT32_C(0);\n";
+                        output << "    if (" << condition << ") goto " << prefix << "1;\n";
+                        output << "    goto " << prefix << "2;\n";
+                        output << prefix << "1:\n";
+                        output << "    " << element << " = "
+                               << indexed_word(value_base(function, unary->operand), index)
+                               << ";\n";
+                        output << "    " << element << " = ";
+                        if (unary->operation == ir::UnaryOp::Negate)
+                        {
+                            if (type == TYPE_FLOAT)
+                            {
+                                output << "R_f32_word(-R_word_f32(" << element << "))";
+                            }
+                            else
+                            {
+                                output << "I32_FROM_U32(UINT32_C(0) - (uint32_t)"
+                                       << element << ")";
+                            }
+                        }
+                        else if (type == TYPE_BOOL)
+                        {
+                            output << "(" << element
+                                   << " == INT32_C(0)) ? INT32_C(1) : INT32_C(0)";
+                        }
+                        else
+                        {
+                            output << "I32_FROM_U32(~(uint32_t)" << element << ")";
+                        }
+                        output << ";\n";
+                        output << "    "
+                               << indexed_word(value_base(function, unary->result), index)
+                               << " = " << element << ";\n";
+                        output << "    " << index << " = I32_FROM_U32((uint32_t)"
+                               << index << " + UINT32_C(1));\n";
+                        output << "    goto " << prefix << "0;\n";
+                        output << prefix << "2:\n";
+                        continue;
+                    }
                     const std::string operand = value_read(function, unary->operand);
-                    const data_types type = function.values[unary->operand.index].type.element_type;
                     const std::string result = procedure_function ? register_slot(layout.temporary_b) :
                                                                     value_write(function, unary->result);
                     if (procedure_function)
@@ -1937,13 +1992,83 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 }
                 else if (const ir::Binary *binary = std::get_if<ir::Binary>(&instruction))
                 {
+                    const value_shape left_shape = function.values[binary->left.index].type;
+                    const value_shape right_shape = function.values[binary->right.index].type;
+                    const value_shape result_shape = function.values[binary->result.index].type;
+                    const data_types type = left_shape.element_type;
+                    if (result_shape.is_array)
+                    {
+                        std::size_t width = 0;
+                        (void)shape_width(result_shape, width);
+                        const std::string prefix =
+                            "L_a" + std::to_string(aggregate_loop_number++) + "_";
+                        const std::string index = register_slot(layout.temporary_a);
+                        const std::string left = register_slot(layout.temporary_b);
+                        const std::string right = register_slot(layout.temporary_c);
+                        output << "    " << index << " = INT32_C(0);\n";
+                        output << prefix << "0:\n";
+                        output << "    " << right << " = ((uint32_t)" << index
+                               << " < UINT32_C(" << width
+                               << ")) ? INT32_C(1) : INT32_C(0);\n";
+                        output << "    if (" << right << ") goto " << prefix << "1;\n";
+                        output << "    goto " << prefix << "2;\n";
+                        output << prefix << "1:\n";
+                        output << "    " << left << " = "
+                               << (left_shape.is_array ?
+                                       indexed_word(value_base(function, binary->left), index) :
+                                       value_read(function, binary->left))
+                               << ";\n";
+                        output << "    " << right << " = "
+                               << (right_shape.is_array ?
+                                       indexed_word(value_base(function, binary->right), index) :
+                                       value_read(function, binary->right))
+                               << ";\n";
+                        if (binary->operation == ir::BinaryOp::Divide && type == TYPE_INT)
+                        {
+                            const std::string divide_prefix =
+                                "L_f" + std::to_string(function.id.index) + "_d" +
+                                std::to_string(division_number++) + "_";
+                            output << "    " << register_slot(layout.division_zero) << " = ("
+                                   << right << " == INT32_C(0)) ? INT32_C(1) : INT32_C(0);\n";
+                            output << "    if (" << register_slot(layout.division_zero)
+                                   << ") goto " << divide_prefix << "0;\n";
+                            output << "    " << register_slot(layout.division_overflow)
+                                   << " = (" << left << " == INT32_MIN && " << right
+                                   << " == (-INT32_C(1))) ? INT32_C(1) : INT32_C(0);\n";
+                            output << "    if (" << register_slot(layout.division_overflow)
+                                   << ") goto " << divide_prefix << "1;\n";
+                            output << "    " << left << " = "
+                                   << binary_expression_text(binary->operation, type, left, right)
+                                   << ";\n";
+                            output << "    goto " << divide_prefix << "2;\n";
+                            output << divide_prefix << "0:\n    "
+                                   << register_slot(layout.exit)
+                                   << " = INT32_C(1);\n    goto L_f0_x0;\n";
+                            output << divide_prefix << "1:\n    " << left
+                                   << " = INT32_MIN;\n";
+                            output << divide_prefix << "2:\n";
+                        }
+                        else
+                        {
+                            output << "    " << left << " = "
+                                   << binary_expression_text(binary->operation, type, left, right)
+                                   << ";\n";
+                        }
+                        output << "    "
+                               << indexed_word(value_base(function, binary->result), index)
+                               << " = " << left << ";\n";
+                        output << "    " << index << " = I32_FROM_U32((uint32_t)"
+                               << index << " + UINT32_C(1));\n";
+                        output << "    goto " << prefix << "0;\n";
+                        output << prefix << "2:\n";
+                        continue;
+                    }
                     const std::string left = procedure_function ? register_slot(layout.temporary_a) :
                                                                    value_read(function, binary->left);
                     const std::string right = procedure_function ? register_slot(layout.temporary_b) :
                                                                     value_read(function, binary->right);
                     const std::string result = procedure_function ? register_slot(layout.temporary_c) :
                                                                      value_write(function, binary->result);
-                    const data_types type = function.values[binary->left.index].type.element_type;
                     if (procedure_function)
                     {
                         output << "    " << left << " = " << value_read(function, binary->left) << ";\n";

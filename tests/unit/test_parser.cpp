@@ -2812,7 +2812,7 @@ TEST_CASE("Stage 6C parser lowers String literals as semantic bytes")
     CHECK(payloads[2] == "two\nlines");
 }
 
-TEST_CASE("Stage 6D1 parser lowers aggregate assignment casts and defers lifted operators")
+TEST_CASE("Stage 6D1 parser lowers aggregate assignment casts")
 {
     temp_source_file fixture(
         "program array_conversions is\n"
@@ -2860,9 +2860,137 @@ TEST_CASE("Stage 6D1 parser lowers aggregate assignment casts and defers lifted 
     parser lifted(lifted_fixture.name());
     lifted_capture.restore();
     CHECK(lifted.frontend_valid());
-    CHECK_FALSE(lifted.can_generate_code());
-    CHECK(lifted.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(lifted.ir_module().functions.empty());
+    CHECK(lifted.can_generate_code());
+    CHECK(lifted.ir_status() == ir::ModuleStatus::Ready);
+    CHECK(ir::verify_module(lifted.ir_module()).valid);
+}
+
+TEST_CASE("Stage 6D2 parser preserves lifted folds, broadcasts, and promotions")
+{
+    temp_source_file fixture(
+        "program lifted_matrix is\n"
+        "variable ints : integer[1];\n"
+        "variable more : integer[1];\n"
+        "variable floats : float[1];\n"
+        "variable bools : bool[1];\n"
+        "variable strings : string[1];\n"
+        "variable scalar_int : integer;\n"
+        "variable scalar_bool : bool;\n"
+        "begin\n"
+        "    ints := -ints;\n"
+        "    ints := not ints;\n"
+        "    bools := not bools;\n"
+        "    ints := ints + more;\n"
+        "    ints := ints - scalar_int;\n"
+        "    ints := scalar_int + ints;\n"
+        "    floats := ints * floats;\n"
+        "    floats := floats / scalar_int;\n"
+        "    floats := ints + 1.0;\n"
+        "    floats := 1.0 + ints;\n"
+        "    bools := ints < floats;\n"
+        "    bools := bools == scalar_int;\n"
+        "    bools := scalar_int != bools;\n"
+        "    bools := ints == scalar_bool;\n"
+        "    bools := strings == \"x\";\n"
+        "    bools := \"x\" != strings;\n"
+        "    bools := bools & scalar_bool;\n"
+        "    bools := scalar_bool | bools;\n"
+        "    ints := ints + scalar_int + more;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(ir::verify_module(parsed.ir_module()).valid);
+
+    std::size_t aggregate_unaries = 0;
+    std::size_t aggregate_binaries = 0;
+    std::size_t int_to_float = 0;
+    std::size_t bool_to_int = 0;
+    bool saw_scalar_left = false;
+    bool saw_scalar_right = false;
+    bool saw_string_left = false;
+    bool saw_string_right = false;
+    const ir::Function &program = parsed.ir_module().functions[0];
+    for (const ir::Instruction &instruction : program.blocks[0].instructions)
+    {
+        if (const ir::Unary *unary = std::get_if<ir::Unary>(&instruction))
+        {
+            CHECK(program.values[unary->result.index].type.is_array);
+            aggregate_unaries++;
+        }
+        else if (const ir::Binary *binary = std::get_if<ir::Binary>(&instruction))
+        {
+            const value_shape left = program.values[binary->left.index].type;
+            const value_shape right = program.values[binary->right.index].type;
+            const value_shape result = program.values[binary->result.index].type;
+            CHECK(result.is_array);
+            CHECK(result.array_upper_bound == 1);
+            aggregate_binaries++;
+            saw_scalar_left = saw_scalar_left || (!left.is_array && right.is_array);
+            saw_scalar_right = saw_scalar_right || (left.is_array && !right.is_array);
+            saw_string_left = saw_string_left ||
+                              (left.element_type == TYPE_STRING && left.is_array);
+            saw_string_right = saw_string_right ||
+                               (right.element_type == TYPE_STRING && right.is_array);
+        }
+        else if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
+        {
+            int_to_float += cast->operation == ir::CastOp::IntToFloat ? 1U : 0U;
+            bool_to_int += cast->operation == ir::CastOp::BoolToInt ? 1U : 0U;
+        }
+        else if (const ir::Store *store = std::get_if<ir::Store>(&instruction))
+        {
+            CHECK(program.values[store->value.index].type.is_array);
+            const bool expression_result =
+                program.values[store->value.index].location == ir::ValueLocation::Unary ||
+                program.values[store->value.index].location == ir::ValueLocation::Binary;
+            CHECK(expression_result);
+        }
+    }
+    CHECK(aggregate_unaries == 3);
+    CHECK(aggregate_binaries == 17);
+    CHECK(int_to_float == 5);
+    CHECK(bool_to_int == 3);
+    CHECK(saw_scalar_left);
+    CHECK(saw_scalar_right);
+    CHECK(saw_string_left);
+    CHECK(saw_string_right);
+
+    temp_source_file mismatch_fixture(
+        "program mismatch is\n"
+        "variable left : integer[1];\n"
+        "variable right : integer[2];\n"
+        "begin\n"
+        "    left := left + right;\n"
+        "end program.\n");
+    captured_stdout mismatch_capture;
+    parser mismatch(mismatch_fixture.name());
+    mismatch_capture.restore();
+    CHECK_FALSE(mismatch.frontend_valid());
+    CHECK(mismatch.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(mismatch.ir_module().functions.empty());
+    CHECK(mismatch.error_reports.size() == 1);
+    CHECK(has_error(mismatch, "Array operands must have the same upper bound"));
+
+    temp_source_file string_order_fixture(
+        "program string_order is\n"
+        "variable left : string[1];\n"
+        "variable result : bool[1];\n"
+        "begin\n"
+        "    result := left < \"x\";\n"
+        "end program.\n");
+    captured_stdout string_order_capture;
+    parser string_order(string_order_fixture.name());
+    string_order_capture.restore();
+    CHECK_FALSE(string_order.frontend_valid());
+    CHECK(string_order.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(string_order.ir_module().functions.empty());
+    CHECK(string_order.error_reports.size() == 1);
+    CHECK(has_error(string_order,
+                    "Ordering relations require compatible integers, floats, or bools"));
 }
 
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")

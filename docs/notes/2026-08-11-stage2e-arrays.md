@@ -24,5 +24,6 @@ The 2024 requirement for bounds checks is deliberately not approximated with
 literal folding.  At this Stage 2E boundary every indexed access still awaited
 runtime lowering, so the historical out-of-range probe remained accepted.
 Stage 6D1 subsequently adds linear `CheckIndex`/element IR, MM spans, snapshots,
-whole copies, elementwise assignment casts, and exact by-value calls.  Lifted
-unary/binary/broadcast operations remain the separate Stage 6D2 slice.
+whole copies, elementwise assignment casts, and exact by-value calls. Stage
+6D2 now adds the separate lifted unary/binary/broadcast slice while retaining
+these bounds.

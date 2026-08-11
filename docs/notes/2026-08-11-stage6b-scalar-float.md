@@ -59,4 +59,5 @@ handles, content equality, line input, output, and the persistent downward
 String heap.  Stage 6D1 subsequently carries Float words and String handles
 through one-word-per-element array spans, elementwise assignment casts, and
 exact by-value calls while preserving the binary32 and manual-frame contracts
-above.
+above. Stage 6D2 subsequently applies the same Float helpers elementwise to
+lifted array arithmetic, division, unary negation, and IEEE relations.
