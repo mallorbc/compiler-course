@@ -1,5 +1,7 @@
 #include "RestrictedCEmitter.h"
 
+#include "BuiltinCatalog.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -80,6 +82,16 @@ const ir::Storage *storage_for(const ir::Module &module, ir::StorageId id)
     return storage.id == id ? &storage : NULL;
 }
 
+const ir::Function *function_for(const ir::Module &module, ir::FunctionId id)
+{
+    if (!id.valid() || id.index >= module.functions.size())
+    {
+        return NULL;
+    }
+    const ir::Function &function = module.functions[id.index];
+    return function.id == id ? &function : NULL;
+}
+
 std::string value_register(ir::ValueId id)
 {
     return "Reg[" + std::to_string(static_cast<std::uint64_t>(id.index) + 2U) + "u]";
@@ -102,6 +114,11 @@ struct RegisterLayout
     std::size_t division_zero = 0;
     std::size_t division_overflow = 0;
     bool has_division = false;
+};
+
+struct RuntimeRequirements
+{
+    bool put_integer = false;
 };
 
 bool make_register_layout(const ir::Function &program, RegisterLayout &layout)
@@ -147,7 +164,8 @@ std::string int32_literal(int value)
     return "INT32_C(" + std::to_string(value) + ")";
 }
 
-RestrictedCResult preflight(const ir::Module &module, const ir::Function *&program)
+RestrictedCResult preflight(const ir::Module &module, const ir::Function *&program,
+                            RuntimeRequirements &runtime)
 {
     const ir::VerificationResult verified = ir::verify_module(module);
     if (!verified.valid)
@@ -294,10 +312,42 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                                "restricted C cast is invalid");
             }
         }
-        else if (std::holds_alternative<ir::Call>(instruction))
+        else if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
         {
-            return failure(RestrictedCStatus::Unsupported,
-                           "restricted C does not yet lower calls or builtins");
+            const ir::Function *callee = function_for(module, call->callee);
+            const BuiltinSpec *put_integer = find_builtin(BuiltinId::PutInteger);
+            const ir::Value *result = value_for(*program, call->result);
+            if (callee == NULL || put_integer == NULL)
+            {
+                return failure(RestrictedCStatus::InvalidIR,
+                               "restricted C call has no canonical callee metadata");
+            }
+            const SymbolRef expected_reference{0, put_integer->spelling};
+            if (callee->kind != ir::FunctionKind::ExternalBuiltin ||
+                callee->name != put_integer->spelling || callee->symbol != expected_reference ||
+                callee->return_type != put_integer->return_shape ||
+                callee->parameter_types != put_integer->parameter_shapes)
+            {
+                return failure(RestrictedCStatus::Unsupported,
+                               "restricted C only lowers the canonical putInteger builtin");
+            }
+            if (result == NULL || result->type != put_integer->return_shape ||
+                call->arguments.size() != put_integer->parameter_shapes.size())
+            {
+                return failure(RestrictedCStatus::InvalidIR,
+                               "restricted C putInteger call has an invalid result or arity");
+            }
+            for (std::size_t argument_index = 0; argument_index < call->arguments.size();
+                 argument_index++)
+            {
+                const ir::Value *argument = value_for(*program, call->arguments[argument_index]);
+                if (argument == NULL || argument->type != put_integer->parameter_shapes[argument_index])
+                {
+                    return failure(RestrictedCStatus::InvalidIR,
+                                   "restricted C putInteger call has an invalid argument");
+                }
+            }
+            runtime.put_integer = true;
         }
         else
         {
@@ -422,7 +472,8 @@ bool is_direct_regular_or_missing(const std::filesystem::path &path, std::error_
 RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
 {
     const ir::Function *program = NULL;
-    RestrictedCResult checked = preflight(module, program);
+    RuntimeRequirements runtime;
+    RestrictedCResult checked = preflight(module, program, runtime);
     if (!checked.succeeded())
     {
         return checked;
@@ -435,7 +486,13 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
                        "restricted C register model cannot represent this many values");
     }
     std::ostringstream output;
-    output << "#include <stdint.h>\n\n";
+    output << "#include <stdint.h>\n";
+    if (runtime.put_integer)
+    {
+        output << "#include <inttypes.h>\n";
+        output << "#include <stdio.h>\n";
+    }
+    output << "\n";
     output << "#define MM_BYTES (" << RestrictedCEmitter::memory_byte_capacity() << "u)\n";
     output << "#define REGISTER_COUNT " << layout.count << "u\n\n";
     output << "#define I32_FROM_U32(value) ((value) <= UINT32_C(2147483647) ? "
@@ -443,6 +500,12 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
            << "UINT32_C(2147483648)))\n\n";
     output << "int32_t MM[MM_BYTES / sizeof(int32_t)];\n";
     output << "int32_t Reg[REGISTER_COUNT];\n\n";
+    if (runtime.put_integer)
+    {
+        output << "static int32_t R_put_i32(int32_t r0)\n{\n";
+        output << "    return printf(\"%\" PRId32 \"\\n\", r0) < 0 ? INT32_C(0) : INT32_C(1);\n";
+        output << "}\n\n";
+    }
     output << "int main(void)\n{\n";
     output << "    goto L_f0_b0;\n";
     output << "L_f0_b0:\n";
@@ -546,6 +609,11 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
                 output << value_register(cast->operand);
             }
             output << ";\n";
+        }
+        else if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
+        {
+            output << "    " << value_register(call->result) << " = R_put_i32("
+                   << value_register(call->arguments[0]) << ");\n";
         }
     }
     output << "    goto L_f0_b1;\n";

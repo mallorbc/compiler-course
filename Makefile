@@ -34,7 +34,7 @@ IR.o: IR.cpp IR.h SemanticTypes.h BuiltinCatalog.h
 IRBuilder.o: IRBuilder.cpp IRBuilder.h IR.h BuiltinCatalog.h SemanticTypes.h
 	$(CXX) -c IRBuilder.cpp $(CXXFLAGS)
 
-RestrictedCEmitter.o: RestrictedCEmitter.cpp RestrictedCEmitter.h IR.h SemanticTypes.h
+RestrictedCEmitter.o: RestrictedCEmitter.cpp RestrictedCEmitter.h IR.h SemanticTypes.h BuiltinCatalog.h
 	$(CXX) -c RestrictedCEmitter.cpp $(CXXFLAGS)
 
 

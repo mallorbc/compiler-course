@@ -72,6 +72,53 @@ def strict_c11_syntax_check(generated: Path) -> None:
     )
 
 
+def strict_c11_compile_and_run(generated: Path, expected_stdout: str) -> None:
+    c_compiler = next(
+        (candidate for candidate in ("cc", "gcc", "clang") if shutil.which(candidate)), None
+    )
+    if c_compiler is None:
+        print("SKIP test_generated_c.py: no C11 compiler available for Gate4 runtime check")
+        return
+    executable = generated.with_suffix(".native")
+    compilation = subprocess.run(
+        [
+            c_compiler,
+            "-std=c11",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-pedantic-errors",
+            str(generated),
+            "-o",
+            str(executable),
+        ],
+        cwd=REPO_ROOT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=TIMEOUT_SEC,
+        check=False,
+    )
+    check(
+        compilation.returncode == 0,
+        f"Gate4 C compilation failed: stdout={compilation.stdout!r} stderr={compilation.stderr!r}",
+    )
+    execution = subprocess.run(
+        [str(executable)],
+        cwd=REPO_ROOT,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=TIMEOUT_SEC,
+        check=False,
+    )
+    check(execution.returncode == 0, f"Gate4 executable exit was {execution.returncode}")
+    check(execution.stdout == expected_stdout, f"native stdout was {execution.stdout!r}")
+    check(execution.stderr == "", f"Gate4 stderr was {execution.stderr!r}")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="compiler_stage4b_") as temporary:
         root = Path(temporary)
@@ -115,6 +162,51 @@ def main() -> int:
         check(second.returncode == 0, f"second emit failed: {second.stderr!r}")
         check(generated == output.read_text(encoding="utf-8"), "restricted-C output is not deterministic")
         strict_c11_syntax_check(output)
+
+        gate4_source = root / "gate4.src"
+        gate4_output = root / "gate4.c"
+        gate4_source.write_text(
+            "program Gate4 is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    answer := 6 * 7;\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        gate4 = run_compiler("--emit-c", str(gate4_output), str(gate4_source))
+        check(gate4.returncode == 0, f"Gate4 emit failed: {gate4.stderr!r}")
+        gate4_c = gate4_output.read_text(encoding="utf-8")
+        check("#include <inttypes.h>" in gate4_c and "#include <stdio.h>" in gate4_c,
+              "Gate4 runtime headers are missing")
+        check("R_put_i32" in gate4_c, "Gate4 runtime helper is missing")
+        for source_identifier in ("Gate4", "answer", "printed", "putInteger"):
+            check(source_identifier not in gate4_c, f"Gate4 source name leaked: {source_identifier}")
+        strict_c11_compile_and_run(gate4_output, "42\n")
+
+        runtime_edges_source = root / "runtime-edges.src"
+        runtime_edges_output = root / "runtime-edges.c"
+        runtime_edges_source.write_text(
+            "program RuntimeEdges is\n"
+            "variable value : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    value := -5;\n"
+            "    printed := putInteger(value);\n"
+            "    value := printed;\n"
+            "    printed := putInteger(value);\n"
+            "    value := -2147483647 - 1;\n"
+            "    printed := putInteger(value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        runtime_edges = run_compiler(
+            "--emit-c", str(runtime_edges_output), str(runtime_edges_source)
+        )
+        check(runtime_edges.returncode == 0,
+              f"runtime-edge emit failed: {runtime_edges.stderr!r}")
+        strict_c11_compile_and_run(runtime_edges_output, "-5\n1\n-2147483648\n")
 
         hostile_output = root / "hostile ; $ [name].c"
         hostile = run_compiler("--emit-c", str(hostile_output), str(source))

@@ -134,10 +134,11 @@ contracts around the handwritten scanner/parser: the scanner's token stream
 (`test_scanner.cpp`), `Tolower_string`, synthesized-expression helpers, and
 parser-backed semantic cases. `test_ir.cpp` covers the project-owned Stage 4A
 IR builder, verifier, catalog, and parser seam. `test_codegen.cpp` covers the
-Stage 4B pure restricted-C emitter, while `test_generated_c.py` drives the
-explicit `--emit-c OUTPUT SOURCE` CLI and syntax-checks generated C with an
-available host C compiler (test-only; production never invokes one). `make
-test` runs the unit, CLI, golden, and generated-C layers.
+Stage 4B/4C pure restricted-C emitter, while `test_generated_c.py` drives the
+explicit `--emit-c OUTPUT SOURCE` CLI, syntax-checks generated C, and
+test-compiles/runs the Gate4 `putInteger` program with an available host C
+compiler (test-only; production never invokes one). `make test` runs the unit,
+CLI, golden, and generated-C layers.
 
 Conventions for adding unit tests:
 
