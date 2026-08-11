@@ -82,6 +82,7 @@ def strict_c11_compile_and_run(
     expected_returncode: int = 0,
     stdin_text: str = "",
     link_math: bool = False,
+    timeout_sec: float = TIMEOUT_SEC,
 ) -> None:
     c_compiler = next(
         (candidate for candidate in ("cc", "gcc", "clang") if shutil.which(candidate)), None
@@ -110,7 +111,7 @@ def strict_c11_compile_and_run(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        timeout=TIMEOUT_SEC,
+        timeout=timeout_sec,
         check=False,
     )
     check(
@@ -124,7 +125,7 @@ def strict_c11_compile_and_run(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        timeout=TIMEOUT_SEC,
+        timeout=timeout_sec,
         check=False,
     )
     check(
@@ -1194,6 +1195,313 @@ def main() -> int:
               "procedure Float comparison emitted an unused encode helper")
         strict_c11_syntax_check(procedure_comparison_output)
 
+        string_source = root / "stage6c-strings.src"
+        string_output = root / "stage6c-strings.c"
+        string_source.write_text(
+            "program Stage6CStrings is\n"
+            "variable global_text : string;\n"
+            "variable alias_text : string;\n"
+            "variable printed : bool;\n"
+            "procedure localEcho : string(variable text : string)\n"
+            "variable global_text : string;\n"
+            "begin\n"
+            "    global_text := text;\n"
+            "    return global_text;\n"
+            "end procedure;\n"
+            "procedure retain : string(variable text : string, variable n : integer)\n"
+            "begin\n"
+            "    if (n == 0) then\n"
+            "        return text;\n"
+            "    else\n"
+            "        return retain(text, n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure same : bool(variable left : string, variable right : string)\n"
+            "begin\n"
+            "    return left == right;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    printed := putString(global_text);\n"
+            "    printed := putString(\"Hello world\");\n"
+            "    if (printed) then\n"
+            "        printed := putString(\"put-ok\");\n"
+            "    end if;\n"
+            "    global_text := \"alpha\";\n"
+            "    alias_text := global_text;\n"
+            "    global_text := \"beta\";\n"
+            "    printed := putString(alias_text);\n"
+            "    printed := putString(global_text);\n"
+            "    printed := putString(localEcho(\"MiXeD\"));\n"
+            "    printed := putString(retain(\"recursive\", 3));\n"
+            "    printed := putBool(same(\"content\", \"content\"));\n"
+            "    printed := putString(\"two\nlines\");\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_emit = run_compiler("--emit-c", str(string_output), str(string_source))
+        check(string_emit.returncode == 0, f"Stage6C String emit failed: {string_emit.stderr!r}")
+        string_c = string_output.read_text(encoding="utf-8")
+        for source_identifier in (
+            "Stage6CStrings", "global_text", "alias_text", "localEcho", "retain", "same",
+            "Hello world", "MiXeD", "recursive", "content",
+        ):
+            check(source_identifier not in string_c,
+                  f"Stage6C source text leaked into generated C: {source_identifier}")
+        check("char *" not in string_c and "char*" not in string_c,
+              "Stage6C emitted a C pointer String value")
+        check(not re.search(r"R_(?:str_eq|put_str)\([^\n]*MM\[", string_c),
+              "Stage6C procedure helper received an MM operand")
+        strict_c11_compile_and_run(
+            string_output,
+            "\nHello world\nput-ok\nalpha\nbeta\nMiXeD\nrecursive\ntrue\ntwo\nlines\n",
+        )
+
+        string_layout_source = root / "stage6c-string-layout.src"
+        string_layout_output = root / "stage6c-string-layout.c"
+        string_layout_source.write_text(
+            "program Stage6CStringLayout is\n"
+            "variable printed : bool;\n"
+            "procedure choose : string(variable ignored : string)\n"
+            "variable local : string;\n"
+            "begin\n"
+            "    local := \"Q\";\n"
+            "    local := \"Q\";\n"
+            "    return local;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    printed := putString(choose(\"P\"));\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_layout_emit = run_compiler(
+            "--emit-c", str(string_layout_output), str(string_layout_source)
+        )
+        check(string_layout_emit.returncode == 0,
+              f"Stage6C exact layout emit failed: {string_layout_emit.stderr!r}")
+        string_layout_c = string_layout_output.read_text(encoding="utf-8")
+        for exact_layout_line in (
+            "#define STRING_EMPTY_HANDLE INT32_C(2)\n",
+            "    Reg[0u] = INT32_C(7);\n",
+            "    MM[2u] = INT32_C(0);\n",
+            "    MM[3u] = INT32_C(80);\n",
+            "    MM[4u] = INT32_C(0);\n",
+            "    MM[5u] = INT32_C(81);\n",
+            "    MM[6u] = INT32_C(0);\n",
+            "    Reg[8u] = 1u;\n",
+        ):
+            check(exact_layout_line in string_layout_c,
+                  f"Stage6C exact static layout omitted {exact_layout_line!r}")
+        check(string_layout_c.count("    MM[3u] = INT32_C(80);\n") == 1,
+              "Stage6C Program literal P was not exactly deduplicated")
+        check(string_layout_c.count("    MM[5u] = INT32_C(81);\n") == 1,
+              "Stage6C reachable-procedure literal Q was not exactly deduplicated")
+        check(string_layout_c.count("    Reg[6u] = INT32_C(5);\n") == 2,
+              "Stage6C procedure-owned Q constants did not use exact handle 5")
+        strict_c11_compile_and_run(string_layout_output, "Q\n")
+
+        string_local_source = root / "stage6c-string-local-empty.src"
+        string_local_output = root / "stage6c-string-local-empty.c"
+        string_local_source.write_text(
+            "program Stage6CStringLocalEmpty is\n"
+            "variable printed : bool;\n"
+            "procedure blank : string()\n"
+            "variable untouched : string;\n"
+            "begin\n"
+            "    return untouched;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    printed := putString(blank());\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_local_emit = run_compiler(
+            "--emit-c", str(string_local_output), str(string_local_source)
+        )
+        check(string_local_emit.returncode == 0,
+              f"Stage6C empty local emit failed: {string_local_emit.stderr!r}")
+        string_local_c = string_local_output.read_text(encoding="utf-8")
+        check("    MM[(uint32_t)Reg[0u] + 4u] = INT32_C(2);\n" in string_local_c,
+              "Stage6C procedure String local omitted canonical-empty initialization")
+        strict_c11_compile_and_run(string_local_output, "\n")
+
+        string_input_source = root / "stage6c-string-input.src"
+        string_input_output = root / "stage6c-string-input.c"
+        string_input_source.write_text(
+            "program Stage6CStringInput is\n"
+            "variable first : string;\n"
+            "variable later : string;\n"
+            "variable truth : bool;\n"
+            "procedure keep : string(variable text : string, variable n : integer)\n"
+            "begin\n"
+            "    if (n == 0) then\n"
+            "        return text;\n"
+            "    else\n"
+            "        return keep(text, n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    first := getString();\n"
+            "    truth := putString(first);\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "    truth := later == \"same\";\n"
+            "    truth := putBool(truth);\n"
+            "    truth := later != \"different\";\n"
+            "    truth := putBool(truth);\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "    truth := putString(keep(first, 3));\n"
+            "    later := getString();\n"
+            "    truth := putString(later);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_input_emit = run_compiler(
+            "--emit-c", str(string_input_output), str(string_input_source)
+        )
+        check(string_input_emit.returncode == 0,
+              f"Stage6C String input emit failed: {string_input_emit.stderr!r}")
+        strict_c11_compile_and_run(
+            string_input_output,
+            "hello world\n\nsame\ntrue\ntrue\n\nfollowing\nfinal\nhello world\n\n",
+            stdin_text="hello world\n\nsame\nbad\x00tail\nfollowing\nfinal",
+        )
+
+        string_singletons = {
+            "literal": (
+                "variable value : string;\nbegin\n    value := \"literal\";\n",
+                (),
+            ),
+            "equality": (
+                "variable value : bool;\nbegin\n    value := \"a\" == \"a\";\n",
+                ("R_str_eq",),
+            ),
+            "get": (
+                "variable value : string;\nbegin\n    value := getString();\n",
+                ("R_get_str", "#include <stdio.h>"),
+            ),
+            "put": (
+                "variable value : bool;\nbegin\n    value := putString(\"x\");\n",
+                ("R_put_str", "#include <stdio.h>"),
+            ),
+        }
+        for singleton_name, (singleton_body, required) in string_singletons.items():
+            singleton_source = root / f"stage6c-singleton-{singleton_name}.src"
+            singleton_output = root / f"stage6c-singleton-{singleton_name}.c"
+            singleton_source.write_text(
+                f"program Stage6CStringSingleton{singleton_name} is\n"
+                + singleton_body
+                + "end program.\n",
+                encoding="utf-8",
+            )
+            singleton_emit = run_compiler(
+                "--emit-c", str(singleton_output), str(singleton_source)
+            )
+            check(singleton_emit.returncode == 0,
+                  f"Stage6C singleton {singleton_name} failed: {singleton_emit.stderr!r}")
+            singleton_c = singleton_output.read_text(encoding="utf-8")
+            for required_text in required:
+                check(required_text in singleton_c,
+                      f"Stage6C singleton {singleton_name} omitted {required_text}")
+            if singleton_name == "literal":
+                check("static int32_t R_" not in singleton_c and "#include <stdio.h>" not in singleton_c,
+                      "literal-only String emitted a helper or I/O header")
+            if singleton_name == "equality":
+                check("#include <stdio.h>" not in singleton_c,
+                      "String equality emitted an I/O header")
+            strict_c11_syntax_check(singleton_output)
+
+        dead_string_source = root / "stage6c-dead-string.src"
+        dead_string_output = root / "stage6c-dead-string.c"
+        dead_string_source.write_text(
+            "program Stage6CDeadString is\n"
+            "variable value : integer;\n"
+            "procedure hidden : string()\n"
+            "variable local : string;\n"
+            "begin\n"
+            "    local := getString();\n"
+            "    return \"dead literal\";\n"
+            "end procedure;\n"
+            "begin\n"
+            "    value := 7;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        dead_string_emit = run_compiler(
+            "--emit-c", str(dead_string_output), str(dead_string_source)
+        )
+        check(dead_string_emit.returncode == 0,
+              f"Stage6C dead String emit failed: {dead_string_emit.stderr!r}")
+        dead_string_c = dead_string_output.read_text(encoding="utf-8")
+        for forbidden in ("L_f10_", "R_get_str", "STRING_HEAP_REGISTER", "STRING_EMPTY_HANDLE"):
+            check(forbidden not in dead_string_c,
+                  f"dead String procedure contributed emitted state: {forbidden}")
+        strict_c11_syntax_check(dead_string_output)
+
+        string_capacity_source = root / "stage6c-string-capacity.src"
+        string_capacity_output = root / "stage6c-string-capacity.c"
+        string_capacity_source.write_text(
+            "program Stage6CStringCapacity is\n"
+            "variable value : string;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    value := getString();\n"
+            "    printed := putString(value);\n"
+            "    value := getString();\n"
+            "    printed := putString(value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_capacity_emit = run_compiler(
+            "--emit-c", str(string_capacity_output), str(string_capacity_source)
+        )
+        check(string_capacity_emit.returncode == 0,
+              f"Stage6C capacity emit failed: {string_capacity_emit.stderr!r}")
+        strict_c11_compile_and_run(
+            string_capacity_output,
+            "\nok\n",
+            stdin_text=("x" * (16 * 1024 * 1024)) + "\nok\n",
+            timeout_sec=30.0,
+        )
+
+        string_collision_source = root / "stage6c-string-collision.src"
+        string_collision_output = root / "stage6c-string-collision.c"
+        string_collision_source.write_text(
+            "program Stage6CStringCollision is\n"
+            "variable value : string;\n"
+            "procedure echo : string(variable text : string)\n"
+            "begin\n"
+            "    return text;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    value := getString();\n"
+            "    value := echo(value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_collision_emit = run_compiler(
+            "--emit-c", str(string_collision_output), str(string_collision_source)
+        )
+        check(string_collision_emit.returncode == 0,
+              f"Stage6C collision emit failed: {string_collision_emit.stderr!r}")
+        collision_c = string_collision_output.read_text(encoding="utf-8")
+        check("STRING_HEAP_REGISTER" in collision_c and
+              "(uint32_t)Reg[0u]" in collision_c,
+              "Stage6C frame push omitted the heap collision guard")
+        strict_c11_compile_and_run(
+            string_collision_output,
+            "",
+            expected_returncode=1,
+            stdin_text="x" * ((16 * 1024 * 1024) - 4),
+            timeout_sec=30.0,
+        )
+
         hostile_output = root / "hostile ; $ [name].c"
         hostile = run_compiler("--emit-c", str(hostile_output), str(source))
         check(hostile.returncode == 0, f"hostile output path failed: {hostile.stderr!r}")
@@ -1227,6 +1535,23 @@ def main() -> int:
         check(unsupported.returncode != 0, "unsupported control flow unexpectedly emitted C")
         check("codegen: unsupported" in unsupported.stderr, f"missing unsupported error: {unsupported.stderr!r}")
         check(sentinel.read_text(encoding="utf-8") == "do not replace\n", "unsupported input replaced sentinel")
+
+        string_array_source = root / "unsupported-string-array.src"
+        string_array_source.write_text(
+            "program UnsupportedStringArray is\n"
+            "variable values : string[1];\n"
+            "begin\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_array = run_compiler(
+            "--emit-c", str(sentinel), str(string_array_source)
+        )
+        check(string_array.returncode != 0, "String array unexpectedly emitted C")
+        check("codegen: unsupported" in string_array.stderr,
+              f"String array lacked unsupported status: {string_array.stderr!r}")
+        check(sentinel.read_text(encoding="utf-8") == "do not replace\n",
+              "String array replaced the output sentinel")
 
         output_directory = root / "output-directory"
         output_directory.mkdir()

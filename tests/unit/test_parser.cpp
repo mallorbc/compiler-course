@@ -2727,6 +2727,37 @@ TEST_CASE("Stage 6B procedure returns lower both scalar Float conversions")
     CHECK(saw_float_to_int_return);
 }
 
+TEST_CASE("Stage 6C parser lowers String literals as semantic bytes")
+{
+    temp_source_file fixture(
+        "program string_payloads is\n"
+        "variable value : string;\n"
+        "begin\n"
+        "    value := \"MiXeD\";\n"
+        "    value := \"\";\n"
+        "    value := \"two\nlines\";\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+
+    std::vector<std::string> payloads;
+    for (const ir::Instruction &instruction : parsed.ir_module().functions[0].blocks[0].instructions)
+    {
+        const ir::Constant *constant = std::get_if<ir::Constant>(&instruction);
+        if (constant != NULL && std::holds_alternative<std::string>(constant->payload))
+        {
+            payloads.push_back(std::get<std::string>(constant->payload));
+        }
+    }
+    REQUIRE(payloads.size() == 3);
+    CHECK(payloads[0] == "MiXeD");
+    CHECK(payloads[1].empty());
+    CHECK(payloads[2] == "two\nlines");
+}
+
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")
 {
     temp_source_file valid_source(

@@ -30,7 +30,8 @@ C headers/functions (`ctype.h`, `stdint.h`, `inttypes.h`, and `stdio.h`) and is
 emitted only when a reachable call requires it.
 
 This was the Stage 6A boundary.  Stage 6B subsequently adds scalar Float I/O,
-Float arithmetic/conversions, and `sqrt` while String builtins, arrays, and
-other external calls remain atomically Unsupported.  The compiler still emits
+Float arithmetic/conversions, and `sqrt`; Stage 6C subsequently adds scalar
+String line I/O and content equality.  Arrays and other external calls remain
+atomically Unsupported.  The compiler still emits
 C rather than invoking a host compiler; `tests/test_generated_c.py` alone
 compiles/runs generated C as test tooling.

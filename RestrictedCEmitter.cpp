@@ -29,7 +29,7 @@ bool supported_shape(const value_shape &shape)
 {
     return !shape.is_array && shape.array_upper_bound == -1 &&
            (shape.element_type == TYPE_INT || shape.element_type == TYPE_BOOL ||
-            shape.element_type == TYPE_FLOAT);
+            shape.element_type == TYPE_FLOAT || shape.element_type == TYPE_STRING);
 }
 
 bool supported_unary(ir::UnaryOp operation, data_types type)
@@ -54,9 +54,11 @@ bool supported_binary(ir::BinaryOp operation, data_types type)
     case ir::BinaryOp::LessEqual:
     case ir::BinaryOp::Greater:
     case ir::BinaryOp::GreaterEqual:
+        return type == TYPE_INT || type == TYPE_BOOL || type == TYPE_FLOAT;
     case ir::BinaryOp::Equal:
     case ir::BinaryOp::NotEqual:
-        return type == TYPE_INT || type == TYPE_BOOL || type == TYPE_FLOAT;
+        return type == TYPE_INT || type == TYPE_BOOL || type == TYPE_FLOAT ||
+               type == TYPE_STRING;
     }
     return false;
 }
@@ -161,6 +163,9 @@ struct RuntimeRequirements
     bool float_decode = false;
     bool float_encode = false;
     bool float_to_int = false;
+    bool string_words = false;
+    bool string_equality = false;
+    std::vector<std::string> string_literals;
 
     void require(BuiltinId id)
     {
@@ -176,7 +181,8 @@ struct RuntimeRequirements
     {
         return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger) ||
                uses(BuiltinId::GetFloat) || uses(BuiltinId::PutBool) ||
-               uses(BuiltinId::PutInteger) || uses(BuiltinId::PutFloat);
+               uses(BuiltinId::PutInteger) || uses(BuiltinId::PutFloat) ||
+               uses(BuiltinId::GetString) || uses(BuiltinId::PutString);
     }
 
     bool uses_token_input() const
@@ -205,7 +211,8 @@ bool supported_external_builtin(BuiltinId id)
 {
     return id == BuiltinId::GetBool || id == BuiltinId::GetInteger ||
            id == BuiltinId::GetFloat || id == BuiltinId::PutBool ||
-           id == BuiltinId::PutInteger || id == BuiltinId::PutFloat ||
+           id == BuiltinId::GetString || id == BuiltinId::PutInteger ||
+           id == BuiltinId::PutFloat || id == BuiltinId::PutString ||
            id == BuiltinId::Sqrt;
 }
 
@@ -226,7 +233,7 @@ RestrictedCResult validate_external_builtin_call(const ir::Module &module,
     if (callee->kind != ir::FunctionKind::ExternalBuiltin || builtin == NULL)
     {
         return failure(RestrictedCStatus::Unsupported,
-                       "restricted C only lowers canonical Integer and Bool external calls");
+                       "restricted C only lowers canonical scalar external calls");
     }
 
     const SymbolRef expected_reference{0, builtin->spelling};
@@ -265,6 +272,8 @@ RestrictedCResult validate_external_builtin_call(const ir::Module &module,
     runtime.float_decode = runtime.float_decode || builtin->id == BuiltinId::PutFloat;
     runtime.float_encode = runtime.float_encode || builtin->id == BuiltinId::GetFloat ||
                            builtin->id == BuiltinId::Sqrt;
+    runtime.string_words = runtime.string_words || builtin->id == BuiltinId::GetString ||
+                           builtin->id == BuiltinId::PutString;
     RestrictedCResult result_status;
     result_status.status = RestrictedCStatus::Success;
     return result_status;
@@ -289,6 +298,7 @@ struct ProcedureRegisterLayout
     std::size_t division_overflow = 0;
     std::size_t return_value = 0;
     std::size_t return_site = 0;
+    std::size_t string_heap = 0;
 };
 
 bool make_register_layout(const ir::Function &program, RegisterLayout &layout)
@@ -353,12 +363,16 @@ std::string external_call_expression(const ir::Function &callee, const std::stri
         return "R_get_i32()";
     case BuiltinId::GetFloat:
         return "R_get_f32()";
+    case BuiltinId::GetString:
+        return "R_get_str(Reg[0u])";
     case BuiltinId::PutBool:
         return "R_put_b1(" + argument + ")";
     case BuiltinId::PutInteger:
         return "R_put_i32(" + argument + ")";
     case BuiltinId::PutFloat:
         return "R_put_f32(" + argument + ")";
+    case BuiltinId::PutString:
+        return "R_put_str(" + argument + ")";
     case BuiltinId::Sqrt:
         return "R_sqrt_i32(" + argument + ")";
     default:
@@ -416,6 +430,84 @@ void emit_float_guard(std::ostringstream &output, const RuntimeRequirements &run
 
 void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements &runtime)
 {
+    if (runtime.string_equality)
+    {
+        output << "static int32_t R_str_eq(int32_t r0, int32_t r1)\n{\n"
+               << "    uint32_t r2;\n"
+               << "    uint32_t r3;\n"
+               << "    if (r0 < INT32_C(0) || r1 < INT32_C(0)) return INT32_C(0);\n"
+               << "    r2 = (uint32_t)r0;\n"
+               << "    r3 = (uint32_t)r1;\n"
+               << "    while (r2 < MM_WORDS && r3 < MM_WORDS)\n"
+               << "    {\n"
+               << "        const int32_t r4 = MM[r2];\n"
+               << "        const int32_t r5 = MM[r3];\n"
+               << "        if (r4 < INT32_C(0) || r4 > INT32_C(255) ||\n"
+               << "            r5 < INT32_C(0) || r5 > INT32_C(255)) return INT32_C(0);\n"
+               << "        if (r4 != r5) return INT32_C(0);\n"
+               << "        if (r4 == INT32_C(0)) return INT32_C(1);\n"
+               << "        ++r2;\n"
+               << "        ++r3;\n"
+               << "    }\n"
+               << "    return INT32_C(0);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::GetString))
+    {
+        output << "static int32_t R_get_str(int32_t r0)\n{\n"
+               << "    const uint32_t r1 = (uint32_t)Reg[STRING_HEAP_REGISTER];\n"
+               << "    uint32_t r2 = r1;\n"
+               << "    int r3 = getchar();\n"
+               << "    int r4 = INT32_C(0);\n"
+               << "    int r5 = INT32_C(0);\n"
+               << "    if (r3 == EOF || r3 == '\\n') return STRING_EMPTY_HANDLE;\n"
+               << "    if (r0 < INT32_C(0)) r4 = INT32_C(1);\n"
+               << "    while (r3 != EOF && r3 != '\\n')\n"
+               << "    {\n"
+               << "        if (r3 == 0) r4 = INT32_C(1);\n"
+               << "        if (r4 == INT32_C(0) && r5 == INT32_C(0))\n"
+               << "        {\n"
+               << "            if (r2 <= (uint32_t)r0) r4 = INT32_C(1);\n"
+               << "            else { --r2; MM[r2] = INT32_C(0); r5 = INT32_C(1); }\n"
+               << "        }\n"
+               << "        if (r4 == INT32_C(0))\n"
+               << "        {\n"
+               << "            if (r2 <= (uint32_t)r0) r4 = INT32_C(1);\n"
+               << "            else { --r2; MM[r2] = (int32_t)(unsigned char)r3; }\n"
+               << "        }\n"
+               << "        r3 = getchar();\n"
+               << "    }\n"
+               << "    if (r4 != INT32_C(0)) return STRING_EMPTY_HANDLE;\n"
+               << "    {\n"
+               << "        uint32_t r6 = r2;\n"
+               << "        uint32_t r7 = r1 - UINT32_C(2);\n"
+               << "        while (r6 < r7)\n"
+               << "        {\n"
+               << "            const int32_t r8 = MM[r6];\n"
+               << "            MM[r6] = MM[r7];\n"
+               << "            MM[r7] = r8;\n"
+               << "            ++r6;\n"
+               << "            --r7;\n"
+               << "        }\n"
+               << "    }\n"
+               << "    Reg[STRING_HEAP_REGISTER] = (int32_t)r2;\n"
+               << "    return (int32_t)r2;\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::PutString))
+    {
+        output << "static int32_t R_put_str(int32_t r0)\n{\n"
+               << "    uint32_t r1;\n"
+               << "    if (r0 < INT32_C(0)) return INT32_C(0);\n"
+               << "    r1 = (uint32_t)r0;\n"
+               << "    while (r1 < MM_WORDS)\n"
+               << "    {\n"
+               << "        const int32_t r2 = MM[r1++];\n"
+               << "        if (r2 == INT32_C(0))\n"
+               << "            return putchar('\\n') == EOF ? INT32_C(0) : INT32_C(1);\n"
+               << "        if (r2 < INT32_C(0) || r2 > INT32_C(255) || putchar((unsigned char)r2) == EOF)\n"
+               << "            return INT32_C(0);\n"
+               << "    }\n"
+               << "    return INT32_C(0);\n}\n\n";
+    }
     if (runtime.uses_word_to_float())
     {
         output << "static float R_word_f32(int32_t r0)\n{\n"
@@ -755,28 +847,32 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             if (!supported_shape(function.return_type))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar numeric and Bool procedure returns only");
+                               "restricted C supports scalar procedure returns only");
             }
             runtime.float_words = runtime.float_words ||
                                   function.return_type.element_type == TYPE_FLOAT;
+            runtime.string_words = runtime.string_words ||
+                                   function.return_type.element_type == TYPE_STRING;
         }
         for (const value_shape &shape : function.parameter_types)
         {
             if (!supported_shape(shape))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar numeric and Bool parameters only");
+                               "restricted C supports scalar parameters only");
             }
             runtime.float_words = runtime.float_words || shape.element_type == TYPE_FLOAT;
+            runtime.string_words = runtime.string_words || shape.element_type == TYPE_STRING;
         }
         for (const ir::Value &value : function.values)
         {
             if (!supported_shape(value.type))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar numeric and Bool values only");
+                               "restricted C supports scalar values only");
             }
             runtime.float_words = runtime.float_words || value.type.element_type == TYPE_FLOAT;
+            runtime.string_words = runtime.string_words || value.type.element_type == TYPE_STRING;
         }
         for (const ir::BasicBlock &block : function.blocks)
         {
@@ -794,6 +890,22 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
                                            "restricted C Float constant must be finite binary32");
                         }
                         runtime.float_words = true;
+                    }
+                    else if (value != NULL && value->type.element_type == TYPE_STRING)
+                    {
+                        const std::string &payload = std::get<std::string>(constant->payload);
+                        if (payload.find('\0') != std::string::npos)
+                        {
+                            return failure(RestrictedCStatus::Unsupported,
+                                           "restricted C String constants may not contain NUL");
+                        }
+                        if (!payload.empty() &&
+                            std::find(runtime.string_literals.begin(),
+                                      runtime.string_literals.end(), payload) ==
+                                runtime.string_literals.end())
+                        {
+                            runtime.string_literals.push_back(payload);
+                        }
                     }
                 }
                 else if (const ir::Unary *unary = std::get_if<ir::Unary>(&instruction))
@@ -813,6 +925,8 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
                         (left != NULL && left->type.element_type == TYPE_FLOAT);
                     runtime.float_encode = runtime.float_encode ||
                         (result != NULL && result->type.element_type == TYPE_FLOAT);
+                    runtime.string_equality = runtime.string_equality ||
+                        (left != NULL && left->type.element_type == TYPE_STRING);
                 }
                 else if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
                 {
@@ -852,14 +966,16 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             !supported_shape(storage.type))
         {
             return failure(RestrictedCStatus::Unsupported,
-                           "restricted C supports scalar numeric and Bool storage only");
+                           "restricted C supports scalar storage only");
         }
         if (storage.kind == ir::StorageKind::Global ||
             runtime.reachable_functions[storage.owner.index])
         {
             runtime.float_words = runtime.float_words || storage.type.element_type == TYPE_FLOAT;
+            runtime.string_words = runtime.string_words || storage.type.element_type == TYPE_STRING;
         }
     }
+    runtime.procedure_mode = runtime.procedure_mode || runtime.string_words;
     RestrictedCResult result;
     result.status = RestrictedCStatus::Success;
     return result;
@@ -873,22 +989,13 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
     {
         return failure(RestrictedCStatus::InvalidIR, verified.reason);
     }
-    bool contains_procedure = false;
-    for (const ir::Function &function : module.functions)
+    RestrictedCResult procedure_checked = preflight_with_procedures(module, program, runtime);
+    if (!procedure_checked.succeeded() || runtime.procedure_mode)
     {
-        contains_procedure = contains_procedure || function.kind == ir::FunctionKind::Procedure;
+        return procedure_checked;
     }
-    if (contains_procedure)
-    {
-        RestrictedCResult procedure_checked = preflight_with_procedures(module, program, runtime);
-        if (!procedure_checked.succeeded() || runtime.procedure_mode)
-        {
-            return procedure_checked;
-        }
-        //No user procedure is reachable from Program.  Retain the original
-        //straight-line preflight below while ignoring declarations that have
-        //no emitted labels or runtime footprint.
-    }
+    //A non-String Program with no procedure declarations retains the original
+    //straight-line preflight and byte-for-byte output path below.
     if (module.functions.empty() || module.functions[0].kind != ir::FunctionKind::Program ||
         module.functions[0].id != ir::FunctionId(0) || module.functions[0].blocks.empty())
     {
@@ -1088,6 +1195,12 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
 std::string binary_expression_text(ir::BinaryOp operation, data_types type,
                                    const std::string &left, const std::string &right)
 {
+    if (type == TYPE_STRING)
+    {
+        const std::string equal = "R_str_eq(" + left + ", " + right + ")";
+        return operation == ir::BinaryOp::Equal ? equal :
+            "(" + equal + " == INT32_C(0)) ? INT32_C(1) : INT32_C(0)";
+    }
     if (type == TYPE_FLOAT)
     {
         const std::string decoded_left = "R_word_f32(" + left + ")";
@@ -1260,11 +1373,11 @@ bool make_procedure_frames(const ir::Module &module, const std::vector<bool> &re
     return true;
 }
 
-bool make_procedure_register_layout(const ir::Function &program,
+bool make_procedure_register_layout(const ir::Function &program, bool needs_string_heap,
                                     ProcedureRegisterLayout &layout)
 {
     const std::size_t reserved = 2U;
-    const std::size_t extra = 8U;
+    const std::size_t extra = needs_string_heap ? 9U : 8U;
     const std::size_t maximum = static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max());
     if (program.values.size() > maximum || program.values.size() > maximum - reserved - extra)
     {
@@ -1278,7 +1391,8 @@ bool make_procedure_register_layout(const ir::Function &program,
     layout.division_overflow = layout.exit + 5U;
     layout.return_value = layout.exit + 6U;
     layout.return_site = layout.exit + 7U;
-    layout.count = layout.exit + 8U;
+    layout.string_heap = layout.exit + 8U;
+    layout.count = layout.exit + extra;
     return true;
 }
 
@@ -1339,6 +1453,29 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
             }
         }
     }
+    std::size_t empty_string_handle = std::numeric_limits<std::size_t>::max();
+    std::vector<std::size_t> literal_handles;
+    if (runtime.string_words)
+    {
+        if (static_words == RestrictedCEmitter::memory_word_capacity())
+        {
+            return failure(RestrictedCStatus::Unsupported,
+                           "restricted C String pool exceeds fixed memory capacity");
+        }
+        empty_string_handle = static_words++;
+        for (const std::string &literal : runtime.string_literals)
+        {
+            const std::size_t available =
+                RestrictedCEmitter::memory_word_capacity() - static_words;
+            if (literal.size() >= available)
+            {
+                return failure(RestrictedCStatus::Unsupported,
+                               "restricted C String pool exceeds fixed memory capacity");
+            }
+            literal_handles.push_back(static_words);
+            static_words += literal.size() + 1U;
+        }
+    }
     std::vector<ProcedureFrame> frames;
     if (!make_procedure_frames(module, runtime.reachable_functions, frames, static_words))
     {
@@ -1346,7 +1483,7 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                        "restricted C static/frame layout exceeds fixed memory capacity");
     }
     ProcedureRegisterLayout layout;
-    if (!make_procedure_register_layout(program, layout))
+    if (!make_procedure_register_layout(program, runtime.uses(BuiltinId::GetString), layout))
     {
         return failure(RestrictedCStatus::Unsupported,
                        "restricted C register model cannot represent this many values");
@@ -1390,6 +1527,18 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
         return std::string("((uint32_t)Reg[1u] + ") +
                std::to_string(frames[function.id.index].value_offsets[value.index]) + "u)";
     };
+    const auto string_handle = [&runtime, &literal_handles, empty_string_handle](
+                                   const std::string &literal) {
+        if (literal.empty())
+        {
+            return empty_string_handle;
+        }
+        const std::vector<std::string>::const_iterator found =
+            std::find(runtime.string_literals.begin(), runtime.string_literals.end(), literal);
+        return found == runtime.string_literals.end() ?
+            std::numeric_limits<std::size_t>::max() :
+            literal_handles[static_cast<std::size_t>(found - runtime.string_literals.begin())];
+    };
 
     std::ostringstream output;
     output << "#include <stdint.h>\n";
@@ -1401,12 +1550,55 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
     output << "#define I32_FROM_U32(value) ((value) <= UINT32_C(2147483647) ? "
            << "(int32_t)(value) : INT32_MIN + (int32_t)((uint32_t)(value) - "
            << "UINT32_C(2147483648)))\n\n";
+    if (runtime.string_words)
+    {
+        output << "#define STRING_EMPTY_HANDLE INT32_C(" << empty_string_handle << ")\n";
+    }
+    if (runtime.uses(BuiltinId::GetString))
+    {
+        output << "#define STRING_HEAP_REGISTER " << layout.string_heap << "u\n";
+    }
+    if (runtime.string_words)
+    {
+        output << "\n";
+    }
     output << "int32_t MM[MM_WORDS];\nint32_t Reg[REGISTER_COUNT];\n\n";
     emit_runtime_support(output, runtime);
     output << "int main(void)\n{\n";
     output << "    " << register_slot(layout.exit) << " = INT32_C(0);\n";
     output << "    Reg[0u] = INT32_C(" << static_words << ");\n";
     output << "    Reg[1u] = INT32_C(0);\n";
+    if (runtime.uses(BuiltinId::GetString))
+    {
+        output << "    " << register_slot(layout.string_heap) << " = INT32_C("
+               << RestrictedCEmitter::memory_word_capacity() << ");\n";
+    }
+    if (runtime.string_words)
+    {
+        for (const ir::Storage &storage : module.storages)
+        {
+            if (storage.kind == ir::StorageKind::Global &&
+                storage.type.element_type == TYPE_STRING)
+            {
+                output << "    " << word(global_words[storage.id.index]) << " = INT32_C("
+                       << empty_string_handle << ");\n";
+            }
+        }
+        output << "    " << word(empty_string_handle) << " = INT32_C(0);\n";
+        for (std::size_t literal_index = 0; literal_index < runtime.string_literals.size();
+             literal_index++)
+        {
+            const std::string &literal = runtime.string_literals[literal_index];
+            const std::size_t handle = literal_handles[literal_index];
+            for (std::size_t byte = 0; byte < literal.size(); byte++)
+            {
+                output << "    " << word(handle + byte) << " = INT32_C("
+                       << static_cast<unsigned int>(
+                              static_cast<unsigned char>(literal[byte])) << ");\n";
+            }
+            output << "    " << word(handle + literal.size()) << " = INT32_C(0);\n";
+        }
+    }
     output << "    goto L_f0_b0;\n";
 
     std::size_t division_number = 0;
@@ -1430,7 +1622,10 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                     const data_types type = function.values[constant->result.index].type.element_type;
                     const std::string literal = type == TYPE_INT ? int32_literal(std::get<int>(constant->payload)) :
                         (type == TYPE_FLOAT ? float_literal(std::get<float>(constant->payload)) :
-                         (std::get<bool>(constant->payload) ? "INT32_C(1)" : "INT32_C(0)"));
+                         (type == TYPE_STRING ?
+                              "INT32_C(" + std::to_string(string_handle(
+                                  std::get<std::string>(constant->payload))) + ")" :
+                          (std::get<bool>(constant->payload) ? "INT32_C(1)" : "INT32_C(0)")));
                     if (procedure_function)
                     {
                         output << "    " << register_slot(layout.temporary_a) << " = " << literal << ";\n";
@@ -1625,9 +1820,21 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                         const std::size_t continuation = continuation_number++;
                         continuations.push_back("L_f" + std::to_string(function.id.index) + "_c" +
                                                 std::to_string(continuation));
-                        output << "    " << register_slot(layout.temporary_a) << " = ((uint32_t)Reg[0u] > "
-                               << "MM_WORDS - " << callee_frame.words
-                               << "u) ? INT32_C(1) : INT32_C(0);\n";
+                        if (runtime.uses(BuiltinId::GetString))
+                        {
+                            output << "    " << register_slot(layout.temporary_a)
+                                   << " = ((uint32_t)Reg[0u] > (uint32_t)"
+                                   << register_slot(layout.string_heap) << " || "
+                                   << callee_frame.words << "u > (uint32_t)"
+                                   << register_slot(layout.string_heap)
+                                   << " - (uint32_t)Reg[0u]) ? INT32_C(1) : INT32_C(0);\n";
+                        }
+                        else
+                        {
+                            output << "    " << register_slot(layout.temporary_a) << " = ((uint32_t)Reg[0u] > "
+                                   << "MM_WORDS - " << callee_frame.words
+                                   << "u) ? INT32_C(1) : INT32_C(0);\n";
+                        }
                         output << "    if (" << register_slot(layout.temporary_a) << ") goto L_f0_s0;\n";
                         for (std::size_t argument = 0; argument < call->arguments.size(); argument++)
                         {
@@ -1648,6 +1855,17 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                              offset < callee_frame.words; offset++)
                         {
                             output << "    MM[(uint32_t)Reg[0u] + " << offset << "u] = INT32_C(0);\n";
+                        }
+                        for (std::size_t local_index = 0; local_index < callee.locals.size();
+                             local_index++)
+                        {
+                            const ir::Storage &local = module.storages[callee.locals[local_index].index];
+                            if (local.type.element_type == TYPE_STRING)
+                            {
+                                output << "    MM[(uint32_t)Reg[0u] + "
+                                       << callee_frame.local_offsets[local_index]
+                                       << "u] = INT32_C(" << empty_string_handle << ");\n";
+                            }
                         }
                         output << "    Reg[1u] = Reg[0u];\n";
                         output << "    Reg[0u] = I32_FROM_U32((uint32_t)Reg[0u] + "

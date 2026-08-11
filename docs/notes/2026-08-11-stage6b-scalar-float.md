@@ -53,3 +53,7 @@ Dependency-specific headers and encode/decode helpers are emitted only when a
 reachable instruction needs them.  Singleton generated programs are compiled
 with strict C11 `-Wall -Wextra -Werror -pedantic-errors` to keep that property
 durable.
+
+This was the Stage 6B boundary.  Stage 6C subsequently adds scalar String
+handles, content equality, line input, output, and the persistent downward
+String heap while preserving the binary32 and manual-frame contracts above.

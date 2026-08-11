@@ -3,6 +3,8 @@
 #include "../../RestrictedCEmitter.h"
 
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <variant>
@@ -584,20 +586,6 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     CHECK(get_integer_call.text.find("R_put_") == std::string::npos);
     CHECK(get_integer_call.text.find("#include <inttypes.h>") == std::string::npos);
 
-    for (data_types unsupported_type : {TYPE_STRING})
-    {
-        ir::IRBuilder scalar_builder;
-        REQUIRE(scalar_builder.register_program(SymbolRef{0, "scalar_program"}, "scalar_program").valid());
-        scalar_builder.seed_external_builtins();
-        REQUIRE(scalar_builder.emit_constant(scalar(unsupported_type), std::string("value")).valid());
-        REQUIRE(scalar_builder.emit_halt());
-        scalar_builder.finalize(true);
-        REQUIRE(scalar_builder.status() == ir::ModuleStatus::Ready);
-        const RestrictedCResult unsupported = emitter.emit(scalar_builder.module());
-        CHECK(unsupported.status == RestrictedCStatus::Unsupported);
-        CHECK(unsupported.text.empty());
-    }
-
     ir::Module invalid;
     const RestrictedCResult malformed = emitter.emit(invalid);
     CHECK(malformed.status == RestrictedCStatus::InvalidIR);
@@ -704,4 +692,154 @@ TEST_CASE("Stage 6B Float words, helpers, casts, and link metadata are exact")
     CHECK(invalid_nan.status == RestrictedCStatus::InvalidIR);
     CHECK(invalid_nan.text.empty());
     CHECK(invalid_nan.links.empty());
+}
+
+TEST_CASE("Stage 6C String pools are semantic, deduplicated, and atomic")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "string_pool"}, "string_pool").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId global = builder.register_storage(
+        SymbolRef{0, "value"}, scalar(TYPE_STRING), ir::StorageKind::Global);
+    REQUIRE(global.valid());
+    const ir::ValueId empty = builder.emit_constant(scalar(TYPE_STRING), std::string());
+    const ir::ValueId first = builder.emit_constant(scalar(TYPE_STRING), std::string("MiXeD"));
+    const ir::ValueId duplicate = builder.emit_constant(scalar(TYPE_STRING), std::string("MiXeD"));
+    const ir::ValueId distinct = builder.emit_constant(scalar(TYPE_STRING), std::string("mixed"));
+    const std::string high_bytes{static_cast<char>(0xff), '\n'};
+    const ir::ValueId high = builder.emit_constant(scalar(TYPE_STRING), high_bytes);
+    REQUIRE(empty.valid());
+    REQUIRE(first.valid());
+    REQUIRE(duplicate.valid());
+    REQUIRE(distinct.valid());
+    REQUIRE(high.valid());
+    REQUIRE(builder.emit_store(global, first));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+
+    RestrictedCEmitter emitter;
+    const RestrictedCResult result = emitter.emit(builder.module());
+    REQUIRE(result.succeeded());
+    CHECK(result.links.empty());
+    CHECK(result.text.find("#include <stdio.h>") == std::string::npos);
+    CHECK(result.text.find("R_str_eq") == std::string::npos);
+    CHECK(result.text.find("INT32_C(255)") != std::string::npos);
+    CHECK(result.text.find("INT32_C(10)") != std::string::npos);
+    CHECK(result.text.find("MiXeD") == std::string::npos);
+    CHECK(result.text.find("mixed") == std::string::npos);
+    CHECK(result.text.find("STRING_EMPTY_HANDLE") != std::string::npos);
+    std::size_t duplicate_handle_uses = 0;
+    std::size_t position = 0;
+    const std::string handle_assignment = " = INT32_C(2);\n";
+    while ((position = result.text.find(handle_assignment, position)) != std::string::npos)
+    {
+        duplicate_handle_uses++;
+        position += handle_assignment.size();
+    }
+    CHECK(duplicate_handle_uses == 2);
+
+    ir::Module embedded_nul = builder.module();
+    bool replaced = false;
+    for (ir::Instruction &instruction : embedded_nul.functions[0].blocks[0].instructions)
+    {
+        ir::Constant *constant = std::get_if<ir::Constant>(&instruction);
+        if (constant != NULL && constant->result == first)
+        {
+            constant->payload = std::string("a\0b", 3U);
+            replaced = true;
+            break;
+        }
+    }
+    REQUIRE(replaced);
+    const RestrictedCResult nul = emitter.emit(embedded_nul);
+    CHECK(nul.status == RestrictedCStatus::Unsupported);
+    CHECK(nul.text.empty());
+    CHECK(nul.links.empty());
+    const std::filesystem::path sentinel_path =
+        std::filesystem::temp_directory_path() / "compiler-stage6c-string-sentinel.c";
+    {
+        std::ofstream sentinel(sentinel_path, std::ios::binary | std::ios::trunc);
+        REQUIRE(sentinel.is_open());
+        sentinel << "preserve\n";
+    }
+    const RestrictedCResult nul_file = emitter.emit_to_file(embedded_nul, sentinel_path);
+    CHECK(nul_file.status == RestrictedCStatus::Unsupported);
+    std::ifstream preserved_nul(sentinel_path, std::ios::binary);
+    REQUIRE(preserved_nul.is_open());
+    CHECK(std::string(std::istreambuf_iterator<char>(preserved_nul),
+                      std::istreambuf_iterator<char>()) == "preserve\n");
+
+    ir::IRBuilder oversized_builder;
+    REQUIRE(oversized_builder.register_program(SymbolRef{0, "oversized"}, "oversized").valid());
+    oversized_builder.seed_external_builtins();
+    const std::string oversized_literal(RestrictedCEmitter::memory_word_capacity(), 'x');
+    REQUIRE(oversized_builder.emit_constant(scalar(TYPE_STRING), oversized_literal).valid());
+    REQUIRE(oversized_builder.emit_halt());
+    oversized_builder.finalize(true);
+    REQUIRE(oversized_builder.status() == ir::ModuleStatus::Ready);
+    const RestrictedCResult oversized = emitter.emit(oversized_builder.module());
+    CHECK(oversized.status == RestrictedCStatus::Unsupported);
+    CHECK(oversized.text.empty());
+    CHECK(oversized.links.empty());
+    const RestrictedCResult oversized_file =
+        emitter.emit_to_file(oversized_builder.module(), sentinel_path);
+    CHECK(oversized_file.status == RestrictedCStatus::Unsupported);
+    std::ifstream preserved_oversized(sentinel_path, std::ios::binary);
+    REQUIRE(preserved_oversized.is_open());
+    CHECK(std::string(std::istreambuf_iterator<char>(preserved_oversized),
+                      std::istreambuf_iterator<char>()) == "preserve\n");
+    std::error_code cleanup_error;
+    std::filesystem::remove(sentinel_path, cleanup_error);
+}
+
+TEST_CASE("Stage 6C String static layout is category ordered and exact deduplicated")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "string_layout"}, "string_layout").valid());
+    builder.seed_external_builtins();
+    REQUIRE(builder.register_storage(SymbolRef{0, "result"}, scalar(TYPE_BOOL),
+                                     ir::StorageKind::Global).valid());
+    const ir::FunctionId procedure = builder.register_procedure(
+        SymbolRef{0, "procedure_literal"}, "procedure_literal", scalar(TYPE_STRING), {});
+    REQUIRE(procedure.valid());
+    REQUIRE(builder.enter_function(procedure));
+    const ir::ValueId first_q = builder.emit_constant(scalar(TYPE_STRING), std::string("Q"));
+    const ir::ValueId duplicate_q = builder.emit_constant(scalar(TYPE_STRING), std::string("Q"));
+    REQUIRE(first_q.valid());
+    REQUIRE(duplicate_q.valid());
+    REQUIRE(builder.emit_return(duplicate_q));
+    REQUIRE(builder.leave_function());
+
+    const ir::ValueId first_p = builder.emit_constant(scalar(TYPE_STRING), std::string("P"));
+    const ir::ValueId duplicate_p = builder.emit_constant(scalar(TYPE_STRING), std::string("P"));
+    REQUIRE(first_p.valid());
+    REQUIRE(duplicate_p.valid());
+    REQUIRE(builder.emit_call(procedure, {}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+
+    const RestrictedCResult emitted = RestrictedCEmitter().emit(builder.module());
+    REQUIRE(emitted.succeeded());
+    CHECK(emitted.links.empty());
+    CHECK(emitted.text.find("#define STRING_EMPTY_HANDLE INT32_C(2)\n") != std::string::npos);
+    CHECK(emitted.text.find("    Reg[0u] = INT32_C(7);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[2u] = INT32_C(0);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[3u] = INT32_C(80);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[4u] = INT32_C(0);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[5u] = INT32_C(81);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[6u] = INT32_C(0);\n") != std::string::npos);
+    CHECK(emitted.text.find("    Reg[2u] = INT32_C(3);\n") != std::string::npos);
+    CHECK(emitted.text.find("    Reg[3u] = INT32_C(3);\n") != std::string::npos);
+    CHECK(emitted.text.find("    Reg[8u] = 1u;\n") != std::string::npos);
+
+    const std::string p_word = "    MM[3u] = INT32_C(80);\n";
+    const std::string q_word = "    MM[5u] = INT32_C(81);\n";
+    const std::size_t p_position = emitted.text.find(p_word);
+    const std::size_t q_position = emitted.text.find(q_word);
+    REQUIRE(p_position != std::string::npos);
+    REQUIRE(q_position != std::string::npos);
+    CHECK(emitted.text.find(p_word, p_position + p_word.size()) == std::string::npos);
+    CHECK(emitted.text.find(q_word, q_position + q_word.size()) == std::string::npos);
 }

@@ -88,8 +88,8 @@ Tier definitions:
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for scalar Program and procedure CFG/manual-frame recursion; **Stage 6A/6B DONE** for scalar Integer/Bool/Float | Stage 4A supplies the typed IR seam; arrays, String, nested captures, and host executable production remain separate |
-| RUNTIME | Stage 6A/6B lower canonical scalar Integer/Bool/Float I/O and `sqrt`, with deterministic token input, raw binary32 words, and typed Math link metadata | String builtins, array runtime, and the host adapter remain separate |
+| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for scalar Program and procedure CFG/manual-frame recursion; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String | Stage 4A supplies the typed IR seam; arrays, nested captures, and host executable production remain separate |
+| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`, with deterministic numeric-token/String-line input, binary32 words, String handles, and typed Math link metadata | Array runtime and the host adapter remain separate |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
 

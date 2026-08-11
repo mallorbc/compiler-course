@@ -2856,8 +2856,14 @@ lowered_expression parser::parse_factor()
                                                          Current_parse_token);
         if (ir_builder != NULL)
         {
+            std::string payload = Current_parse_token.stringValue;
+            if (!Lexer->quote_status && payload.size() >= 2U &&
+                payload.front() == '"' && payload.back() == '"')
+            {
+                payload = payload.substr(1U, payload.size() - 2U);
+            }
             factor_parse.value = ir_builder->emit_constant(
-                shape_of(factor_parse.semantics.resolved_token), Current_parse_token.stringValue);
+                shape_of(factor_parse.semantics.resolved_token), payload);
         }
         Current_parse_token = Get_Valid_Token();
         return factor_parse;

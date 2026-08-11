@@ -23,7 +23,8 @@ module is still verified, while unreachable declarations do not emit labels,
 frames, runtime helpers, or strict-C unused-label warnings.
 
 This was the Stage 5C boundary.  Stage 6B subsequently lowers scalar Float
-procedures and `sqrt` without changing this frame ABI.  Arrays, String,
+procedures and `sqrt`, and Stage 6C lowers scalar String handles, without
+changing this frame ABI.  Arrays,
 static-link/capture semantics for nested procedures, and fallthrough/no-return
 procedures remain deliberately outside the supported slice.  Nested declaration emission restores the outer IR context, but
 the existing resolver policy still exposes only current/self and global names;

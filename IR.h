@@ -154,6 +154,8 @@ struct Storage
 struct Constant
 {
     ValueId result;
+    //A String payload contains semantic bytes only; source delimiters are a
+    //frontend concern and are never retained in finalized IR.
     std::variant<int, float, bool, std::string> payload;
 };
 
