@@ -17,6 +17,7 @@ explicit approval. The completed implementation is layered on
 | Stage 7 | `f67bfd6`: safe host toolchain adapter and atomic native publication | fake/real toolchains, hostile paths, signals, malformed products, concurrency |
 | Final grammar gate | `87b1db5`: require scanner-confirmed EOF after the final program period | 147 unit cases / 3,405 assertions; CLI; 210 goldens; generated C; all professor/native outcomes |
 | Final ownership gate | `c02f253`: deterministic parser/scanner/typechecker/IR-builder lifetime with unchanged public seams | strict C++ and default full suites; ASan+UBSan; LeakSanitizer host limitation recorded |
+| Completion handoff | `28fb981` plus the final evidence record: current README/agent guide/ledger, one-page report, reproducible verification | optimized, strict, sanitizer, generated/native sanitizer, and tracked-only archive gates |
 
 The current pipeline is:
 
@@ -24,8 +25,7 @@ The current pipeline is:
 handwritten frontend -> verified typed IR -> restricted C -> native executable
 ```
 
-Issue #1 implementation is complete in the local branch. Optimized, sanitizer,
-and portability evidence is recorded in `docs/FINAL_VERIFICATION.md`; only its
-final tracked-export reproduction remains to be filled after the documentation
-commit. Pushing, updating the GitHub issue, and any merge to `master` remain
-separate user-authorized actions.
+Issue #1 implementation and its local handoff are complete. Optimized,
+sanitizer, portability, and tracked-only export evidence is recorded in
+`docs/FINAL_VERIFICATION.md`. Pushing, updating/closing the GitHub issue, and any
+merge to `master` remain separate user-authorized actions.

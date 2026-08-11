@@ -7,8 +7,7 @@ Clang/Clang++ were not installed, so no Clang result is claimed.
 
 ## Current committed-tree gates
 
-The final tracked-only archive reproduction is recorded here after the final
-documentation commit. Before that export, the exact working tree passed:
+Before the tracked-only export, the exact working tree passed:
 
 ```sh
 make clean && make test
@@ -96,5 +95,21 @@ intentionally publish a valid executable which later exits with status 1.
 
 ## Final tracked-only export
 
-Pending the final documentation commit; all ownership and sanitizer results are
-recorded above.
+Commit `28fb981` (compiler, ownership fix, tests, final report, and current
+documentation) was exported without its `.git` directory or any untracked/build
+artifact, then rebuilt and tested from scratch:
+
+```sh
+verify_dir=$(mktemp -d /tmp/compiler-issue1-final-XXXXXX)
+git archive 28fb981 | tar -x -C "$verify_dir"
+cd "$verify_dir"
+test ! -e compiler
+test ! -e tests/unit_tests
+make clean
+make test
+```
+
+The clean export passed the same warning-free 147/3,405 unit result, CLI,
+210/210 golden corpus, strict generated-C runtime, native transaction/runtime,
+and all-professor-source matrix. No repository-local or untracked artifact was
+needed to build or pass.
