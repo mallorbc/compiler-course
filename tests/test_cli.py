@@ -169,6 +169,44 @@ def main() -> int:
             f"unexpected separated-numbers stderr: {separated_numbers_result.stderr!r}",
         )
 
+        trailing_cases = (
+            ("trailing-identifier.src", " trailing_identifier\n", 'Unexpected token after final "."'),
+            ("trailing-period.src", ".\n", 'Unexpected token after final "."'),
+            ("trailing-punctuation.src", ";\n", 'Unexpected token after final "."'),
+            ("trailing-illegal.src", "@\n", "Illegal character: '@'"),
+            ("trailing-string.src", '"unterminated', "quotation left open"),
+            ("trailing-comment.src", "/* unterminated", "Unclosed block comment detected"),
+        )
+        for file_name, suffix, expected_diagnostic in trailing_cases:
+            source = Path(temp_dir) / file_name
+            source.write_text(
+                "program trailing is\nbegin\nend program." + suffix,
+                encoding="utf-8",
+            )
+            trailing = run_compiler(str(source))
+            check(trailing.returncode == 1,
+                  f"{file_name} exit was {trailing.returncode}, expected 1")
+            check(expected_diagnostic in trailing.stdout,
+                  f"{file_name} lost its trailing-input diagnostic: {trailing.stdout!r}")
+            check(trailing.stderr == "",
+                  f"unexpected {file_name} stderr: {trailing.stderr!r}")
+
+        trailing_comments = Path(temp_dir) / "valid-trailing-comments.src"
+        trailing_comments.write_text(
+            "program trailing is\nbegin\nend program.  \t\n"
+            "// trailing line comment with punctuation @ \" /*\n"
+            "/* trailing block comment /* nested */ closed */\n",
+            encoding="utf-8",
+        )
+        trailing_comments_result = run_compiler(str(trailing_comments))
+        check(trailing_comments_result.returncode == 0,
+              f"valid trailing trivia failed: {trailing_comments_result.stdout!r}")
+        check(trailing_comments_result.stdout ==
+              "The program parsed successfully with no errors\n",
+              f"valid trailing trivia output changed: {trailing_comments_result.stdout!r}")
+        check(trailing_comments_result.stderr == "",
+              f"valid trailing trivia stderr changed: {trailing_comments_result.stderr!r}")
+
         missing_begin = Path(temp_dir) / "missing-begin.src"
         missing_begin.write_text(
             "program missing_begin is\n"

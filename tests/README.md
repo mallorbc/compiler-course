@@ -150,7 +150,9 @@ capacity collisions) with an available host C compiler. Stage 7 adds
 `test_native.py` for its real/fake compiler process boundary: exact argv and
 typed `-lm`, hostile paths, non-shell `CC`, failed/malformed products, sentinel
 preservation, aliases/symlinks, runtime I/O and traps, recursive procedures,
-and 32 concurrent atomic publishers. `make native` runs that process layer;
+all 11 professor `correct/` sources with their publish/reject and representative
+runtime behavior, trailing-input rejection before launch, and 32 concurrent
+atomic publishers. `make native` runs that process layer;
 `make test` runs the unit, CLI, golden, generated-C, and native layers.
 
 Conventions for adding unit tests:

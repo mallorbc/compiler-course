@@ -340,6 +340,69 @@ def test_fake_compiler_and_failures(root: Path) -> None:
         check(rejected.returncode != 0, f"invalid source {bad_source.name} succeeded")
         check(not capture.exists(), f"invalid source {bad_source.name} launched CC")
         check_sentinel(output, sentinel, f"invalid source {bad_source.name}")
+
+        absent_output = root / f"absent-{bad_source.stem}"
+        absent_output.unlink(missing_ok=True)
+        capture.unlink(missing_ok=True)
+        absent = run_compiler("-o", str(absent_output), str(bad_source), env=base_env)
+        check(absent.returncode != 0, f"invalid source {bad_source.name} succeeded absent")
+        check(not capture.exists(), f"invalid source {bad_source.name} launched CC absent")
+        check(not absent_output.exists(),
+              f"invalid source {bad_source.name} published an absent destination")
+
+    trailing_cases = (
+        ("identifier", " trailing_identifier\n", 'Unexpected token after final "."'),
+        ("period", ".\n", 'Unexpected token after final "."'),
+        ("punctuation", ";\n", 'Unexpected token after final "."'),
+        ("illegal", "@\n", "Illegal character: '@'"),
+        ("string", '"unterminated', "quotation left open"),
+        ("comment", "/* unterminated", "Unclosed block comment detected"),
+    )
+    for label, suffix, expected_diagnostic in trailing_cases:
+        trailing_source = root / f"native-trailing-{label}.src"
+        trailing_output = root / f"native-trailing-{label}"
+        write_source(
+            trailing_source,
+            "program trailing is\nbegin\nend program." + suffix,
+        )
+        sentinel = install_sentinel(trailing_output)
+        capture.unlink(missing_ok=True)
+        rejected = run_compiler(
+            "-o", str(trailing_output), str(trailing_source), env=base_env
+        )
+        check(rejected.returncode != 0, f"native trailing {label} succeeded")
+        check(expected_diagnostic in rejected.stdout,
+              f"native trailing {label} lost its diagnostic: {rejected.stdout!r}")
+        check(rejected.stderr == "native: frontend-error\n",
+              f"native trailing {label} status changed: {rejected.stderr!r}")
+        check(not capture.exists(), f"native trailing {label} launched CC")
+        check_sentinel(trailing_output, sentinel, f"native trailing {label}")
+
+        trailing_output.unlink()
+        absent = run_compiler(
+            "-o", str(trailing_output), str(trailing_source), env=base_env
+        )
+        check(absent.returncode != 0, f"native trailing {label} absent succeeded")
+        check(not capture.exists(), f"native trailing {label} absent launched CC")
+        check(not trailing_output.exists(), f"native trailing {label} published output")
+
+    trailing_valid_source = root / "native-trailing-valid.src"
+    trailing_valid_output = root / "native-trailing-valid"
+    write_source(
+        trailing_valid_source,
+        "program trailing is\nbegin\nend program.  \t\n"
+        "// trailing line comment with punctuation @ \" /*\n"
+        "/* trailing block comment /* nested */ closed */\n",
+    )
+    capture.unlink(missing_ok=True)
+    trailing_valid = run_compiler(
+        "-o", str(trailing_valid_output), str(trailing_valid_source), env=base_env
+    )
+    check(trailing_valid.returncode == 0,
+          f"valid trailing comments blocked native publication: {trailing_valid.stderr!r}")
+    check(capture.exists(), "valid trailing comments did not launch CC")
+    check(trailing_valid_output.is_file() and os.access(trailing_valid_output, os.X_OK),
+          "valid trailing comments did not publish executable")
     no_temp_debris(root)
 
 
@@ -523,6 +586,49 @@ def test_real_native_runtime(root: Path) -> None:
     bounds_run = run_native(bounds_output)
     check(bounds_run.returncode == 1 and bounds_run.stdout == "7\n" and bounds_run.stderr == "",
           f"native bounds trap changed: {bounds_run!r}")
+
+    professor_cases = (
+        ("iterativeFib.src", "5\n", "0\n1\n1\n2\n3\n", 0),
+        ("logicals.src", "true\nA\n", "T\nT\n", 0),
+        ("math.src", "", "1\n", 0),
+        ("multipleProcs.src", "", "8\n", 0),
+        ("recursiveFib.src", "3\n", "0\n1\n", 1),
+        ("source.src", "", "", 0),
+        ("test2.src", "", "0\n", 0),
+        (
+            "test_heap.src",
+            "alpha\nbeta two\ngamma\ndelta\n",
+            "Enter a string:\nEnter a string:\nEnter a string:\nEnter a string:\n"
+            "delta\ngamma\nbeta two\nalpha\n",
+            0,
+        ),
+        ("test_program_minimal.src", "", "0\n", 0),
+    )
+    for file_name, stdin_text, expected_stdout, expected_returncode in professor_cases:
+        professor_source = REPO_ROOT / "testPgms" / "correct" / file_name
+        professor_output = root / f"professor-{Path(file_name).stem}"
+        built = run_compiler(
+            "-o", str(professor_output), str(professor_source), env={"CC": "cc"}
+        )
+        check(built.returncode == 0,
+              f"professor source {file_name} did not publish: {built.stderr!r}")
+        check(professor_output.is_file() and os.access(professor_output, os.X_OK),
+              f"professor source {file_name} product is not executable")
+        executed = run_native(professor_output, stdin_text)
+        check(executed.returncode == expected_returncode and
+              executed.stdout == expected_stdout and executed.stderr == "",
+              f"professor source {file_name} runtime changed: {executed!r}")
+
+    for file_name in ("test1.src", "test1b.src"):
+        professor_source = REPO_ROOT / "testPgms" / "correct" / file_name
+        professor_output = root / f"professor-rejected-{Path(file_name).stem}"
+        rejected = run_compiler(
+            "-o", str(professor_output), str(professor_source), env={"CC": "cc"}
+        )
+        check(rejected.returncode != 0,
+              f"invalid professor source {file_name} unexpectedly succeeded")
+        check(not professor_output.exists(),
+              f"invalid professor source {file_name} published an executable")
 
     rewrite = root / "rewrite"
     first_source = root / "rewrite-first.src"

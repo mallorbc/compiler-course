@@ -3209,3 +3209,56 @@ TEST_CASE("Stage 6E defaults only the reachable procedure exit")
     CHECK(malformed.ir_status() == ir::ModuleStatus::FrontendError);
     CHECK(malformed.ir_module().functions.empty());
 }
+
+TEST_CASE("the final program period requires scanner-confirmed end of input")
+{
+    struct trailing_case
+    {
+        const char *suffix;
+        const char *diagnostic;
+        const char *additional_diagnostic;
+    };
+    const std::vector<trailing_case> invalid_cases = {
+        {" trailing_identifier\n", "Unexpected token after final \".\"", ""},
+        {".\n", "Unexpected token after final \".\"", ""},
+        {";\n", "Unexpected token after final \".\"", ""},
+        {"@\n", "Illegal character: '@'", ""},
+        {"\"unterminated", "Unexpected token after final \".\"", "quotation left open"},
+        {"/* unterminated", "Unclosed block comment detected", ""},
+    };
+
+    for (const trailing_case &test_case : invalid_cases)
+    {
+        temp_source_file fixture(
+            std::string("program trailing is\nbegin\nend program.") + test_case.suffix);
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK_FALSE(parsed.frontend_valid());
+        CHECK_FALSE(parsed.can_generate_code());
+        CHECK(parsed.ir_status() == ir::ModuleStatus::FrontendError);
+        CHECK(parsed.ir_module().functions.empty());
+        CHECK(parsed.ir_module().storages.empty());
+        CHECK(has_error(parsed, test_case.diagnostic));
+        if (test_case.additional_diagnostic[0] != '\0')
+        {
+            CHECK(has_error(parsed, test_case.additional_diagnostic));
+        }
+    }
+
+    temp_source_file valid_fixture(
+        "program trailing is\n"
+        "begin\n"
+        "end program.  \t\n"
+        "// trailing line comment with punctuation @ \" /*\n"
+        "/* trailing block comment /* nested */ closed */\n");
+    captured_stdout valid_capture;
+    parser valid(valid_fixture.name());
+    valid_capture.restore();
+
+    CHECK(valid.frontend_valid());
+    CHECK(valid.can_generate_code());
+    CHECK(valid.ir_status() == ir::ModuleStatus::Ready);
+    CHECK_FALSE(valid.ir_module().functions.empty());
+}

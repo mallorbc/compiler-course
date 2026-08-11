@@ -331,8 +331,37 @@ bool parser::parse_program()
     valid_parse = parse_program_body();
     if (Current_parse_token_type == T_PERIOD)
     {
-        valid_parse = true;
-        if (ir_builder != NULL)
+        //The final period owns the rest of the translation unit.  The token
+        //window has already scanned one token beyond it, so consume that
+        //lookahead and drain to the scanner's EOF sentinel.  This both rejects
+        //ordinary trailing tokens and lets the scanner finish/report trailing
+        //illegal bytes or unterminated literals/comments.
+        bool valid_program_end = true;
+        Current_parse_token = Get_Valid_Token();
+        if (Current_parse_token_type != T_INVALID)
+        {
+            generate_error_report("Unexpected token after final \".\"");
+            errors_occured = true;
+            valid_program_end = false;
+        }
+        while (Current_parse_token_type != T_INVALID)
+        {
+            Current_parse_token = Get_Valid_Token();
+        }
+        if (Lexer->quote_status)
+        {
+            generate_error_report("quotation left open", Lexer->quote_opener);
+            errors_occured = true;
+            valid_program_end = false;
+        }
+        if (Lexer->is_nested_commented)
+        {
+            generate_error_report("Unclosed block comment detected", Lexer->nested_comment_line);
+            errors_occured = true;
+            valid_program_end = false;
+        }
+        valid_parse = valid_program_end;
+        if (valid_program_end && ir_builder != NULL)
         {
             ir_builder->emit_halt();
         }

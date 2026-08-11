@@ -208,6 +208,57 @@ def main() -> int:
         check(generated == output.read_text(encoding="utf-8"), "restricted-C output is not deterministic")
         strict_c11_syntax_check(output)
 
+        trailing_cases = (
+            ("identifier", " trailing_identifier\n", 'Unexpected token after final "."'),
+            ("period", ".\n", 'Unexpected token after final "."'),
+            ("punctuation", ";\n", 'Unexpected token after final "."'),
+            ("illegal", "@\n", "Illegal character: '@'"),
+            ("string", '"unterminated', "quotation left open"),
+            ("comment", "/* unterminated", "Unclosed block comment detected"),
+        )
+        for label, suffix, expected_diagnostic in trailing_cases:
+            trailing_source = root / f"trailing-{label}.src"
+            trailing_output = root / f"trailing-{label}.c"
+            trailing_source.write_text(
+                "program trailing is\nbegin\nend program." + suffix,
+                encoding="utf-8",
+            )
+            sentinel = f"preserve trailing {label}\n"
+            trailing_output.write_text(sentinel, encoding="utf-8")
+            rejected = run_compiler("--emit-c", str(trailing_output), str(trailing_source))
+            check(rejected.returncode != 0,
+                  f"trailing {label} unexpectedly emitted C")
+            check(expected_diagnostic in rejected.stdout,
+                  f"trailing {label} lost its frontend diagnostic: {rejected.stdout!r}")
+            check(rejected.stderr == "codegen: frontend-error\n",
+                  f"trailing {label} codegen status changed: {rejected.stderr!r}")
+            check(trailing_output.read_text(encoding="utf-8") == sentinel,
+                  f"trailing {label} replaced the existing C output")
+            check_no_temp_debris(root)
+
+            trailing_output.unlink()
+            absent = run_compiler("--emit-c", str(trailing_output), str(trailing_source))
+            check(absent.returncode != 0,
+                  f"trailing {label} emitted an initially absent C output")
+            check(not trailing_output.exists(),
+                  f"trailing {label} published an initially absent C output")
+            check_no_temp_debris(root)
+
+        trailing_valid_source = root / "trailing-valid.src"
+        trailing_valid_output = root / "trailing-valid.c"
+        trailing_valid_source.write_text(
+            "program trailing is\nbegin\nend program.  \t\n"
+            "// trailing line comment with punctuation @ \" /*\n"
+            "/* trailing block comment /* nested */ closed */\n",
+            encoding="utf-8",
+        )
+        trailing_valid = run_compiler(
+            "--emit-c", str(trailing_valid_output), str(trailing_valid_source)
+        )
+        check(trailing_valid.returncode == 0,
+              f"valid trailing comments blocked C emission: {trailing_valid.stderr!r}")
+        strict_c11_syntax_check(trailing_valid_output)
+
         gate4_source = root / "gate4.src"
         gate4_output = root / "gate4.c"
         gate4_source.write_text(
