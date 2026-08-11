@@ -5,6 +5,7 @@
 #include "../../parser.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -3083,4 +3084,128 @@ TEST_CASE("Stage 5C parses unreachable procedure statements without stale IR emi
     CHECK(valid_dead.can_generate_code());
     CHECK(valid_dead.ir_status() == ir::ModuleStatus::Ready);
     CHECK(ir::verify_module(valid_dead.ir_module()).valid);
+}
+
+TEST_CASE("Stage 6E lowers empty and statement fallthrough to exact typed defaults")
+{
+    temp_source_file fixture(
+        "program defaults is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "variable b : bool;\n"
+        "variable s : string;\n"
+        "procedure integerDefault : integer()\n"
+        "begin\n"
+        "end procedure;\n"
+        "procedure floatDefault : float()\n"
+        "variable local : float;\n"
+        "begin\n"
+        "    local := 1.0;\n"
+        "end procedure;\n"
+        "procedure boolDefault : bool()\n"
+        "begin\n"
+        "end procedure;\n"
+        "procedure stringDefault : string()\n"
+        "begin\n"
+        "end procedure;\n"
+        "begin\n"
+        "    i := integerDefault();\n"
+        "    f := floatDefault();\n"
+        "    b := boolDefault();\n"
+        "    s := stringDefault();\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_module().functions.size() == 14);
+
+    const std::vector<std::variant<int, float, bool, std::string>> defaults = {
+        0, 0.0F, false, std::string()
+    };
+    for (std::size_t index = 0; index < defaults.size(); index++)
+    {
+        const ir::Function &procedure = parsed.ir_module().functions[10 + index];
+        const ir::BasicBlock &exit = procedure.blocks.back();
+        REQUIRE(!exit.instructions.empty());
+        const ir::Constant *constant = std::get_if<ir::Constant>(&exit.instructions.back());
+        REQUIRE(constant != NULL);
+        CHECK(constant->payload == defaults[index]);
+        if (index == 1)
+        {
+            REQUIRE(std::holds_alternative<float>(constant->payload));
+            CHECK_FALSE(std::signbit(std::get<float>(constant->payload)));
+        }
+        const ir::Terminator *terminator = std::get_if<ir::Terminator>(&exit.terminator);
+        REQUIRE(terminator != NULL);
+        const ir::ReturnTerminator *returned = std::get_if<ir::ReturnTerminator>(terminator);
+        REQUIRE(returned != NULL);
+        CHECK(returned->value == constant->result);
+    }
+    CHECK(ir::verify_module(parsed.ir_module()).valid);
+}
+
+TEST_CASE("Stage 6E defaults only the reachable procedure exit")
+{
+    temp_source_file fixture(
+        "program paths is\n"
+        "variable result : integer;\n"
+        "procedure explicit : integer()\n"
+        "begin\n"
+        "    return 7;\n"
+        "end procedure;\n"
+        "procedure allarms : integer(variable flag : bool)\n"
+        "begin\n"
+        "    if (flag) then\n"
+        "        return 1;\n"
+        "    else\n"
+        "        return 2;\n"
+        "    end if;\n"
+        "end procedure;\n"
+        "procedure partial : integer(variable flag : bool)\n"
+        "begin\n"
+        "    if (flag) then\n"
+        "        return 3;\n"
+        "    end if;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    result := explicit();\n"
+        "    result := allarms(true);\n"
+        "    result := partial(false);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.can_generate_code());
+
+    const ir::Function &explicit_procedure = parsed.ir_module().functions[10];
+    CHECK(explicit_procedure.values.size() == 1);
+    CHECK(explicit_procedure.blocks.size() == 1);
+    const ir::Function &allarms = parsed.ir_module().functions[11];
+    CHECK(allarms.blocks.size() == 3);
+    CHECK(allarms.values.size() == 3); // condition load plus two explicit constants
+    const ir::Function &partial = parsed.ir_module().functions[12];
+    REQUIRE(partial.blocks.size() == 4);
+    const ir::BasicBlock &partial_exit = partial.blocks.back();
+    REQUIRE(partial_exit.instructions.size() == 1);
+    const ir::Constant *implicit_zero =
+        std::get_if<ir::Constant>(&partial_exit.instructions[0]);
+    REQUIRE(implicit_zero != NULL);
+    CHECK(implicit_zero->payload == std::variant<int, float, bool, std::string>(0));
+    CHECK(ir::verify_module(parsed.ir_module()).valid);
+
+    temp_source_file malformed_fixture(
+        "program malformed is\n"
+        "procedure broken : integer()\n"
+        "begin\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout malformed_capture;
+    parser malformed(malformed_fixture.name());
+    malformed_capture.restore();
+    CHECK_FALSE(malformed.frontend_valid());
+    CHECK(malformed.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(malformed.ir_module().functions.empty());
 }

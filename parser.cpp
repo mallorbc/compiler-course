@@ -754,6 +754,10 @@ bool parser::parse_procedure_declaration(bool is_global)
     const bool body_valid = parse_procedure_body();
     if (ir_builder != NULL && entered_ir_function)
     {
+        if (body_valid)
+        {
+            (void)ir_builder->complete_procedure_fallthrough();
+        }
         (void)ir_builder->leave_function();
     }
     parsing_statements = false;
@@ -837,7 +841,10 @@ bool parser::parse_procedure_body()
 {
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_BODY;
-    bool valid_parse = false;
+    //An empty declaration list and empty statement list are both admitted by
+    //the grammar.  Individual failures below still clear this structural
+    //success or record a frontend diagnostic.
+    bool valid_parse = true;
     //must be able to parse declarations until T_BEGIN is found
     while (Current_parse_token_type != T_BEGIN)
     {

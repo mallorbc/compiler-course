@@ -815,6 +815,52 @@ bool IRBuilder::emit_return(ValueId value)
     return true;
 }
 
+bool IRBuilder::complete_procedure_fallthrough()
+{
+    if (!emission_enabled())
+    {
+        return false;
+    }
+    Function *function = current_function_mut();
+    BasicBlock *block = current_block_mut();
+    if (function == NULL || function->kind != FunctionKind::Procedure || block == NULL)
+    {
+        mark_invalid("procedure fallthrough completion has invalid context");
+        return false;
+    }
+    if (!is_ready_type(function->return_type))
+    {
+        mark_invalid("procedure fallthrough completion needs a supported scalar return type");
+        return false;
+    }
+    if (!std::holds_alternative<std::monostate>(block->terminator))
+    {
+        return true;
+    }
+
+    std::variant<int, float, bool, std::string> payload;
+    switch (function->return_type.element_type)
+    {
+    case TYPE_INT:
+        payload = 0;
+        break;
+    case TYPE_FLOAT:
+        payload = 0.0F;
+        break;
+    case TYPE_BOOL:
+        payload = false;
+        break;
+    case TYPE_STRING:
+        payload = std::string();
+        break;
+    default:
+        mark_invalid("procedure fallthrough completion needs a supported scalar return type");
+        return false;
+    }
+    const ValueId value = emit_constant(function->return_type, payload);
+    return value.valid() && emit_return(value);
+}
+
 bool IRBuilder::emit_halt()
 {
     if (!emission_enabled())

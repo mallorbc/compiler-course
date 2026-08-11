@@ -481,6 +481,196 @@ def main() -> int:
               "Stage5C procedure frame traffic was not staged through registers")
         strict_c11_compile_and_run(procedure_output, "12\n")
 
+        stage6e_source = root / "stage6e-default-returns.src"
+        stage6e_output = root / "stage6e-default-returns.c"
+        stage6e_source.write_text(
+            "program Stage6EDefaults is\n"
+            "variable integerValue : integer;\n"
+            "variable floatValue : float;\n"
+            "variable boolValue : bool;\n"
+            "variable stringValue : string;\n"
+            "variable printed : bool;\n"
+            "procedure emptyInteger : integer()\n"
+            "begin\n"
+            "end procedure;\n"
+            "procedure statementFloat : float()\n"
+            "variable local : float;\n"
+            "begin\n"
+            "    local := 9.5;\n"
+            "end procedure;\n"
+            "procedure emptyBool : bool()\n"
+            "begin\n"
+            "end procedure;\n"
+            "procedure emptyString : string()\n"
+            "begin\n"
+            "end procedure;\n"
+            "procedure explicit : integer()\n"
+            "begin\n"
+            "    return 7;\n"
+            "end procedure;\n"
+            "procedure partial : integer(variable flag : bool)\n"
+            "begin\n"
+            "    if (flag) then\n"
+            "        return 9;\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure nested : integer(variable flag : bool)\n"
+            "begin\n"
+            "    if (flag) then\n"
+            "        if (false) then\n"
+            "            return 3;\n"
+            "        else\n"
+            "            return 4;\n"
+            "        end if;\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure loopExit : integer(variable count : integer)\n"
+            "variable i : integer;\n"
+            "begin\n"
+            "    for (i := 0; i < count)\n"
+            "        return 6;\n"
+            "    end for;\n"
+            "end procedure;\n"
+            "procedure recurse : integer(variable count : integer)\n"
+            "begin\n"
+            "    if (count > 0) then\n"
+            "        return recurse(count - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    integerValue := emptyInteger();\n"
+            "    printed := putInteger(integerValue);\n"
+            "    floatValue := statementFloat();\n"
+            "    printed := putFloat(floatValue);\n"
+            "    boolValue := emptyBool();\n"
+            "    printed := putBool(boolValue);\n"
+            "    stringValue := emptyString();\n"
+            "    printed := putString(stringValue);\n"
+            "    integerValue := explicit();\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := partial(false);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := partial(true);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := nested(false);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := nested(true);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := loopExit(0);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := loopExit(1);\n"
+            "    printed := putInteger(integerValue);\n"
+            "    integerValue := recurse(3);\n"
+            "    printed := putInteger(integerValue);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        stage6e = run_compiler("--emit-c", str(stage6e_output), str(stage6e_source))
+        check(stage6e.returncode == 0,
+              f"Stage6E default-return emit failed: {stage6e.stdout!r} {stage6e.stderr!r}")
+        stage6e_c = stage6e_output.read_text(encoding="utf-8")
+        check_flat_array_c(stage6e_c, "Stage6E scalar defaults")
+        for source_identifier in (
+            "Stage6EDefaults", "emptyInteger", "statementFloat", "emptyBool",
+            "emptyString", "partial", "nested", "loopExit", "recurse"
+        ):
+            check(source_identifier not in stage6e_c,
+                  f"Stage6E source identifier leaked into C: {source_identifier}")
+        check("R_put_i32" in stage6e_c and "R_put_f32" in stage6e_c and
+              "R_put_b1" in stage6e_c and "R_put_str" in stage6e_c,
+              "Stage6E reachable output helper closure is incomplete")
+        strict_c11_compile_and_run(
+            stage6e_output,
+            "0\n0\nfalse\n\n7\n0\n9\n0\n4\n0\n6\n0\n",
+        )
+
+        stage6e_dead_source = root / "stage6e-dead-default.src"
+        stage6e_dead_output = root / "stage6e-dead-default.c"
+        stage6e_dead_source.write_text(
+            "program Stage6EDead is\n"
+            "variable answer : integer;\n"
+            "procedure deadString : string()\n"
+            "begin\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := 7;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        stage6e_dead = run_compiler(
+            "--emit-c", str(stage6e_dead_output), str(stage6e_dead_source)
+        )
+        check(stage6e_dead.returncode == 0,
+              f"Stage6E unused default procedure blocked emission: {stage6e_dead.stderr!r}")
+        stage6e_dead_c = stage6e_dead_output.read_text(encoding="utf-8")
+        check("L_f10_" not in stage6e_dead_c and "R_put_str" not in stage6e_dead_c and
+              "R_str_eq" not in stage6e_dead_c and "#include <stdio.h>" not in stage6e_dead_c,
+              "Stage6E dead String default leaked labels, helpers, or headers")
+        strict_c11_syntax_check(stage6e_dead_output)
+
+        stage6e_heap_output = root / "stage6e-test-heap.c"
+        stage6e_heap = run_compiler(
+            "--emit-c", str(stage6e_heap_output),
+            str(REPO_ROOT / "testPgms/correct/test_heap.src")
+        )
+        check(stage6e_heap.returncode == 0,
+              f"Stage6E test_heap compatibility emit failed: {stage6e_heap.stderr!r}")
+        check_flat_array_c(stage6e_heap_output.read_text(encoding="utf-8"),
+                           "Stage6E test_heap")
+        strict_c11_compile_and_run(
+            stage6e_heap_output,
+            "Enter a string:\nEnter a string:\nEnter a string:\nEnter a string:\n"
+            "delta\ngamma\nbeta two\nalpha\n",
+            stdin_text="alpha\nbeta two\ngamma\ndelta\n",
+        )
+
+        for compatibility_name, compatibility_stdout in (
+            ("test_program_minimal.src", "0\n"),
+            ("test2.src", "0\n"),
+        ):
+            compatibility_output = root / f"stage6e-{compatibility_name}.c"
+            compatibility_emit = run_compiler(
+                "--emit-c", str(compatibility_output),
+                str(REPO_ROOT / "testPgms/correct" / compatibility_name)
+            )
+            check(compatibility_emit.returncode == 0,
+                  f"Stage6E {compatibility_name} emit failed: {compatibility_emit.stderr!r}")
+            strict_c11_compile_and_run(compatibility_output, compatibility_stdout)
+
+        for probe_path, probe_stdout in (
+            ("docs/audit/probes/empirical/p13_two_procs.src", ""),
+            ("docs/audit/probes/resync/baseline.src", "0\n"),
+            ("docs/audit/probes/scopes/proc_test_noreturn.src", ""),
+        ):
+            probe_output = root / f"stage6e-{Path(probe_path).stem}.c"
+            probe_emit = run_compiler(
+                "--emit-c", str(probe_output), str(REPO_ROOT / probe_path)
+            )
+            check(probe_emit.returncode == 0,
+                  f"Stage6E compatibility probe {probe_path} failed: {probe_emit.stderr!r}")
+            strict_c11_compile_and_run(probe_output, probe_stdout)
+
+        malformed_stage6e_source = root / "stage6e-malformed-body.src"
+        malformed_stage6e_output = root / "stage6e-malformed-body.c"
+        malformed_stage6e_output.write_text("preserve malformed Stage6E output\n", encoding="utf-8")
+        malformed_stage6e_source.write_text(
+            "program Stage6EMalformed is\n"
+            "procedure broken : integer()\n"
+            "begin\n"
+            "begin\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        malformed_stage6e = run_compiler(
+            "--emit-c", str(malformed_stage6e_output), str(malformed_stage6e_source)
+        )
+        check(malformed_stage6e.returncode != 0 and
+              "codegen: frontend-error" in malformed_stage6e.stderr,
+              "Stage6E malformed procedure did not fail atomically")
+        check(malformed_stage6e_output.read_text(encoding="utf-8") ==
+              "preserve malformed Stage6E output\n",
+              "Stage6E malformed procedure replaced the output sentinel")
+
         procedure_matrix_source = root / "stage5c-matrix.src"
         procedure_matrix_output = root / "stage5c-matrix.c"
         procedure_matrix_source.write_text(

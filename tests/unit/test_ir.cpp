@@ -2,6 +2,7 @@
 #include "../../BuiltinCatalog.h"
 #include "../../IR.h"
 
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -1432,4 +1433,99 @@ TEST_CASE("Stage 5C verifier accepts a reachable mutual-call SCC")
     builder.finalize(true);
     REQUIRE(builder.status() == ir::ModuleStatus::Ready);
     CHECK(ir::verify_module(builder.module()).valid);
+}
+
+TEST_CASE("Stage 6E procedure fallthrough completion emits exact scalar defaults")
+{
+    const std::vector<std::pair<data_types, std::variant<int, float, bool, std::string>>> cases = {
+        {TYPE_INT, 0},
+        {TYPE_FLOAT, 0.0F},
+        {TYPE_BOOL, false},
+        {TYPE_STRING, std::string()}
+    };
+    for (std::size_t index = 0; index < cases.size(); index++)
+    {
+        const std::string suffix = std::to_string(index);
+        ir::IRBuilder builder;
+        REQUIRE(builder.register_program(SymbolRef{0, "default_root_" + suffix},
+                                         "default_root_" + suffix).valid());
+        builder.seed_external_builtins();
+        const ir::FunctionId procedure = builder.register_procedure(
+            SymbolRef{0, "default_proc_" + suffix}, "default_proc_" + suffix,
+            scalar(cases[index].first), {});
+        REQUIRE(procedure.valid());
+        REQUIRE(builder.enter_function(procedure));
+        REQUIRE(builder.complete_procedure_fallthrough());
+        REQUIRE(builder.leave_function());
+        REQUIRE(builder.emit_halt());
+        builder.finalize(true);
+        REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+        REQUIRE(ir::verify_module(builder.module()).valid);
+
+        const ir::Function &completed = builder.module().functions[procedure.index];
+        REQUIRE(completed.blocks.size() == 1);
+        REQUIRE(completed.values.size() == 1);
+        REQUIRE(completed.blocks[0].instructions.size() == 1);
+        const ir::Constant *constant =
+            std::get_if<ir::Constant>(&completed.blocks[0].instructions[0]);
+        REQUIRE(constant != NULL);
+        CHECK(constant->payload == cases[index].second);
+        if (cases[index].first == TYPE_FLOAT)
+        {
+            REQUIRE(std::holds_alternative<float>(constant->payload));
+            CHECK_FALSE(std::signbit(std::get<float>(constant->payload)));
+        }
+        CHECK(completed.values[constant->result.index].type == scalar(cases[index].first));
+        const ir::Terminator *terminator =
+            std::get_if<ir::Terminator>(&completed.blocks[0].terminator);
+        REQUIRE(terminator != NULL);
+        const ir::ReturnTerminator *returned = std::get_if<ir::ReturnTerminator>(terminator);
+        REQUIRE(returned != NULL);
+        CHECK(returned->value == constant->result);
+    }
+}
+
+TEST_CASE("Stage 6E completion preserves explicit returns and rejects invalid contexts")
+{
+    ir::IRBuilder explicit_return;
+    REQUIRE(explicit_return.register_program(SymbolRef{0, "explicit_root"},
+                                             "explicit_root").valid());
+    explicit_return.seed_external_builtins();
+    const ir::FunctionId explicit_procedure = explicit_return.register_procedure(
+        SymbolRef{0, "explicit_proc"}, "explicit_proc", scalar(TYPE_INT), {});
+    REQUIRE(explicit_return.enter_function(explicit_procedure));
+    const ir::ValueId seven = explicit_return.emit_constant(scalar(TYPE_INT), 7);
+    REQUIRE(explicit_return.emit_return(seven));
+    REQUIRE(explicit_return.complete_procedure_fallthrough());
+    REQUIRE(explicit_return.scratch_module.functions[explicit_procedure.index].values.size() == 1);
+    REQUIRE(explicit_return.scratch_module.functions[explicit_procedure.index]
+                .blocks[0].instructions.size() == 1);
+    REQUIRE(explicit_return.leave_function());
+    REQUIRE(explicit_return.emit_halt());
+    explicit_return.finalize(true);
+    CHECK(explicit_return.status() == ir::ModuleStatus::Ready);
+
+    ir::IRBuilder program_context;
+    REQUIRE(program_context.register_program(SymbolRef{0, "program_context"},
+                                             "program_context").valid());
+    program_context.seed_external_builtins();
+    CHECK_FALSE(program_context.complete_procedure_fallthrough());
+    program_context.finalize(true);
+    CHECK(program_context.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(program_context.reason().find("invalid context") != std::string::npos);
+
+    ir::IRBuilder unsupported_shape;
+    REQUIRE(unsupported_shape.register_program(SymbolRef{0, "unsupported_shape"},
+                                               "unsupported_shape").valid());
+    unsupported_shape.seed_external_builtins();
+    const ir::FunctionId malformed = unsupported_shape.register_procedure(
+        SymbolRef{0, "malformed"}, "malformed", scalar(TYPE_INT), {});
+    REQUIRE(unsupported_shape.enter_function(malformed));
+    unsupported_shape.scratch_module.functions[malformed.index].return_type =
+        value_shape{TYPE_INT, true, 0};
+    CHECK_FALSE(unsupported_shape.complete_procedure_fallthrough());
+    REQUIRE(unsupported_shape.leave_function());
+    unsupported_shape.finalize(true);
+    CHECK(unsupported_shape.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(unsupported_shape.reason().find("supported scalar return type") != std::string::npos);
 }

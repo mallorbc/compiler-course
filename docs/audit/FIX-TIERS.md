@@ -88,8 +88,8 @@ Tier definitions:
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for Program/procedure CFG/manual frames; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String; **Stage 6D1/6D2 DONE** for array representation, checked elements, copies/conversions, exact calls, lifted operators, and scalar broadcast | Aggregate returns/conditions, nested captures, and host executable production remain separate |
-| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`; Stage 6D1/6D2 add one-word-per-element arrays, flat copy/conversion/operator loops, by-value frames, and bounds/division/capacity exits | Aggregate returns/conditions and the host adapter remain separate |
+| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for Program/procedure CFG/manual frames; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String; **Stage 6D1/6D2 DONE** for array representation, checked elements, copies/conversions, exact calls, lifted operators, and scalar broadcast; **Stage 6E DONE** for explicit typed IR completion of source procedure fallthrough | Aggregate returns/conditions, nested captures, and host executable production remain separate |
+| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`; Stage 6D1/6D2 add one-word-per-element arrays, flat copy/conversion/operator loops, by-value frames, and bounds/division/capacity exits; Stage 6E reuses those paths for deterministic scalar fallthrough defaults | Aggregate returns/conditions and the host adapter remain separate |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
 

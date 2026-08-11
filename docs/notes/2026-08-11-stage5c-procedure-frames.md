@@ -4,9 +4,10 @@ Stage 5C extends the project-owned typed IR and restricted-C backend without
 changing the handwritten parser's grammar, resolver, or check-only output.
 Procedures may now contain multi-block `if` and `for` CFGs, including early
 returns and recursive calls.  The verifier requires every reachable procedure
-block to reach an exact typed `Return`; a syntactically valid fallthrough
-procedure remains frontend-valid but is atomically `Unsupported` for code
-generation.
+block to reach an exact typed `Return`. At the Stage 5C boundary, a syntactically
+valid fallthrough procedure remained frontend-valid but was atomically
+`Unsupported` for code generation; Stage 6E later closes that source-language
+compatibility gap with an explicit typed Constant and Return in IR.
 
 The restricted-C backend remains one `main` with numeric labels and gotos.  It
 maps globals in canonical StorageId order to compact `MM` words, reserves compact static spill words
@@ -27,7 +28,8 @@ procedures and `sqrt`, and Stage 6C lowers scalar String handles, without
 changing this frame ABI.  Stage 6D1 subsequently makes the same frames
 width-aware for exact by-value array parameters, locals, and aggregate Value
 spans. Stage 6D2 adds lifted array operators within those same spans.
-Static-link/capture semantics for nested procedures and fallthrough/no-return
-procedures remain deliberately outside the supported slice.  Nested declaration emission restores the outer IR context, but
+Static-link/capture semantics for nested procedures remain deliberately outside
+the supported slice. Stage 6E subsequently lowers source fallthrough/no-return
+procedures without changing this frame ABI. Nested declaration emission restores the outer IR context, but
 the existing resolver policy still exposes only current/self and global names;
 no enclosing-local capture was introduced.

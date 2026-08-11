@@ -34,10 +34,12 @@ After the compiler is compiled, it can be used but running the executable in the
 The one-argument form remains a check-only frontend invocation. The current
 restricted-C backend can be requested explicitly for Integer, Bool, Float, and
 String Programs and procedures, including scalar control flow/I/O, `sqrt`, and
-Stage 6D1 array storage, checked indexing, whole copies/conversions, and exact
-by-value user-procedure parameters, plus Stage 6D2 elementwise unary/binary
-operators and scalar broadcast. The backend writes C source but deliberately does not
-invoke a C compiler or produce an executable.  Float is carried as an exact
+typed procedure fallthrough (deterministic Integer `0`, Float `+0.0`, Bool
+`false`, or empty String), plus Stage 6D1 array storage, checked indexing, whole
+copies/conversions, and exact by-value user-procedure parameters, plus Stage 6D2
+elementwise unary/binary operators and scalar broadcast. The backend writes C
+source but deliberately does not invoke a C compiler or produce an executable.
+Float is carried as an exact
 IEEE binary32 word in the fixed `int32_t` memory/register model.  String values
 are word-index handles to one-byte-per-word, zero-terminated immutable data in
 that same memory; an array occupies one MM word per element, including String

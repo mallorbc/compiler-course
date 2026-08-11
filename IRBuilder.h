@@ -62,6 +62,10 @@ public:
     ValueId emit_cast(CastOp operation, ValueId operand);
     ValueId emit_call(FunctionId callee, const std::vector<ValueId> &arguments);
     bool emit_return(ValueId value);
+    //Source procedures may reach their closing delimiter without an explicit
+    //return.  Lower that compatibility rule into ordinary typed IR here; raw
+    //IR remains required to carry an explicit terminator.
+    bool complete_procedure_fallthrough();
     bool emit_halt();
 
     void finalize(bool top_level_parse_success);
