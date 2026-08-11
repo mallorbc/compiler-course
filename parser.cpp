@@ -1350,9 +1350,14 @@ bool parser::parse_base_statement()
     }
     else if (Current_parse_token_type == T_FOR)
     {
-        if (ir_builder != NULL)
+        //Program loops use the generic CFG primitives below.  Procedure CFG
+        //and return-path lowering remain a later slice, but continue parsing
+        //their bodies so the handwritten recovery contract is unchanged.
+        if (ir_builder != NULL && ir_builder->emission_enabled() &&
+            ir_builder->current_function() != ir_builder->program_function())
         {
-            ir_builder->mark_unsupported("loop statements require multiple basic blocks");
+            ir_builder->mark_unsupported(
+                "loop statements in procedures require procedure control-flow lowering");
         }
         //sets the typchecker up to handle loop statements
         type_checker->set_statement_type(Current_parse_token);
@@ -1709,13 +1714,69 @@ bool parser::parse_if_statement(const token &if_token)
 //refactored 2 times
 bool parser::parse_loop_statement()
 {
+    struct LoopBlocks
+    {
+        ir::BlockId condition;
+        ir::BlockId body;
+        ir::BlockId exit;
+        bool prepared = false;
+        bool active = false;
+    } blocks;
+
     lowered_expression expression_parse;
-    //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
     bool valid_parse = false;
+    bool initializer_valid_parse = false;
+    bool condition_valid_parse = false;
+    bool has_internal_semicolon = false;
+    bool has_right_parenthesis = false;
+    bool closed_loop = false;
+    //A malformed loop header still owns its matching `end for`.  Consume that
+    //boundary without asking the broad resynchronizer to guess whether a
+    //nested statement's terminator belongs to this loop or its caller.  The
+    //helper balances the two statement forms that own `end` (`if` and `for`)
+    //but deliberately stops at enclosing program/procedure terminators or a
+    //mismatched close, leaving their established recovery intact.
+    const auto recover_to_own_end_for = [this]() -> bool {
+        std::vector<int> nested_statements;
+        while (Current_parse_token_type != T_INVALID)
+        {
+            if (Current_parse_token_type == T_END)
+            {
+                if (Next_parse_token_type != T_IF && Next_parse_token_type != T_FOR)
+                {
+                    return false;
+                }
+                const int closing_statement = Next_parse_token_type;
+                if (nested_statements.empty())
+                {
+                    if (closing_statement != T_FOR)
+                    {
+                        return false;
+                    }
+                    Current_parse_token = Get_Valid_Token();
+                    Current_parse_token = Get_Valid_Token();
+                    return true;
+                }
+                if (nested_statements.back() != closing_statement)
+                {
+                    return false;
+                }
+                Current_parse_token = Get_Valid_Token();
+                Current_parse_token = Get_Valid_Token();
+                nested_statements.pop_back();
+                continue;
+            }
+            if (Current_parse_token_type == T_IF || Current_parse_token_type == T_FOR)
+            {
+                nested_statements.push_back(Current_parse_token_type);
+            }
+            Current_parse_token = Get_Valid_Token();
+        }
+        return false;
+    };
     if (Current_parse_token_type == T_LPARAM)
     {
-        //grabs what should be an identifier
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_IDENTIFIER)
         {
@@ -1725,24 +1786,77 @@ bool parser::parse_loop_statement()
             const bool destination_resolved = resolve_identifier_use(destination_occurrence,
                                                                      destination);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_assignment_statement(destination_resolved ? destination :
-                                                                            destination_occurrence);
+            initializer_valid_parse = parse_assignment_statement(
+                destination_resolved ? destination : destination_occurrence);
+            valid_parse = initializer_valid_parse;
+            if (!initializer_valid_parse)
+            {
+                if (recover_to_own_end_for())
+                {
+                    return true;
+                }
+                return false;
+            }
             if (Current_parse_token_type == T_SEMICOLON)
             {
+                has_internal_semicolon = true;
                 Current_parse_token = Get_Valid_Token();
                 type_checker->begin_loop_condition(Current_parse_token);
+
+                //The initializer belongs to the current/preheader block.
+                //Select the condition block before parsing its expression so
+                //loads and calls are re-evaluated on every loop backedge.
+                if (initializer_valid_parse && has_internal_semicolon && ir_builder != NULL &&
+                    ir_builder->emission_enabled() &&
+                    ir_builder->current_function() == ir_builder->program_function())
+                {
+                    blocks.condition = ir_builder->create_block();
+                    blocks.body = ir_builder->create_block();
+                    blocks.exit = ir_builder->create_block();
+                    if (blocks.condition.valid() && blocks.body.valid() &&
+                        blocks.exit.valid() && ir_builder->emit_jump(blocks.condition) &&
+                        ir_builder->select_block(blocks.condition))
+                    {
+                        blocks.prepared = true;
+                    }
+                }
+
                 expression_parse = parse_expression();
-                valid_parse = expression_parse.semantics.valid_parse;
+                condition_valid_parse = expression_parse.semantics.valid_parse;
+                valid_parse = condition_valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
+                    has_right_parenthesis = true;
                     Current_parse_token = Get_Valid_Token();
-                    if (expression_parse.semantics.valid_parse &&
+                    conversion_plan loop_condition_plan;
+                    if (condition_valid_parse &&
                         expression_parse.semantics.semantic_valid &&
                         !type_checker->statement_suppressed)
                     {
-                        const conversion_plan loop_condition_plan =
+                        loop_condition_plan =
                             type_checker->check_loop_statement(expression_parse.semantics);
-                        (void)loop_condition_plan;
+                    }
+                    if (blocks.prepared && has_internal_semicolon && has_right_parenthesis &&
+                        condition_valid_parse &&
+                        expression_parse.semantics.semantic_valid && loop_condition_plan.valid &&
+                        !type_checker->statement_suppressed && ir_builder != NULL &&
+                        ir_builder->emission_enabled() && expression_parse.value.valid())
+                    {
+                        ir::ValueId condition_value = expression_parse.value;
+                        if (loop_condition_plan.requires_conversion)
+                        {
+                            ir::CastOp cast;
+                            if (ir_cast_operation(loop_condition_plan.kind, cast))
+                            {
+                                condition_value = ir_builder->emit_cast(cast, condition_value);
+                            }
+                        }
+                        if (condition_value.valid() && ir_builder->emission_enabled() &&
+                            ir_builder->emit_branch(condition_value, blocks.body, blocks.exit) &&
+                            ir_builder->select_block(blocks.body))
+                        {
+                            blocks.active = true;
+                        }
                     }
                     while (Current_parse_token_type != T_END)
                     {
@@ -1804,6 +1918,7 @@ bool parser::parse_loop_statement()
                         if (Current_parse_token_type == T_FOR)
                         {
                             Current_parse_token = Get_Valid_Token();
+                            closed_loop = true;
                         }
                         else
                         {
@@ -1816,30 +1931,52 @@ bool parser::parse_loop_statement()
                         generate_error_report_previous_token("Missing expected keyword \"end\" for end of statement");
                         errors_occured = true;
                     }
+                    if (closed_loop && blocks.active && ir_builder != NULL &&
+                        ir_builder->emission_enabled() && ir_builder->emit_jump(blocks.condition))
+                    {
+                        (void)ir_builder->select_block(blocks.exit);
+                    }
                 }
                 else
                 {
                     generate_error_report_previous_token("Missing \")\" for loop declaration");
                     errors_occured = true;
+                    if (recover_to_own_end_for())
+                    {
+                        return true;
+                    }
+                    return false;
                 }
             }
             else
             {
                 generate_error_report_previous_token("Missing \";\" for loop assignment statement");
                 errors_occured = true;
+                if (recover_to_own_end_for())
+                {
+                    return true;
+                }
+                return false;
             }
         }
         else
         {
             generate_error_report("Missing expeceted identifier for assignment statement");
             errors_occured = true;
+            if (recover_to_own_end_for())
+            {
+                return true;
+            }
         }
     }
     else
     {
         generate_error_report_previous_token("Missing \"(\" required for loop");
         errors_occured = true;
-        //return false;
+        if (recover_to_own_end_for())
+        {
+            return true;
+        }
     }
 
     return valid_parse;

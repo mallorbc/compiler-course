@@ -293,6 +293,132 @@ def main() -> int:
                 f"unexpected {file_name} stderr: {malformed_expression.stderr!r}",
             )
 
+        # A malformed loop header must retain ownership of its `end for` so
+        # that parsing resumes at the statement following the loop.  These
+        # process-level cases complement the parser assertions with exit and
+        # stdout progress checks.
+        loop_boundary_cases = (
+            (
+                "loop-missing-colon.src",
+                "    for (i = 0; true)\n"
+                "        i := 1;\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                'Missing ":" needed for assignment statement',
+                1,
+                2,
+            ),
+            (
+                "loop-missing-internal-semicolon.src",
+                "    for (i := 0 true)\n"
+                "        i := 1;\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                'Missing ";" for loop assignment statement',
+                1,
+                2,
+            ),
+            (
+                "loop-missing-initializer-identifier.src",
+                "    for (; true)\n"
+                "        i := 1;\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                "Missing expeceted identifier for assignment statement",
+                1,
+                2,
+            ),
+            (
+                "loop-missing-open.src",
+                "    for i := 0; true)\n"
+                "        i := 1;\n"
+                "    end for;\n"
+                "    i := \"after\";\n",
+                'Missing "(" required for loop',
+                1,
+                2,
+            ),
+            (
+                "nested-loop-missing-close.src",
+                "    for (i := 0; true)\n"
+                "        for (i := 0; true\n"
+                "            i := 1;\n"
+                "        end for;\n"
+                "        i := \"outer\";\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                'Missing ")" for loop declaration',
+                2,
+                3,
+            ),
+            (
+                "nested-loop-depth-missing-close.src",
+                "    for (i := 0; true\n"
+                "        for (i := 0; true)\n"
+                "            i := 1;\n"
+                "        end for;\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                'Missing ")" for loop declaration',
+                1,
+                2,
+            ),
+            (
+                "nested-if-loop-missing-close.src",
+                "    for (i := 0; true)\n"
+                "        for (i := 0; true\n"
+                "            if (true) then\n"
+                "                i := 1;\n"
+                "            end if;\n"
+                "        end for;\n"
+                "    end for;\n"
+                "    i := \"later\";\n",
+                'Missing ")" for loop declaration',
+                1,
+                2,
+            ),
+            (
+                "enclosing-if-loop-missing-close.src",
+                "    if (true) then\n"
+                "        for (i := 0; true\n"
+                "            i := 1;\n"
+                "    end if;\n"
+                "    i := \"later\";\n",
+                'Missing ")" for loop declaration',
+                1,
+                2,
+            ),
+        )
+        assignment_error = (
+            'Assignment target type "integer" is not compatible with expression type "string"'
+        )
+        for (file_name, loop_source, header_error, assignment_error_count,
+             total_error_count) in loop_boundary_cases:
+            source = Path(temp_dir) / file_name
+            source.write_text(
+                "program loop_boundary is\n"
+                "variable i : integer;\n"
+                "begin\n" + loop_source + "end program.\n",
+                encoding="utf-8",
+            )
+            recovery = run_compiler(str(source))
+            check(recovery.returncode == 1,
+                  f"{file_name} exit was {recovery.returncode}, expected 1")
+            check(recovery.stdout.count(header_error) == 1,
+                  f"{file_name} lost its focused header error: {recovery.stdout!r}")
+            check(recovery.stdout.count(assignment_error) == assignment_error_count,
+                  f"{file_name} did not resume after its loop boundary: {recovery.stdout!r}")
+            check(recovery.stdout.count("Error on line") == total_error_count,
+                  f"{file_name} produced a recovery cascade: {recovery.stdout!r}")
+            check('Missing ";" to end statement in loop statement' not in recovery.stdout,
+                  f"{file_name} lost loop ownership: {recovery.stdout!r}")
+            check('Missing keyworkd "program" to end program' not in recovery.stdout,
+                  f"{file_name} lost the program boundary: {recovery.stdout!r}")
+            check('Missing keyword "end" to end if statement' not in recovery.stdout,
+                  f"{file_name} lost an enclosing if boundary: {recovery.stdout!r}")
+            check(recovery.stderr == "",
+                  f"unexpected {file_name} stderr: {recovery.stderr!r}")
+
     recovery_cases = (
         (
             "docs/audit/probes/resync/hang.src",

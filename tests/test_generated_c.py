@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 import os
+import re
 from pathlib import Path
 
 
@@ -350,6 +351,138 @@ def main() -> int:
         check(runtime_edges.returncode == 0,
               f"runtime-edge emit failed: {runtime_edges.stderr!r}")
         strict_c11_compile_and_run(runtime_edges_output, "-5\n1\n-2147483648\n")
+
+        loop_source = root / "gate5b-loops.src"
+        loop_output = root / "gate5b-loops.c"
+        loop_source.write_text(
+            "program Gate5BLoops is\n"
+            "variable i : integer;\n"
+            "variable j : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    for (i := 0; i < 3)\n"
+            "        printed := putInteger(i);\n"
+            "        if (i == 1) then\n"
+            "            printed := putInteger(50);\n"
+            "        end if;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    printed := putInteger(i);\n"
+            "    for (i := -2; i)\n"
+            "        printed := putInteger(i);\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    for (j := 0; false)\n"
+            "        printed := putInteger(99);\n"
+            "    end for;\n"
+            "    for (i := 0; i < 2)\n"
+            "        for (j := 0; j < 2)\n"
+            "            printed := putInteger(i * 2 + j);\n"
+            "            j := j + 1;\n"
+            "        end for;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    if (true) then\n"
+            "        for (j := 0; j < 2)\n"
+            "            printed := putInteger(j + 10);\n"
+            "            j := j + 1;\n"
+            "        end for;\n"
+            "    end if;\n"
+            "    for (i := 0; putInteger(i) & (i < 2))\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    printed := putInteger(42);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        loop_result = run_compiler("--emit-c", str(loop_output), str(loop_source))
+        check(loop_result.returncode == 0, f"Gate5B loop emit failed: {loop_result.stderr!r}")
+        loop_c = loop_output.read_text(encoding="utf-8")
+        check("goto L_f0_b1;" in loop_c, "Gate5B output is missing a loop backedge")
+        check("while" not in loop_c and "for (" not in loop_c and "else" not in loop_c,
+              "Gate5B output used structured C control flow")
+        labels = re.findall(r"^L_f0_(?:[bd]\\d+(?:_\\d+)?|x0):$", loop_c, flags=re.MULTILINE)
+        check(len(labels) == len(set(labels)), "Gate5B output reused a numeric label")
+        for target in re.findall(r"goto (L_f0_(?:[bd]\\d+(?:_\\d+)?|x0));", loop_c):
+            check(f"{target}:" in loop_c, f"Gate5B goto target is missing: {target}")
+        for source_identifier in ("Gate5BLoops", "printed", "putInteger"):
+            check(source_identifier not in loop_c,
+                  f"Gate5B source identifier leaked into C: {source_identifier}")
+        strict_c11_compile_and_run(
+            loop_output, "0\n1\n50\n2\n3\n-2\n-1\n0\n1\n2\n3\n10\n11\n0\n1\n2\n42\n"
+        )
+
+        loop_initializer_source = root / "gate5b-initializer-call.src"
+        loop_initializer_output = root / "gate5b-initializer-call.c"
+        loop_initializer_source.write_text(
+            "program Gate5BInitializerCall is\n"
+            "variable i : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    for (i := putInteger(7); i < 3)\n"
+            "        printed := putInteger(i);\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    printed := putInteger(i);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        loop_initializer = run_compiler(
+            "--emit-c", str(loop_initializer_output), str(loop_initializer_source)
+        )
+        check(loop_initializer.returncode == 0,
+              f"loop initializer call emit failed: {loop_initializer.stderr!r}")
+        strict_c11_compile_and_run(loop_initializer_output, "7\n1\n2\n3\n")
+
+        loop_dead_divide_source = root / "gate5b-dead-divide.src"
+        loop_dead_divide_output = root / "gate5b-dead-divide.c"
+        loop_dead_divide_source.write_text(
+            "program Gate5BDeadDivide is\n"
+            "variable i : integer;\n"
+            "variable value : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    for (i := 0; i < 1)\n"
+            "        if (false) then\n"
+            "            value := 1 / 0;\n"
+            "        else\n"
+            "            value := 7;\n"
+            "        end if;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    printed := putInteger(value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        loop_dead_divide = run_compiler(
+            "--emit-c", str(loop_dead_divide_output), str(loop_dead_divide_source)
+        )
+        check(loop_dead_divide.returncode == 0,
+              f"dead loop divide emit failed: {loop_dead_divide.stderr!r}")
+        strict_c11_compile_and_run(loop_dead_divide_output, "7\n")
+
+        loop_taken_divide_source = root / "gate5b-taken-divide.src"
+        loop_taken_divide_output = root / "gate5b-taken-divide.c"
+        loop_taken_divide_source.write_text(
+            "program Gate5BTakenDivide is\n"
+            "variable i : integer;\n"
+            "variable value : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    for (i := 0; i < 1)\n"
+            "        value := 1 / 0;\n"
+            "        i := i + 1;\n"
+            "    end for;\n"
+            "    printed := putInteger(99);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        loop_taken_divide = run_compiler(
+            "--emit-c", str(loop_taken_divide_output), str(loop_taken_divide_source)
+        )
+        check(loop_taken_divide.returncode == 0,
+              f"taken loop divide emit failed: {loop_taken_divide.stderr!r}")
+        strict_c11_compile_and_run(loop_taken_divide_output, "", expected_returncode=1)
 
         hostile_output = root / "hostile ; $ [name].c"
         hostile = run_compiler("--emit-c", str(hostile_output), str(source))

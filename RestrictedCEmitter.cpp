@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <functional>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -205,42 +204,6 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
             return failure(RestrictedCStatus::Unsupported,
                            "restricted C only supports a parameterless Program");
         }
-    }
-    //The IR verifier permits cycles with an exit so future loop lowering can
-    //reuse the CFG representation.  This restricted-C slice intentionally
-    //accepts only acyclic Program flow produced by if/else lowering.
-    std::vector<unsigned char> visit_state(program->blocks.size(), 0U);
-    const std::function<bool(std::size_t)> has_cycle =
-        [&program, &visit_state, &has_cycle](std::size_t block_index) -> bool {
-            visit_state[block_index] = 1U;
-            const ir::Terminator &terminator =
-                std::get<ir::Terminator>(program->blocks[block_index].terminator);
-            std::vector<std::size_t> targets;
-            if (const ir::JumpTerminator *jump = std::get_if<ir::JumpTerminator>(&terminator))
-            {
-                targets.push_back(jump->target.index);
-            }
-            else if (const ir::BranchTerminator *branch =
-                         std::get_if<ir::BranchTerminator>(&terminator))
-            {
-                targets.push_back(branch->when_true.index);
-                targets.push_back(branch->when_false.index);
-            }
-            for (std::size_t target : targets)
-            {
-                if (visit_state[target] == 1U ||
-                    (visit_state[target] == 0U && has_cycle(target)))
-                {
-                    return true;
-                }
-            }
-            visit_state[block_index] = 2U;
-            return false;
-        };
-    if (has_cycle(0))
-    {
-        return failure(RestrictedCStatus::Unsupported,
-                       "restricted C does not yet lower cyclic control flow");
     }
     for (const ir::Storage &storage : module.storages)
     {

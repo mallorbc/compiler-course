@@ -268,15 +268,25 @@ TEST_CASE("Stage 5A restricted C emits flat numeric branch blocks")
     CHECK(result.text.find("branch_answer") == std::string::npos);
 }
 
-TEST_CASE("Stage 5A restricted C rejects verifier-valid cyclic Program flow")
+TEST_CASE("Stage 5B restricted C emits verifier-valid cyclic Program flow")
 {
     const ir::Module module = cyclic_branch_module();
     CHECK(ir::verify_module(module).valid);
     RestrictedCEmitter emitter;
     const RestrictedCResult result = emitter.emit(module);
-    CHECK(result.status == RestrictedCStatus::Unsupported);
-    CHECK(result.text.empty());
-    CHECK(result.diagnostic.find("cyclic") != std::string::npos);
+    REQUIRE(result.succeeded());
+    CHECK(result.text.find("L_f0_b1:") != std::string::npos);
+    CHECK(result.text.find("goto L_f0_b1;") != std::string::npos);
+    CHECK(result.text.find("while") == std::string::npos);
+    CHECK(result.text.find("for (") == std::string::npos);
+
+    ir::Module no_exit = module;
+    no_exit.functions[0].blocks[1].terminator = ir::Terminator(
+        ir::JumpTerminator{ir::BlockId(ir::FunctionId(0), 1)});
+    CHECK_FALSE(ir::verify_module(no_exit).valid);
+    const RestrictedCResult invalid = emitter.emit(no_exit);
+    CHECK(invalid.status == RestrictedCStatus::InvalidIR);
+    CHECK(invalid.text.empty());
 }
 
 TEST_CASE("Stage 5A restricted C preflights every branch atomically")

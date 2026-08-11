@@ -1911,7 +1911,7 @@ TEST_CASE("Stage 5A parser lowers Program if headers and restores nested joins")
     CHECK(ir::verify_module(parsed.ir_module()).valid);
 }
 
-TEST_CASE("Stage 5A keeps procedure if and loop lowering unsupported")
+TEST_CASE("Stage 5A keeps procedure control-flow lowering unsupported")
 {
     temp_source_file procedure_fixture(
         "program procedure_control is\n"
@@ -1932,11 +1932,15 @@ TEST_CASE("Stage 5A keeps procedure if and loop lowering unsupported")
     CHECK(procedure.ir_module().functions.empty());
 
     temp_source_file loop_fixture(
-        "program loop_control is\n"
+        "program procedure_loop is\n"
+        "procedure count : integer()\n"
         "variable i : integer;\n"
         "begin\n"
         "    for (i := 0; true)\n"
         "    end for;\n"
+        "    return i;\n"
+        "end procedure;\n"
+        "begin\n"
         "end program.\n");
     captured_stdout loop_capture;
     parser loop(loop_fixture.name());
@@ -1944,6 +1948,406 @@ TEST_CASE("Stage 5A keeps procedure if and loop lowering unsupported")
     CHECK(loop.frontend_valid());
     CHECK(loop.ir_status() == ir::ModuleStatus::Unsupported);
     CHECK(loop.ir_module().functions.empty());
+}
+
+TEST_CASE("Stage 5B parser lowers Program loops into condition and backedge blocks")
+{
+    temp_source_file fixture(
+        "program lowered_loop is\n"
+        "variable i : integer;\n"
+        "variable printed : bool;\n"
+        "begin\n"
+        "    for (i := 0; i < 3)\n"
+        "        printed := putInteger(i);\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    printed := putInteger(i);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    REQUIRE(parsed.error_reports.empty());
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+    const ir::Module &module = parsed.ir_module();
+    const ir::Function &program = module.functions[0];
+    REQUIRE(program.blocks.size() == 4);
+    const ir::Storage *counter = NULL;
+    for (const ir::Storage &storage : module.storages)
+    {
+        if (storage.symbol.name == "i")
+        {
+            counter = &storage;
+        }
+    }
+    REQUIRE(counter != NULL);
+    const ir::JumpTerminator *preheader =
+        std::get_if<ir::JumpTerminator>(&std::get<ir::Terminator>(program.blocks[0].terminator));
+    const ir::BranchTerminator *condition =
+        std::get_if<ir::BranchTerminator>(&std::get<ir::Terminator>(program.blocks[1].terminator));
+    const ir::JumpTerminator *backedge =
+        std::get_if<ir::JumpTerminator>(&std::get<ir::Terminator>(program.blocks[2].terminator));
+    REQUIRE(preheader != NULL);
+    REQUIRE(condition != NULL);
+    REQUIRE(backedge != NULL);
+    CHECK(preheader->target == ir::BlockId(program.id, 1));
+    CHECK(condition->when_true == ir::BlockId(program.id, 2));
+    CHECK(condition->when_false == ir::BlockId(program.id, 3));
+    CHECK(backedge->target == ir::BlockId(program.id, 1));
+    CHECK(std::holds_alternative<ir::HaltTerminator>(
+        std::get<ir::Terminator>(program.blocks[3].terminator)));
+
+    bool init_store = false;
+    bool condition_reload = false;
+    bool update_store = false;
+    bool body_call = false;
+    bool exit_call = false;
+    for (const ir::Instruction &instruction : program.blocks[0].instructions)
+    {
+        const ir::Store *store = std::get_if<ir::Store>(&instruction);
+        init_store = init_store || (store != NULL && store->destination == counter->id);
+    }
+    for (const ir::Instruction &instruction : program.blocks[1].instructions)
+    {
+        const ir::Load *load = std::get_if<ir::Load>(&instruction);
+        condition_reload = condition_reload || (load != NULL && load->source == counter->id);
+    }
+    for (const ir::Instruction &instruction : program.blocks[2].instructions)
+    {
+        const ir::Store *store = std::get_if<ir::Store>(&instruction);
+        update_store = update_store || (store != NULL && store->destination == counter->id);
+        body_call = body_call || std::holds_alternative<ir::Call>(instruction);
+    }
+    for (const ir::Instruction &instruction : program.blocks[3].instructions)
+    {
+        exit_call = exit_call || std::holds_alternative<ir::Call>(instruction);
+    }
+    CHECK(init_store);
+    CHECK(condition_reload);
+    CHECK(update_store);
+    CHECK(body_call);
+    CHECK(exit_call);
+    CHECK(ir::verify_module(module).valid);
+
+    temp_source_file integer_condition(
+        "program integer_loop is\n"
+        "variable i : integer;\n"
+        "variable printed : bool;\n"
+        "begin\n"
+        "    for (i := -2; i)\n"
+        "        printed := putInteger(i);\n"
+        "        i := i + 1;\n"
+        "    end for;\n"
+        "    for (i := 0; 0)\n"
+        "    end for;\n"
+        "    for (i := 2; i)\n"
+        "        i := i - 1;\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout integer_capture;
+    parser integer_loop(integer_condition.name());
+    integer_capture.restore();
+    REQUIRE(integer_loop.can_generate_code());
+    const ir::Function &integer_program = integer_loop.ir_module().functions[0];
+    std::size_t first_header_int_to_bool_count = 0;
+    std::size_t total_int_to_bool_count = 0;
+    for (std::size_t block_index = 0; block_index < integer_program.blocks.size(); block_index++)
+    {
+        for (const ir::Instruction &instruction : integer_program.blocks[block_index].instructions)
+        {
+            const ir::Cast *cast = std::get_if<ir::Cast>(&instruction);
+            if (cast != NULL && cast->operation == ir::CastOp::IntToBool)
+            {
+                total_int_to_bool_count++;
+                if (block_index == 1)
+                {
+                    first_header_int_to_bool_count++;
+                }
+            }
+        }
+    }
+    CHECK(first_header_int_to_bool_count == 1);
+    CHECK(total_int_to_bool_count == 3);
+
+    temp_source_file nested_fixture(
+        "program nested_loops is\n"
+        "variable i : integer;\n"
+        "variable j : integer;\n"
+        "variable printed : bool;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        for (i := 0; i < 1)\n"
+        "            if (true) then\n"
+        "                for (j := 0; j < 1)\n"
+        "                    printed := putInteger(j);\n"
+        "                    j := j + 1;\n"
+        "                end for;\n"
+        "            end if;\n"
+        "            i := i + 1;\n"
+        "        end for;\n"
+        "    end if;\n"
+        "    for (i := 0; false)\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout nested_capture;
+    parser nested(nested_fixture.name());
+    nested_capture.restore();
+    CHECK(nested.error_reports.empty());
+    CHECK(nested.ir_status() == ir::ModuleStatus::Ready);
+    CHECK(nested.ir_module().functions[0].blocks.size() == 16);
+    CHECK(ir::verify_module(nested.ir_module()).valid);
+
+    temp_source_file third_clause(
+        "program third_clause is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; i < 1; i := i + 1)\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout third_clause_capture;
+    parser third_clause_parsed(third_clause.name());
+    third_clause_capture.restore();
+    CHECK(has_error(third_clause_parsed, "Missing \")\" for loop declaration"));
+    CHECK(third_clause_parsed.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(third_clause_parsed.ir_module().functions.empty());
+    CHECK(third_clause_parsed.ir_module().storages.empty());
+
+    temp_source_file invalid_condition(
+        "program invalid_loop_condition is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; \"bad\")\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout invalid_condition_capture;
+    parser condition_error(invalid_condition.name());
+    invalid_condition_capture.restore();
+    CHECK(count_errors(condition_error,
+                       "Loop statements must resolve to either type Bool or Integer") == 1);
+    CHECK(condition_error.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(condition_error.ir_module().functions.empty());
+    CHECK(condition_error.ir_module().storages.empty());
+
+    temp_source_file missing_right_parenthesis(
+        "program missing_loop_close is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "begin\n"
+        "    for (i := 0; f\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout missing_right_capture;
+    parser missing_right(missing_right_parenthesis.name());
+    missing_right_capture.restore();
+    CHECK(has_error(missing_right, "Missing \")\" for loop declaration"));
+    CHECK_FALSE(has_error(missing_right,
+                          "Loop statements must resolve to either type Bool or Integer"));
+    CHECK(missing_right.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(missing_right.ir_module().functions.empty());
+    CHECK(missing_right.ir_module().storages.empty());
+}
+
+TEST_CASE("Stage 5B loop recovery retains focused diagnostics and atomic IR")
+{
+    const auto expect_frontend_error = [](const std::string &statement,
+                                          const std::string &expected_error) {
+        temp_source_file fixture(
+            "program loop_recovery is\n"
+            "variable i : integer;\n"
+            "variable f : float;\n"
+            "begin\n" + statement + "\nend program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+        CAPTURE(statement);
+        CHECK(has_error(parsed, expected_error));
+        CHECK(parsed.ir_status() == ir::ModuleStatus::FrontendError);
+        CHECK(parsed.ir_module().functions.empty());
+        CHECK(parsed.ir_module().storages.empty());
+    };
+
+    expect_frontend_error("    for i := 0; true)\n    end for;",
+                          "Missing \"(\" required for loop");
+    expect_frontend_error("    for (; true)\n    end for;",
+                          "Missing expeceted identifier for assignment statement");
+    expect_frontend_error("    for (i := 0 true)\n    end for;",
+                          "Missing \";\" for loop assignment statement");
+    expect_frontend_error("    for (i := 0; true)\n        i := 1\n    end for;",
+                          "Missing \";\" to end statement in loop statement");
+    expect_frontend_error("    for (i := 0; true)\n    end;",
+                          "Missing expected keyword \"for\" for end of statement");
+
+    temp_source_file independent_boundaries(
+        "program independent_loop_errors is\n"
+        "variable i : integer;\n"
+        "variable f : float;\n"
+        "begin\n"
+        "    for (i := \"bad\"; f)\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout boundaries_capture;
+    parser boundaries(independent_boundaries.name());
+    boundaries_capture.restore();
+    CHECK(count_errors(boundaries,
+                       "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+          1);
+    CHECK(count_errors(boundaries,
+                       "Loop statements must resolve to either type Bool or Integer") == 1);
+    CHECK(boundaries.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(boundaries.ir_module().functions.empty());
+    CHECK(boundaries.ir_module().storages.empty());
+}
+
+TEST_CASE("Stage 5B malformed loop headers retain their own end-for boundary")
+{
+    const auto expect_two_errors_after_loop = [](const std::string &loop_header,
+                                                 const std::string &header_error) {
+        temp_source_file fixture(
+            "program loop_boundary is\n"
+            "variable i : integer;\n"
+            "begin\n" + loop_header +
+            "\n        i := 1;\n"
+            "    end for;\n"
+            "    i := \"later\";\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+        CAPTURE(loop_header);
+        CHECK(parsed.error_reports.size() == 2);
+        CHECK(count_errors(parsed, header_error) == 1);
+        CHECK(count_errors(parsed,
+                           "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+              1);
+        CHECK_FALSE(has_error(parsed, "Missing \";\" to end statement in loop statement"));
+        CHECK_FALSE(has_error(parsed, "Missing keyworkd \"program\""));
+        CHECK(parsed.ir_status() == ir::ModuleStatus::FrontendError);
+        CHECK(parsed.ir_module().functions.empty());
+        CHECK(parsed.ir_module().storages.empty());
+    };
+
+    struct malformed_loop_header
+    {
+        const char *header;
+        const char *error;
+    };
+    const malformed_loop_header malformed_headers[] = {
+        {"    for (i = 0; true)", "Missing \":\" needed for assignment statement"},
+        {"    for (i := 0 true)", "Missing \";\" for loop assignment statement"},
+        {"    for (; true)", "Missing expeceted identifier for assignment statement"},
+        {"    for i := 0; true)", "Missing \"(\" required for loop"},
+    };
+    for (const malformed_loop_header &malformed_header : malformed_headers)
+    {
+        expect_two_errors_after_loop(malformed_header.header, malformed_header.error);
+    }
+
+    temp_source_file nested_fixture(
+        "program nested_loop_boundary is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; true)\n"
+        "        for (i := 0; true\n"
+        "            i := 1;\n"
+        "        end for;\n"
+        "        i := \"outer\";\n"
+        "    end for;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout nested_capture;
+    parser nested(nested_fixture.name());
+    nested_capture.restore();
+    CHECK(nested.error_reports.size() == 3);
+    CHECK(count_errors(nested, "Missing \")\" for loop declaration") == 1);
+    CHECK(count_errors(nested,
+                       "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+          2);
+    CHECK_FALSE(has_error(nested, "Missing \";\" to end statement in loop statement"));
+    CHECK_FALSE(has_error(nested, "Missing keyworkd \"program\""));
+    CHECK(nested.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(nested.ir_module().functions.empty());
+    CHECK(nested.ir_module().storages.empty());
+
+    //Here recovery begins in the outer malformed loop, so it must balance
+    //the nested for before consuming the outer loop's own terminator.
+    temp_source_file nested_depth_fixture(
+        "program nested_loop_depth is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; true\n"
+        "        for (i := 0; true)\n"
+        "            i := 1;\n"
+        "        end for;\n"
+        "    end for;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout nested_depth_capture;
+    parser nested_depth(nested_depth_fixture.name());
+    nested_depth_capture.restore();
+    CHECK(nested_depth.error_reports.size() == 2);
+    CHECK(count_errors(nested_depth, "Missing \")\" for loop declaration") == 1);
+    CHECK(count_errors(nested_depth,
+                       "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+          1);
+    CHECK_FALSE(has_error(nested_depth, "Missing \";\" to end statement in loop statement"));
+    CHECK_FALSE(has_error(nested_depth, "Missing keyworkd \"program\""));
+    CHECK(nested_depth.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(nested_depth.ir_module().functions.empty());
+    CHECK(nested_depth.ir_module().storages.empty());
+
+    temp_source_file nested_if_fixture(
+        "program nested_if_loop_boundary is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; true)\n"
+        "        for (i := 0; true\n"
+        "            if (true) then\n"
+        "                i := 1;\n"
+        "            end if;\n"
+        "        end for;\n"
+        "    end for;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout nested_if_capture;
+    parser nested_if(nested_if_fixture.name());
+    nested_if_capture.restore();
+    CHECK(nested_if.error_reports.size() == 2);
+    CHECK(count_errors(nested_if, "Missing \")\" for loop declaration") == 1);
+    CHECK(count_errors(nested_if,
+                       "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+          1);
+    CHECK_FALSE(has_error(nested_if, "Missing \";\" to end statement in loop statement"));
+    CHECK_FALSE(has_error(nested_if, "Missing keyworkd \"program\""));
+    CHECK(nested_if.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(nested_if.ir_module().functions.empty());
+    CHECK(nested_if.ir_module().storages.empty());
+
+    //Without an `end for`, an empty-stack `end if` belongs to this enclosing
+    //conditional.  Loop recovery must leave it for parse_if_statement.
+    temp_source_file enclosing_if_fixture(
+        "program enclosing_if_loop_boundary is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        for (i := 0; true\n"
+        "            i := 1;\n"
+        "    end if;\n"
+        "    i := \"later\";\n"
+        "end program.\n");
+    captured_stdout enclosing_if_capture;
+    parser enclosing_if(enclosing_if_fixture.name());
+    enclosing_if_capture.restore();
+    CHECK(enclosing_if.error_reports.size() == 2);
+    CHECK(count_errors(enclosing_if, "Missing \")\" for loop declaration") == 1);
+    CHECK(count_errors(enclosing_if,
+                       "Assignment target type \"integer\" is not compatible with expression type \"string\"") ==
+          1);
+    CHECK_FALSE(has_error(enclosing_if, "Missing keyword \"end\" to end if statement"));
+    CHECK_FALSE(has_error(enclosing_if, "Missing keyworkd \"program\""));
+    CHECK(enclosing_if.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(enclosing_if.ir_module().functions.empty());
+    CHECK(enclosing_if.ir_module().storages.empty());
 }
 
 TEST_CASE("Stage 4A parser publishes scalar straight-line IR without changing frontend validity")

@@ -42,6 +42,45 @@ ir::Module ready_cfg_module()
     return builder.module();
 }
 
+ir::Module ready_loop_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "loop_fixture"}, "loop_fixture").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId counter = builder.register_storage(
+        SymbolRef{0, "counter"}, scalar(TYPE_INT), ir::StorageKind::Global);
+    REQUIRE(counter.valid());
+    const ir::ValueId zero = builder.emit_constant(scalar(TYPE_INT), 0);
+    REQUIRE(zero.valid());
+    REQUIRE(builder.emit_store(counter, zero));
+    const ir::BlockId condition = builder.create_block();
+    const ir::BlockId body = builder.create_block();
+    const ir::BlockId exit = builder.create_block();
+    REQUIRE(builder.emit_jump(condition));
+    REQUIRE(builder.select_block(condition));
+    const ir::ValueId loaded_counter = builder.emit_load(counter);
+    const ir::ValueId limit = builder.emit_constant(scalar(TYPE_INT), 3);
+    const ir::ValueId is_less = builder.emit_binary(ir::BinaryOp::Less, loaded_counter, limit);
+    REQUIRE(loaded_counter.valid());
+    REQUIRE(limit.valid());
+    REQUIRE(is_less.valid());
+    REQUIRE(builder.emit_branch(is_less, body, exit));
+    REQUIRE(builder.select_block(body));
+    const ir::ValueId body_counter = builder.emit_load(counter);
+    const ir::ValueId one = builder.emit_constant(scalar(TYPE_INT), 1);
+    const ir::ValueId incremented = builder.emit_binary(ir::BinaryOp::Add, body_counter, one);
+    REQUIRE(body_counter.valid());
+    REQUIRE(one.valid());
+    REQUIRE(incremented.valid());
+    REQUIRE(builder.emit_store(counter, incremented));
+    REQUIRE(builder.emit_jump(condition));
+    REQUIRE(builder.select_block(exit));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 } // namespace
 
 TEST_CASE("Stage 4A IDs and builtin catalog are strongly separated")
@@ -97,6 +136,53 @@ TEST_CASE("Stage 5A builder forms deterministic Program branch blocks")
     CHECK(std::holds_alternative<ir::HaltTerminator>(
         std::get<ir::Terminator>(program.blocks[3].terminator)));
     CHECK(ir::verify_module(builder.module()).valid);
+}
+
+TEST_CASE("Stage 5B builder verifies an exiting Program loop CFG")
+{
+    const ir::Module module = ready_loop_module();
+    REQUIRE(ir::verify_module(module).valid);
+    const ir::Function &program = module.functions[0];
+    REQUIRE(program.blocks.size() == 4);
+    const ir::JumpTerminator *preheader =
+        std::get_if<ir::JumpTerminator>(&std::get<ir::Terminator>(program.blocks[0].terminator));
+    const ir::BranchTerminator *condition =
+        std::get_if<ir::BranchTerminator>(&std::get<ir::Terminator>(program.blocks[1].terminator));
+    const ir::JumpTerminator *backedge =
+        std::get_if<ir::JumpTerminator>(&std::get<ir::Terminator>(program.blocks[2].terminator));
+    REQUIRE(preheader != NULL);
+    REQUIRE(condition != NULL);
+    REQUIRE(backedge != NULL);
+    CHECK(preheader->target == ir::BlockId(program.id, 1));
+    CHECK(condition->when_true == ir::BlockId(program.id, 2));
+    CHECK(condition->when_false == ir::BlockId(program.id, 3));
+    CHECK(backedge->target == ir::BlockId(program.id, 1));
+    CHECK(std::holds_alternative<ir::HaltTerminator>(
+        std::get<ir::Terminator>(program.blocks[3].terminator)));
+
+    ir::Module no_exit = module;
+    no_exit.functions[0].blocks[2].terminator = ir::Terminator(
+        ir::JumpTerminator{ir::BlockId(ir::FunctionId(0), 2)});
+    const ir::VerificationResult no_exit_result = ir::verify_module(no_exit);
+    CAPTURE(no_exit_result.reason);
+    CHECK_FALSE(no_exit_result.valid);
+    CHECK(no_exit_result.reason.find("cannot reach halt") != std::string::npos);
+
+    ir::Module body_into_condition = module;
+    const ir::ValueId body_value = std::get<ir::Load>(
+        body_into_condition.functions[0].blocks[2].instructions[0]).result;
+    ir::BranchTerminator &invalid_branch = std::get<ir::BranchTerminator>(
+        std::get<ir::Terminator>(body_into_condition.functions[0].blocks[1].terminator));
+    invalid_branch.condition = body_value;
+    CHECK_FALSE(ir::verify_module(body_into_condition).valid);
+
+    ir::Module body_into_exit = module;
+    const ir::ValueId exit_leak = std::get<ir::Load>(
+        body_into_exit.functions[0].blocks[2].instructions[0]).result;
+    body_into_exit.functions[0].blocks[3].instructions.insert(
+        body_into_exit.functions[0].blocks[3].instructions.begin(),
+        ir::Store{ir::StorageId(0), exit_leak});
+    CHECK_FALSE(ir::verify_module(body_into_exit).valid);
 }
 
 TEST_CASE("Stage 5A verifier enforces branch visibility while allowing dominating values")

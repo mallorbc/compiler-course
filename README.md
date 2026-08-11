@@ -33,7 +33,7 @@ After the compiler is compiled, it can be used but running the executable in the
 
 The one-argument form remains a check-only frontend invocation. The current
 restricted-C backend can be requested explicitly for the supported scalar
-Program subset, including `if`/`else` control flow and the `putInteger`
+Program subset, including `if`/`else` and `for` control flow plus the `putInteger`
 runtime sub-slice; it writes C source but deliberately does not invoke a C
 compiler or produce an executable yet:
 

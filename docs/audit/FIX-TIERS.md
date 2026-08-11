@@ -88,7 +88,7 @@ Tier definitions:
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A DONE** for scalar Program `if`/`else` CFG emission | Stage 4A supplies the typed IR seam; Stage 4C runtime has canonical `putInteger`; loops, procedure CFG/emission, arrays, and host executable production remain separate |
+| CODEGEN | Restricted-C target chosen; **Stage 5A/5B DONE** for scalar Program `if`/`else`/`for` CFG emission | Stage 4A supplies the typed IR seam; Stage 4C runtime has canonical `putInteger`; procedure CFG/emission, arrays, and host executable production remain separate |
 | RUNTIME | The 9 builtins (getInteger…sqrt) + runtime system (A rung) | shape depends on CODEGEN choice; includes predeclaring builtins in the symbol table |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
