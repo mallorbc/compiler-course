@@ -11,14 +11,18 @@ token_and_status invalid_expression_result(bool syntax_valid = true)
     return result;
 }
 
+token_and_status typed_expression_result(Typechecker *checker, const value_shape &shape,
+                                         const token &anchor)
+{
+    return checker->make_shaped_expression_result(shape, anchor);
+}
+
 token_and_status typed_expression_result(Typechecker *checker, data_types type,
                                          const token &anchor)
 {
-    token_and_status result;
-    result.valid_parse = true;
-    result.semantic_valid = true;
-    result.resolved_token = checker->make_expression_result(type, anchor);
-    return result;
+    value_shape shape;
+    shape.element_type = type;
+    return typed_expression_result(checker, shape, anchor);
 }
 
 bool is_relation_start(int token_type)
@@ -523,8 +527,10 @@ bool parser::parse_procedure_declaration(bool is_global)
     //It remains in SymbolTable for later code generation even after exit.
     update_scopes(true);
     const int body_scope_id = current_scope_id;
-    bool header_valid = parse_procedure_header(is_global, candidate, parameters,
-                                               header_symbols);
+    bool header_semantic_valid = true;
+    const bool header_syntax_valid = parse_procedure_header(is_global, candidate,
+                                                            parameters, header_symbols,
+                                                            header_semantic_valid);
     bool duplicate = false;
     if (!candidate.stringValue.empty())
     {
@@ -533,11 +539,11 @@ bool parser::parse_procedure_declaration(bool is_global)
         if (duplicate)
         {
             report_duplicate_declaration(candidate);
-            header_valid = false;
+            header_semantic_valid = false;
         }
     }
 
-    if (header_valid && !duplicate)
+    if (header_syntax_valid && header_semantic_valid && !duplicate)
     {
         std::vector<token> body_symbols = header_symbols;
         body_symbols.insert(body_symbols.end(), parameters.begin(), parameters.end());
@@ -546,12 +552,12 @@ bool parser::parse_procedure_declaration(bool is_global)
             generate_error_report("Duplicate declaration in procedure header",
                                   candidate.line_found);
             errors_occured = true;
-            header_valid = false;
+            header_semantic_valid = false;
         }
         else if (!Lexer->symbol_table.declare_symbol(target_scope_id, candidate))
         {
             report_duplicate_declaration(candidate);
-            header_valid = false;
+            header_semantic_valid = false;
         }
         else
         {
@@ -565,12 +571,16 @@ bool parser::parse_procedure_declaration(bool is_global)
     parsing_statements = false;
     update_scopes(false);
     (void)parent_scope_id;
-    return header_valid && body_valid;
+    //A header with a bad bound or a duplicate name has still consumed a complete
+    //declaration.  Leave its recovery scope ownerless, but do not make the
+    //enclosing declaration loop resynchronise across its terminating semicolon.
+    return header_syntax_valid && body_valid;
 }
 
 bool parser::parse_procedure_header(bool is_global, token &candidate,
                                     std::vector<token> &parameters,
-                                    std::vector<token> &header_symbols)
+                                    std::vector<token> &header_symbols,
+                                    bool &semantic_valid)
 {
     bool valid_parse = true;
     if (Current_parse_token_type == T_IDENTIFIER)
@@ -621,13 +631,15 @@ bool parser::parse_procedure_header(bool is_global, token &candidate,
         Current_parse_token = Get_Valid_Token();
         return valid_parse;
     }
-    if (!parse_parameter_list(parameters, header_symbols))
+    bool parameter_semantic_valid = true;
+    if (!parse_parameter_list(parameters, header_symbols, parameter_semantic_valid))
     {
         return false;
     }
+    semantic_valid = semantic_valid && parameter_semantic_valid;
     for (const token &parameter : parameters)
     {
-        candidate.procedure_params.push_back(parameter.identifier_data_type);
+        candidate.procedure_params.push_back(shape_of(parameter));
     }
     return valid_parse;
 }
@@ -929,7 +941,8 @@ bool parser::parse_declared_type(data_types &resolved_type, std::vector<token> &
     return true;
 }
 
-bool parser::parse_parameter(token &parameter, std::vector<token> &header_symbols)
+bool parser::parse_parameter(token &parameter, std::vector<token> &header_symbols,
+                             bool &semantic_valid)
 {
     if (Current_parse_token_type != T_IDENTIFIER)
     {
@@ -953,27 +966,12 @@ bool parser::parse_parameter(token &parameter, std::vector<token> &header_symbol
         return false;
     }
     header_symbols.insert(header_symbols.end(), enum_symbols.begin(), enum_symbols.end());
-    if (Current_parse_token_type == T_LBRACKET)
-    {
-        parameter.is_array = true;
-        Current_parse_token = Get_Valid_Token();
-        if (!parse_bound())
-        {
-            return false;
-        }
-        if (Current_parse_token_type != T_RBRACKET)
-        {
-            generate_error_report_previous_token("Missing \"]\" to close the array declaration");
-            errors_occured = true;
-            return false;
-        }
-        Current_parse_token = Get_Valid_Token();
-    }
-    return true;
+    return parse_array_suffix(parameter, semantic_valid);
 }
 
 bool parser::parse_parameter_list(std::vector<token> &parameters,
-                                  std::vector<token> &header_symbols)
+                                  std::vector<token> &header_symbols,
+                                  bool &semantic_valid)
 {
     while (true)
     {
@@ -985,10 +983,12 @@ bool parser::parse_parameter_list(std::vector<token> &parameters,
         }
         Current_parse_token = Get_Valid_Token();
         token parameter;
-        if (!parse_parameter(parameter, header_symbols))
+        bool parameter_semantic_valid = true;
+        if (!parse_parameter(parameter, header_symbols, parameter_semantic_valid))
         {
             return false;
         }
+        semantic_valid = semantic_valid && parameter_semantic_valid;
         parameters.push_back(parameter);
         if (Current_parse_token_type != T_COMMA)
         {
@@ -1037,21 +1037,14 @@ bool parser::parse_variable_declaration(bool is_global)
     {
         return false;
     }
-    if (Current_parse_token_type == T_LBRACKET)
+    bool array_semantic_valid = true;
+    if (!parse_array_suffix(candidate, array_semantic_valid))
     {
-        candidate.is_array = true;
-        Current_parse_token = Get_Valid_Token();
-        if (!parse_bound())
-        {
-            return false;
-        }
-        if (Current_parse_token_type != T_RBRACKET)
-        {
-            generate_error_report_previous_token("Missing \"]\" to close the array declaration");
-            errors_occured = true;
-            return false;
-        }
-        Current_parse_token = Get_Valid_Token();
+        return false;
+    }
+    if (!array_semantic_valid)
+    {
+        return true;
     }
     std::vector<token> symbols;
     symbols.push_back(candidate);
@@ -1064,17 +1057,74 @@ bool parser::parse_variable_declaration(bool is_global)
     return true;
 }
 
-bool parser::parse_bound()
+bool parser::parse_bound(int &upper_bound, bool &semantic_valid)
 {
-    if (Current_parse_token_type == T_INTEGER_VALUE ||
-        Current_parse_token_type == T_FLOAT_VALUE)
+    const token bound_token = Current_parse_token;
+    if (Current_parse_token_type == T_MINUS)
     {
         Current_parse_token = Get_Valid_Token();
+        if (Current_parse_token_type != T_INTEGER_VALUE &&
+            Current_parse_token_type != T_FLOAT_VALUE)
+        {
+            generate_error_report("Missing expected number");
+            errors_occured = true;
+            return false;
+        }
+        Current_parse_token = Get_Valid_Token();
+        generate_error_report("Array upper bound must be a non-negative integer",
+                              bound_token.line_found);
+        errors_occured = true;
+        semantic_valid = false;
+        return true;
+    }
+    if (Current_parse_token_type == T_INTEGER_VALUE)
+    {
+        upper_bound = Current_parse_token.intValue;
+        Current_parse_token = Get_Valid_Token();
+        if (upper_bound < 0)
+        {
+            generate_error_report("Array upper bound must be a non-negative integer",
+                                  bound_token.line_found);
+            errors_occured = true;
+            semantic_valid = false;
+        }
+        return true;
+    }
+    if (Current_parse_token_type == T_FLOAT_VALUE)
+    {
+        Current_parse_token = Get_Valid_Token();
+        generate_error_report("Array upper bound must be a non-negative integer",
+                              bound_token.line_found);
+        errors_occured = true;
+        semantic_valid = false;
         return true;
     }
     generate_error_report("Missing expected number");
     errors_occured = true;
     return false;
+}
+
+bool parser::parse_array_suffix(token &candidate, bool &semantic_valid)
+{
+    if (Current_parse_token_type != T_LBRACKET)
+    {
+        return true;
+    }
+    candidate.is_array = true;
+    candidate.array_upper_bound = -1;
+    Current_parse_token = Get_Valid_Token();
+    if (!parse_bound(candidate.array_upper_bound, semantic_valid))
+    {
+        return false;
+    }
+    if (Current_parse_token_type != T_RBRACKET)
+    {
+        generate_error_report_previous_token("Missing \"]\" to close the array declaration");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    return true;
 }
 
 bool parser::parse_type_declaration(bool is_global)
@@ -1203,12 +1253,9 @@ bool parser::parse_assignment_statement(token destination_token)
 {
     token_and_status expression_parse;
     token_and_status destination_parse;
-    token destination_parse_token;
-    token expression_parse_token;
     //this tracks the state of the parser
     bool valid_parse;
     destination_parse = parse_assignment_destination(destination_token);
-    destination_parse_token = destination_parse.resolved_token;
     valid_parse = destination_parse.valid_parse;
     if (valid_parse)
     {
@@ -1226,13 +1273,12 @@ bool parser::parse_assignment_statement(token destination_token)
         {
             Current_parse_token = Get_Valid_Token();
             expression_parse = parse_expression();
-            expression_parse_token = expression_parse.resolved_token;
             valid_parse = expression_parse.valid_parse;
             if (valid_parse && destination_parse.semantic_valid &&
                 expression_parse.semantic_valid && !type_checker->statement_suppressed)
             {
-                (void)type_checker->check_assignment_statement(destination_parse_token,
-                                                               expression_parse_token);
+                (void)type_checker->check_assignment_statement(destination_parse,
+                                                               expression_parse);
             }
         }
         else
@@ -1251,7 +1297,6 @@ bool parser::parse_assignment_statement(token destination_token)
 //refactored 1 time
 bool parser::parse_if_statement()
 {
-    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_IF_STATEMENT;
@@ -1260,11 +1305,10 @@ bool parser::parse_if_statement()
     {
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
-        updated_token = expression_parse.resolved_token;
         if (expression_parse.valid_parse && expression_parse.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            type_checker->check_if_statement(updated_token);
+            type_checker->check_if_statement(expression_parse);
         }
         type_checker->clear_tokens(false);
         valid_parse = expression_parse.valid_parse;
@@ -1393,7 +1437,6 @@ bool parser::parse_if_statement()
 //refactored 2 times
 bool parser::parse_loop_statement()
 {
-    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     parser_state state = S_LOOP_STATEMENT;
@@ -1417,7 +1460,6 @@ bool parser::parse_loop_statement()
                 Current_parse_token = Get_Valid_Token();
                 type_checker->begin_loop_condition(Current_parse_token);
                 expression_parse = parse_expression();
-                updated_token = expression_parse.resolved_token;
                 valid_parse = expression_parse.valid_parse;
                 if (Current_parse_token_type == T_RPARAM)
                 {
@@ -1425,7 +1467,7 @@ bool parser::parse_loop_statement()
                     if (expression_parse.valid_parse && expression_parse.semantic_valid &&
                         !type_checker->statement_suppressed)
                     {
-                        (void)type_checker->check_loop_statement(updated_token);
+                        (void)type_checker->check_loop_statement(expression_parse);
                     }
                     while (Current_parse_token_type != T_END)
                     {
@@ -1533,19 +1575,17 @@ bool parser::parse_loop_statement()
 //refactored 1 time
 bool parser::parse_return_statement()
 {
-    token updated_token;
     token_and_status expression_parse;
     //this tracks the state of the parser
     bool valid_parse;
     expression_parse = parse_expression();
-    updated_token = expression_parse.resolved_token;
     if (expression_parse.valid_parse && expression_parse.semantic_valid &&
         !type_checker->statement_suppressed)
     {
         token owner;
         if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
         {
-            type_checker->check_return_statement(updated_token, owner);
+            type_checker->check_return_statement(expression_parse, owner);
         }
     }
     valid_parse = expression_parse.valid_parse;
@@ -1558,10 +1598,7 @@ bool parser::parse_return_statement()
 token_and_status parser::parse_assignment_destination(token destination_token)
 {
     token_and_status destination_parse;
-    token_and_status expression_parse;
-    bool valid_parse;
     const bool resolved_variable = destination_token.identifer_type == I_VARIABLE;
-    const bool indexed = Current_parse_token_type == T_LBRACKET;
     if (resolved_variable && destination_token.identifier_data_type == TYPE_NONE)
     {
         generate_error_report("Identifier \"" + destination_token.stringValue +
@@ -1573,49 +1610,61 @@ token_and_status parser::parse_assignment_destination(token destination_token)
     if (resolved_variable && destination_token.identifier_data_type != TYPE_NONE &&
         !type_checker->statement_suppressed)
     {
-        destination_parse = typed_expression_result(type_checker,
-                                                    destination_token.identifier_data_type,
+        destination_parse = typed_expression_result(type_checker, shape_of(destination_token),
                                                     destination_token);
     }
-    //this means that the optional bracketed expression should exist
-    if (Current_parse_token_type == T_LBRACKET)
+    const value_shape base_shape = shape_of(destination_token);
+    if (!parse_optional_index(destination_token, resolved_variable, base_shape,
+                              destination_parse))
     {
-        //Indexed uses are occurrences, not declarations.  Array declaration
-        //metadata remains canonical and is not mutated by an expression use.
-        Current_parse_token = Get_Valid_Token();
-        expression_parse = parse_expression();
-        valid_parse = expression_parse.valid_parse;
-        //after parsing the expression, it should have a right bracket
-        if (Current_parse_token_type == T_RBRACKET)
-        {
-            Current_parse_token = Get_Valid_Token();
-        }
-        //required right bracket missing
-        else
-        {
-            if (debugging)
-            {
-                std::cout << "parser failed on parse_assignment_destination()" << std::endl;
-            }
-            generate_error_report_previous_token("Missing closing right bracket to the identifier expression");
-            errors_occured = true;
-            destination_parse.valid_parse = false;
-            return destination_parse;
-        }
+        return destination_parse;
     }
-    else
+    if (!resolved_variable)
     {
-        valid_parse = true;
-    }
-    destination_parse.valid_parse = valid_parse;
-    destination_parse.semantic_valid = destination_parse.semantic_valid &&
-                                       (!indexed || expression_parse.semantic_valid) &&
-                                       !type_checker->statement_suppressed;
-    if (!destination_parse.semantic_valid)
-    {
+        destination_parse.valid_parse = true;
+        destination_parse.semantic_valid = false;
         destination_parse.resolved_token = token();
     }
     return destination_parse;
+}
+
+bool parser::parse_optional_index(const token &base_occurrence, bool base_resolved,
+                                  const value_shape &base_shape,
+                                  token_and_status &base_result)
+{
+    if (Current_parse_token_type != T_LBRACKET)
+    {
+        return true;
+    }
+    Current_parse_token = Get_Valid_Token();
+    const token_and_status index_parse = parse_expression();
+    if (Current_parse_token_type != T_RBRACKET)
+    {
+        generate_error_report_previous_token(
+            "Missing closing right bracket to the identifier expression");
+        errors_occured = true;
+        base_result = invalid_expression_result(false);
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    base_result.valid_parse = index_parse.valid_parse;
+    if (!index_parse.valid_parse || !base_resolved || !base_result.semantic_valid ||
+        !index_parse.semantic_valid || type_checker->statement_suppressed)
+    {
+        base_result.semantic_valid = false;
+        base_result.resolved_token = token();
+        return index_parse.valid_parse;
+    }
+    if (!type_checker->validate_array_index(base_occurrence, base_shape, index_parse))
+    {
+        base_result.semantic_valid = false;
+        base_result.resolved_token = token();
+        return true;
+    }
+    value_shape element_shape;
+    element_shape.element_type = base_shape.element_type;
+    base_result = typed_expression_result(type_checker, element_shape, base_occurrence);
+    return true;
 }
 
 //ready to test
@@ -1680,7 +1729,7 @@ token_and_status parser::parse_expression()
         if (expression_parse.semantic_valid && !type_checker->statement_suppressed)
         {
             expression_parse = type_checker->check_unary_expression(SEM_NOT, not_token,
-                                                                       expression_parse.resolved_token);
+                                                                       expression_parse);
         }
         else
         {
@@ -1718,8 +1767,7 @@ token_and_status parser::parse_expression()
             !type_checker->statement_suppressed)
         {
             expression_parse = type_checker->check_binary_expression(
-                operation, operator_token, expression_parse.resolved_token,
-                right_parse.resolved_token);
+                operation, operator_token, expression_parse, right_parse);
         }
         else
         {
@@ -1775,8 +1823,7 @@ token_and_status parser::parse_arithOp()
             !type_checker->statement_suppressed)
         {
             arithop_parse = type_checker->check_binary_expression(
-                operation, operator_token, arithop_parse.resolved_token,
-                right_parse.resolved_token);
+                operation, operator_token, arithop_parse, right_parse);
         }
         else
         {
@@ -1920,8 +1967,7 @@ token_and_status parser::parse_relation()
             !type_checker->statement_suppressed)
         {
             relation_parse = type_checker->check_binary_expression(
-                operation, operator_token, relation_parse.resolved_token,
-                right_parse.resolved_token);
+                operation, operator_token, relation_parse, right_parse);
         }
         else
         {
@@ -1988,8 +2034,7 @@ token_and_status parser::parse_term()
             !type_checker->statement_suppressed)
         {
             term_parse = type_checker->check_binary_expression(
-                operation, operator_token, term_parse.resolved_token,
-                right_parse.resolved_token);
+                operation, operator_token, term_parse, right_parse);
         }
         else
         {
@@ -2072,7 +2117,7 @@ token_and_status parser::parse_factor()
                 Current_parse_token);
             Current_parse_token = Get_Valid_Token();
             return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
-                                                         factor_parse.resolved_token);
+                                                         factor_parse);
         }
         if (Current_parse_token_type == T_IDENTIFIER)
         {
@@ -2086,7 +2131,7 @@ token_and_status parser::parse_factor()
             if (factor_parse.semantic_valid && !type_checker->statement_suppressed)
             {
                 return type_checker->check_unary_expression(SEM_NEGATE, operator_token,
-                                                             factor_parse.resolved_token);
+                                                             factor_parse);
             }
             return invalid_expression_result(true);
         }
@@ -2129,7 +2174,6 @@ token_and_status parser::parse_factor()
 //already consumes indentifier token before being parsed
 token_and_status parser::parse_name(token identifier_token)
 {
-    token_and_status expression_parse;
     token_and_status name_parse;
     token resolved_identifier;
     const bool resolved = resolve_identifier_use(identifier_token, resolved_identifier);
@@ -2148,33 +2192,13 @@ token_and_status parser::parse_name(token identifier_token)
         }
         else
         {
-            name_parse = typed_expression_result(type_checker,
-                                                 resolved_identifier.identifier_data_type,
+            name_parse = typed_expression_result(type_checker, shape_of(resolved_identifier),
                                                  identifier_token);
         }
     }
-    const bool indexed = Current_parse_token_type == T_LBRACKET;
-    if (indexed)
+    if (!parse_optional_index(identifier_token, resolved, shape_of(resolved_identifier), name_parse))
     {
-        Current_parse_token = Get_Valid_Token();
-        expression_parse = parse_expression();
-        if (Current_parse_token_type == T_RBRACKET)
-        {
-            Current_parse_token = Get_Valid_Token();
-        }
-        else
-        {
-            generate_error_report_previous_token("Missing require \"]\" for the end of optional expression for name");
-            errors_occured = true;
-            return invalid_expression_result(false);
-        }
-        name_parse.valid_parse = expression_parse.valid_parse;
-        name_parse.semantic_valid = name_parse.semantic_valid && expression_parse.semantic_valid &&
-                                    !type_checker->statement_suppressed;
-        if (!name_parse.semantic_valid)
-        {
-            name_parse.resolved_token = token();
-        }
+        return name_parse;
     }
     if (!resolved)
     {
@@ -2805,7 +2829,9 @@ bool parser::resync_parser(parser_state state)
     {
         std::vector<token> recovered_parameters;
         std::vector<token> recovered_header_symbols;
-        return_state = parse_parameter_list(recovered_parameters, recovered_header_symbols);
+        bool recovered_semantic_valid = true;
+        return_state = parse_parameter_list(recovered_parameters, recovered_header_symbols,
+                                            recovered_semantic_valid);
     }
         return_state = parse_procedure_body();
 

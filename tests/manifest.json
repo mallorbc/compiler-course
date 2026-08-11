@@ -1368,21 +1368,21 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c5_arrscalar.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/typechecker/c5_arrscalar.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 149,
+      "stdout_sha256": "dc23719aef979f414cbd56450fff5ba0b8a315ae744890f5ed1d747fb913a08b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c5_idx.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/typechecker/c5_idx.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 103,
+      "stdout_sha256": "453828acb169ab63a9e1744213324c2bf97fc54234d637ad775002b9b951bbf0",
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c7_boolret.src": {
@@ -1691,6 +1691,42 @@
       "stdout_sha256": "00da0ed819a567aa8ddca87fccf032532654f7125d5722a2d279a4226006e1cf",
       "stderr_nonempty": false
     },
+    "docs/audit/probes/typechecker/ty8_invalid_bounds.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/ty8_invalid_bounds.src.out",
+      "stdout_bytes": 281,
+      "stdout_sha256": "0a4d650961bdc3c63fa6d4d566be088da828f927c54da3601108751a107e4d9f",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/ty8_invalid_indexes.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/ty8_invalid_indexes.src.out",
+      "stdout_bytes": 523,
+      "stdout_sha256": "8754668c840f31cf2656c06ccbeeb4691d7a057bf63ef0f2f688988f23478e66",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/ty8_invalid_shapes.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/ty8_invalid_shapes.src.out",
+      "stdout_bytes": 1427,
+      "stdout_sha256": "2c9a965d70cd6c9ad67f508a360c37eadf8c2a0e9473c33b1b290bf5c83251ac",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/typechecker/ty8_valid_arrays.src": {
+      "status": "OK",
+      "exit_code": 0,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/typechecker/ty8_valid_arrays.src.out",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stderr_nonempty": false
+    },
     "testPgms/correct/iterativeFib.src": {
       "status": "OK",
       "exit_code": 0,
@@ -1746,12 +1782,12 @@
       "stderr_nonempty": false
     },
     "testPgms/correct/test1.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/correct/test1.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 150,
+      "stdout_sha256": "c7102750e312ae80e355e191d1b9acf8c5dc7cc41af849606e147ad8aee7b3e7",
       "stderr_nonempty": false
     },
     "testPgms/correct/test1b.src": {
@@ -1759,8 +1795,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/correct/test1b.src.out",
-      "stdout_bytes": 81,
-      "stdout_sha256": "d759c441d260c155f9137bb8e9815015809d03d68ebb709f0054956d32709677",
+      "stdout_bytes": 187,
+      "stdout_sha256": "5a51b24c748f469733d001f80acd91c23918702b6a24bfafe97cb0c18a37d1ab",
       "stderr_nonempty": false
     },
     "testPgms/correct/test2.src": {
@@ -1813,8 +1849,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/fail/test1_fail.src.out",
-      "stdout_bytes": 228,
-      "stdout_sha256": "e7daaf7f57c47acc35369af0607106bb53f733b210bea7d81bf6d3cfee62e132",
+      "stdout_bytes": 334,
+      "stdout_sha256": "6b5dd770760ce7250397550a625944e0656879f43a9f6b680b24261ce7440fd2",
       "stderr_nonempty": false
     }
   }

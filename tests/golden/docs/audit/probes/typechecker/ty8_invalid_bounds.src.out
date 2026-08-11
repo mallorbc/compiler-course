@@ -1,0 +1,9 @@
+The program parsed successfully with errors
+Error on line 2: Array upper bound must be a non-negative integer
+
+Error on line 3: Array upper bound must be a non-negative integer
+
+Error on line 4: Missing expected number
+
+Error on line 5: Missing "]" to close the array declaration
+

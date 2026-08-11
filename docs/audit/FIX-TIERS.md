@@ -81,7 +81,7 @@ Tier definitions:
 | ID | Work | Subsumes |
 |----|------|----------|
 | TY-2 | **Type-propagation rebuild**: each `parse_*` expression function returns its synthesized type; retire the `feed_in_tokens` accumulator side-channel; real assignment/return/condition checking on top | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry). Scalar SIL-2 assignment validation landed in Stage 2D; lowering-time cast metadata remains deferred. |
-| TY-8 | **Arrays end-to-end**: record `is_array`+bound at declaration (parser.cpp:1289), index-must-be-integer, whole-array op rules per spec §14; runtime bounds checks land with codegen | design how array types ride through TY-2's propagation |
+| TY-8 | **DONE Stage 2E frontend shape layer**: canonical inclusive bounds, index-must-be-integer, exact array call signatures, and elementwise shape checking | Runtime `BoundsCheck`, allocation/copy/broadcast lowering, and compile-time OOB folding remain a codegen slice |
 
 ## Critical — 3 items (blocked on Blake)
 

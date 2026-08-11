@@ -90,6 +90,19 @@ bool has_error(const parser &parsed, const std::string &message)
     return false;
 }
 
+std::size_t count_errors(const parser &parsed, const std::string &message)
+{
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < parsed.error_reports.size(); i++)
+    {
+        if (parsed.error_reports[i].find(message) != std::string::npos)
+        {
+            count++;
+        }
+    }
+    return count;
+}
+
 } // namespace
 
 TEST_CASE("malformed procedure recovery balances its entered scope")
@@ -372,10 +385,10 @@ TEST_CASE("procedure parameter lists own one closing parenthesis")
         "    result := three(1, 2.0, true);\n"
         "end program.\n"};
     const std::vector<std::string> procedure_names = {"one", "two", "three"};
-    const std::vector<std::vector<data_types>> expected_parameters = {
-        {TYPE_INT},
-        {TYPE_INT, TYPE_FLOAT},
-        {TYPE_INT, TYPE_FLOAT, TYPE_BOOL}};
+    const std::vector<std::vector<value_shape>> expected_parameters = {
+        {{TYPE_INT, false, -1}},
+        {{TYPE_INT, false, -1}, {TYPE_FLOAT, false, -1}},
+        {{TYPE_INT, false, -1}, {TYPE_FLOAT, false, -1}, {TYPE_BOOL, false, -1}}};
 
     for (std::size_t i = 0; i < programs.size(); i++)
     {
@@ -677,7 +690,8 @@ TEST_CASE("Stage 2A declarations are transactional and retain the first signatur
     token keep;
     CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "keep"}, keep));
     REQUIRE(keep.procedure_params.size() == 1);
-    CHECK(keep.procedure_params[0] == TYPE_INT);
+    const value_shape expected_keep_parameter{TYPE_INT, false, -1};
+    CHECK(keep.procedure_params[0] == expected_keep_parameter);
 }
 
 TEST_CASE("Stage 2A prevents undeclared-use autovivification and type cascades")
@@ -803,20 +817,22 @@ TEST_CASE("Stage 2A separates lexical cache, builtins, aliases, and enum declara
     CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "getinteger"}, get_integer));
     CHECK(get_integer.identifer_type == I_PROCEDURE);
     CHECK(get_integer.identifier_data_type == TYPE_INT);
-    const std::vector<std::tuple<std::string, data_types, std::size_t>> builtins = {
-        {"getbool", TYPE_BOOL, 0}, {"getinteger", TYPE_INT, 0},
-        {"getfloat", TYPE_FLOAT, 0}, {"getstring", TYPE_STRING, 0},
-        {"putbool", TYPE_BOOL, 1}, {"putinteger", TYPE_BOOL, 1},
-        {"putfloat", TYPE_BOOL, 1}, {"putstring", TYPE_BOOL, 1},
-        {"sqrt", TYPE_FLOAT, 1}};
-    for (const std::tuple<std::string, data_types, std::size_t> &builtin : builtins)
+    const std::vector<std::tuple<std::string, data_types, std::vector<value_shape>>> builtins = {
+        {"getbool", TYPE_BOOL, {}}, {"getinteger", TYPE_INT, {}},
+        {"getfloat", TYPE_FLOAT, {}}, {"getstring", TYPE_STRING, {}},
+        {"putbool", TYPE_BOOL, {{TYPE_BOOL, false, -1}}},
+        {"putinteger", TYPE_BOOL, {{TYPE_INT, false, -1}}},
+        {"putfloat", TYPE_BOOL, {{TYPE_FLOAT, false, -1}}},
+        {"putstring", TYPE_BOOL, {{TYPE_STRING, false, -1}}},
+        {"sqrt", TYPE_FLOAT, {{TYPE_INT, false, -1}}}};
+    for (const std::tuple<std::string, data_types, std::vector<value_shape>> &builtin : builtins)
     {
         token builtin_symbol;
         CHECK(parsed.Lexer->symbol_table.lookup_declared({0, std::get<0>(builtin)},
                                                           builtin_symbol));
         CHECK(builtin_symbol.identifer_type == I_PROCEDURE);
         CHECK(builtin_symbol.identifier_data_type == std::get<1>(builtin));
-        CHECK(builtin_symbol.procedure_params.size() == std::get<2>(builtin));
+        CHECK(builtin_symbol.procedure_params == std::get<2>(builtin));
     }
     CHECK(parsed.Lexer->symbol_table.map.find("amount") !=
           parsed.Lexer->symbol_table.map.end());
@@ -1333,4 +1349,305 @@ TEST_CASE("Stage 2D gives loop initializers and conditions separate semantic bou
     CHECK(has_error(nested, "Error on line 7: Loop statements must resolve to either type Bool or Integer"));
     CHECK(has_error(nested, "Error on line 10: Assignment target type \"integer\" is not compatible with expression type \"string\""));
     CHECK(has_error(nested, "Error on line 12: Assignment target type \"integer\" is not compatible with expression type \"string\""));
+}
+
+TEST_CASE("TY-8 records inclusive canonical bounds and exact parameter shapes")
+{
+    temp_source_file fixture(
+        "program arrays is\n"
+        "variable zero : integer[0];\n"
+        "variable five : integer[5];\n"
+        "procedure keep : integer(variable values : integer[5])\n"
+        "begin\n"
+        "    return values[0];\n"
+        "end procedure;\n"
+        "begin\n"
+        "    zero[0] := keep(five);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+    token zero;
+    token five;
+    token keep;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "zero"}, zero));
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "five"}, five));
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "keep"}, keep));
+    CHECK(zero.is_array);
+    CHECK(zero.array_upper_bound == 0);
+    CHECK(five.is_array);
+    CHECK(five.array_upper_bound == 5);
+    REQUIRE(keep.procedure_params.size() == 1);
+    const value_shape expected_array_parameter{TYPE_INT, true, 5};
+    CHECK(keep.procedure_params[0] == expected_array_parameter);
+}
+
+TEST_CASE("TY-8 bound errors are transactional and retain a first procedure signature")
+{
+    temp_source_file fixture(
+        "program arrays is\n"
+        "variable floatBound : integer[2.0];\n"
+        "variable negativeBound : integer[-2];\n"
+        "variable kept : integer[5];\n"
+        "procedure retained : integer(variable values : integer[5])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure retained : integer(variable values : integer[2])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    kept[0] := retained(kept);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(has_error(parsed, "Array upper bound must be a non-negative integer"));
+    CHECK(has_error(parsed, "Duplicate declaration for \"retained\""));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "floatbound"));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "negativebound"));
+    token retained;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "retained"}, retained));
+    REQUIRE(retained.procedure_params.size() == 1);
+    const value_shape expected_retained_parameter{TYPE_INT, true, 5};
+    CHECK(retained.procedure_params[0] == expected_retained_parameter);
+
+    temp_source_file malformed(
+        "program arrays is\n"
+        "variable missing : integer[];\n"
+        "variable next : integer;\n"
+        "begin\n"
+        "    next := 1;\n"
+        "end program.\n");
+    captured_stdout malformed_capture;
+    parser malformed_parse(malformed.name());
+    malformed_capture.restore();
+    CHECK(has_error(malformed_parse, "Missing expected number"));
+    CHECK_FALSE(malformed_parse.Lexer->symbol_table.has_declared(0, "missing"));
+    CHECK(malformed_parse.Lexer->symbol_table.has_declared(0, "next"));
+
+    temp_source_file invalid_header(
+        "program arrays is\n"
+        "procedure rejected : integer(variable values : integer[1.5])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "variable after : integer;\n"
+        "begin\n"
+        "    after := 1;\n"
+        "end program.\n");
+    captured_stdout invalid_header_capture;
+    parser invalid_header_parse(invalid_header.name());
+    invalid_header_capture.restore();
+    CHECK(invalid_header_parse.error_reports.size() == 1);
+    CHECK(has_error(invalid_header_parse, "Array upper bound must be a non-negative integer"));
+    CHECK_FALSE(invalid_header_parse.Lexer->symbol_table.has_declared(0, "rejected"));
+    CHECK(invalid_header_parse.Lexer->symbol_table.has_declared(0, "after"));
+    CHECK(invalid_header_parse.current_scope_id == 0);
+}
+
+TEST_CASE("TY-8 semantically rejected procedure headers still complete structurally")
+{
+    temp_source_file fixture(
+        "program arrays is\n"
+        "procedure retained : integer(variable values : integer[5])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure retained : integer(variable values : integer[2])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure negative : integer(variable values : integer[-1])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure floating : integer(variable values : integer[1.5])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "variable later : integer[5];\n"
+        "begin\n"
+        "    later[0] := retained(later);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 3);
+    CHECK(has_error(parsed, "Duplicate declaration for \"retained\""));
+    CHECK(has_error(parsed, "Array upper bound must be a non-negative integer"));
+    CHECK(count_errors(parsed, "Array upper bound must be a non-negative integer") == 2);
+    CHECK_FALSE(has_error(parsed, "Expected keyword \"variable\" in procedure parameter list"));
+    token retained;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "retained"}, retained));
+    REQUIRE(retained.procedure_params.size() == 1);
+    CHECK((retained.procedure_params[0] == value_shape{TYPE_INT, true, 5}));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "negative"));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "floating"));
+    CHECK(parsed.Lexer->symbol_table.has_declared(0, "later"));
+    CHECK(parsed.current_scope_id == 0);
+    CHECK(parsed.number_of_scopes == 0);
+    CHECK(parsed.active_scope_ids.size() == 1);
+    CHECK_FALSE(parsed.resync_status);
+
+    temp_source_file missing_close(
+        "program arrays is\n"
+        "procedure retained : integer(variable value : integer[5])\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure retained : integer(variable value : integer[5)\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "variable later : integer;\n"
+        "begin\n"
+        "    later := 1;\n"
+        "end program.\n");
+    captured_stdout missing_close_capture;
+    parser malformed(missing_close.name());
+    missing_close_capture.restore();
+
+    //A missing closer is deliberately still a syntax failure: normal recovery
+    //reports the bad declaration start after the focused suffix diagnostic.
+    CHECK(malformed.error_reports.size() == 3);
+    CHECK(has_error(malformed, "Missing \"]\" to close the array declaration"));
+    CHECK(has_error(malformed, "Duplicate declaration for \"retained\""));
+    CHECK(has_error(malformed,
+                    "Expected keywords \"procedure\",\"variable\" \"type\", or \"begin\" not found"));
+    token original;
+    CHECK(malformed.Lexer->symbol_table.lookup_declared({0, "retained"}, original));
+    REQUIRE(original.procedure_params.size() == 1);
+    CHECK((original.procedure_params[0] == value_shape{TYPE_INT, true, 5}));
+    CHECK(malformed.Lexer->symbol_table.has_declared(0, "later"));
+    CHECK(malformed.current_scope_id == 0);
+    CHECK(malformed.number_of_scopes == 0);
+    CHECK_FALSE(malformed.resync_status);
+}
+
+TEST_CASE("TY-8 array return errors anchor the return keyword")
+{
+    temp_source_file fixture(
+        "program arrays is\n"
+        "procedure invalid : integer()\n"
+        "variable values : integer[5];\n"
+        "begin\n"
+        "    return\n"
+        "        values;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 1);
+    CHECK(has_error(parsed, "Error on line 5: Procedure return values must be scalar"));
+}
+
+TEST_CASE("TY-8 index checks consume syntax and leave declaration metadata unchanged")
+{
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"scalar[0] := 1;", "Identifier \"scalar\" is not an array"},
+        {"arr[f] := 1;", "Array index must resolve to type integer"},
+        {"arr[flag] := 1;", "Array index must resolve to type integer"},
+        {"arr[\"s\"] := 1;", "Array index must resolve to type integer"},
+        {"arr[other] := 1;", "Array index must resolve to type integer"},
+        {"arr[missing + 1] := 1;", "Undeclared identifier \"missing\""},
+        {"arr[proc] := 1;", "Identifier \"proc\" is not a variable"}};
+    for (const std::pair<std::string, std::string> &test_case : cases)
+    {
+        temp_source_file fixture(
+            "program arrays is\n"
+            "variable scalar : integer;\n"
+            "variable arr : integer[5];\n"
+            "variable other : integer[5];\n"
+            "variable f : float;\n"
+            "variable flag : bool;\n"
+            "procedure proc : integer()\n"
+            "begin\n"
+            "    return 0;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    " + test_case.first + "\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_reports.size() == 1);
+        CHECK(has_error(parsed, test_case.second));
+        token canonical_arr;
+        CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "arr"}, canonical_arr));
+        CHECK(canonical_arr.is_array);
+        CHECK(canonical_arr.array_upper_bound == 5);
+    }
+}
+
+TEST_CASE("TY-8 index recovery gives syntax and child failures precedence")
+{
+    temp_source_file child_failure(
+        "program arrays is\n"
+        "variable scalar : integer;\n"
+        "begin\n"
+        "    scalar[missing + 1] := 1;\n"
+        "    scalar := 1;\n"
+        "end program.\n");
+    captured_stdout child_capture;
+    parser child(child_failure.name());
+    child_capture.restore();
+    CHECK(child.error_reports.size() == 1);
+    CHECK(has_error(child, "Undeclared identifier \"missing\""));
+    CHECK_FALSE(has_error(child, "is not an array"));
+
+    temp_source_file missing_closer(
+        "program arrays is\n"
+        "variable a : integer[5];\n"
+        "begin\n"
+        "    a[1.0 := 1;\n"
+        "    a[0] := 1;\n"
+        "end program.\n");
+    captured_stdout closer_capture;
+    parser closer(missing_closer.name());
+    closer_capture.restore();
+    CHECK(has_error(closer, "Missing closing right bracket to the identifier expression"));
+    CHECK_FALSE(has_error(closer, "Array index must resolve to type integer"));
+
+    temp_source_file multiline_index(
+        "program arrays is\n"
+        "variable a : integer[5];\n"
+        "variable f : float;\n"
+        "begin\n"
+        "    a[\n"
+        "        f] := 1;\n"
+        "    a[0] := 1;\n"
+        "end program.\n");
+    captured_stdout multiline_capture;
+    parser multiline(multiline_index.name());
+    multiline_capture.restore();
+    CHECK(multiline.error_reports.size() == 1);
+    CHECK(has_error(multiline, "Error on line 6: Array index must resolve to type integer"));
+}
+
+TEST_CASE("TY-8 scalar builtin signatures reject array call arguments exactly")
+{
+    temp_source_file fixture(
+        "program arrays is\n"
+        "variable values : integer[5];\n"
+        "variable result : bool;\n"
+        "begin\n"
+        "    result := putInteger(values);\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 1);
+    CHECK(has_error(parsed,
+                    "Argument 1 to procedure \"putinteger\" has type \"integer[5]\"; expected \"integer\""));
 }

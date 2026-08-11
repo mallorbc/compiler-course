@@ -102,15 +102,18 @@ public:
     bool parse_procedure_declaration(bool is_global);
     bool parse_procedure_header(bool is_global, token &candidate,
                                 std::vector<token> &parameters,
-                                std::vector<token> &header_symbols);
+                                std::vector<token> &header_symbols,
+                                bool &semantic_valid);
     bool parse_procedure_body();
 
     //method for parsing type_mark which is used for type declarations
     bool parse_declared_type(data_types &resolved_type, std::vector<token> &enum_symbols);
     //methods used for parsing one or more parameters in a procedure declaration
     bool parse_parameter_list(std::vector<token> &parameters,
-                              std::vector<token> &header_symbols);
-    bool parse_parameter(token &parameter, std::vector<token> &header_symbols);
+                              std::vector<token> &header_symbols,
+                              bool &semantic_valid);
+    bool parse_parameter(token &parameter, std::vector<token> &header_symbols,
+                         bool &semantic_valid);
 
     //methods used for parsing statements
     bool parse_base_statement();
@@ -119,6 +122,9 @@ public:
     bool parse_assignment_statement(token destination_token);
 
     token_and_status parse_assignment_destination(token destination_token);
+    bool parse_optional_index(const token &base_occurrence, bool base_resolved,
+                              const value_shape &base_shape,
+                              token_and_status &base_result);
 
     bool parse_if_statement();
     bool parse_loop_statement();
@@ -131,7 +137,8 @@ public:
     token_and_status parse_term();
     token_and_status parse_factor();
 
-    bool parse_bound();
+    bool parse_bound(int &upper_bound, bool &semantic_valid);
+    bool parse_array_suffix(token &candidate, bool &semantic_valid);
     bool parse_number();
     token_and_status parse_name(token identifier_token);
 

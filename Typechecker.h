@@ -87,13 +87,18 @@ public:
     //non-streaming semantic layer for the type of one already-parsed node;
     //the returned token is a synthetic expression type, never a declaration.
     token make_expression_result(data_types result_type, const token &anchor) const;
+    token_and_status make_shaped_expression_result(const value_shape &shape,
+                                                   const token &anchor) const;
     token_and_status check_unary_expression(semantic_operator operation,
                                              const token &operator_token,
-                                             const token &operand);
+                                             const token_and_status &operand);
     token_and_status check_binary_expression(semantic_operator operation,
                                               const token &operator_token,
-                                              const token &left_operand,
-                                              const token &right_operand);
+                                              const token_and_status &left_operand,
+                                              const token_and_status &right_operand);
+    bool validate_array_index(const token &base_occurrence,
+                              const value_shape &base_shape,
+                              const token_and_status &index_expression);
     //Procedure declarations remain canonical symbols in the scope table.  A
     //call expression carries only a synthetic result type, so validate the
     //canonical signature separately once the parser has consumed the full
@@ -102,7 +107,8 @@ public:
                                  const token &callee_occurrence,
                                  const std::vector<token_and_status> &arguments);
 
-    bool check_assignment_statement(token destination_token, token resolved_token);
+    bool check_assignment_statement(const token_and_status &destination,
+                                    const token_and_status &expression);
     bool are_tokens_full();
     token_types_and_status token_types_compatible_at_all();
 
@@ -112,10 +118,11 @@ public:
     bool is_bool_or_int(typechecker_types token_one, typechecker_types token_two);
     bool both_are_strings(typechecker_types token_one, typechecker_types token_two);
     std::string give_token_type_name(typechecker_types type_to_get);
-    bool check_return_statement(token resolved_token, token procedure_token);
-    bool check_if_statement(token token_to_check);
+    bool check_return_statement(const token_and_status &resolved_token,
+                                token procedure_token);
+    bool check_if_statement(const token_and_status &token_to_check);
 
-    bool check_loop_statement(token token_to_check);
+    bool check_loop_statement(const token_and_status &token_to_check);
 
     typechecker_types convert_to_typechecker_types(token token_to_convert);
 

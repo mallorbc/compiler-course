@@ -37,7 +37,7 @@ public:
     bool declare_all(int scope_id, const std::vector<token> &symbols);
     bool lookup_declared(const SymbolRef &reference, token &out) const;
     bool replace_declared(const SymbolRef &reference, const token &replacement);
-    bool append_procedure_parameter(const SymbolRef &reference, data_types parameter_type);
+    bool append_procedure_parameter(const SymbolRef &reference, const value_shape &parameter_type);
     bool has_declared(int scope_id, const std::string &name) const;
 
     //Resolution deliberately does not walk parent scopes.  2024 course rules

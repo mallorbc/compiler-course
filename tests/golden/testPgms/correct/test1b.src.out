@@ -1,3 +1,5 @@
 The program had parsing errors
+Error on line 22: Assignment target shape "integer[3]" is not compatible with expression shape "integer"
+
 Error on line 29: Missing "." to end the program
 

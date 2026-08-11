@@ -81,6 +81,29 @@ enum data_types
     TYPE_BOOL = 4
 };
 
+//A value shape is the complete static shape of a value.  Declarations retain
+//this information in their token fields; synthesized expression tokens carry
+//the same fields without becoming declarations.  Array bounds are inclusive:
+//an array declared with [N] has legal indices 0 through N.
+struct value_shape
+{
+    data_types element_type = TYPE_NONE;
+    bool is_array = false;
+    int array_upper_bound = -1;
+};
+
+inline bool operator==(const value_shape &left, const value_shape &right)
+{
+    return left.element_type == right.element_type &&
+           left.is_array == right.is_array &&
+           left.array_upper_bound == right.array_upper_bound;
+}
+
+inline bool operator!=(const value_shape &left, const value_shape &right)
+{
+    return !(left == right);
+}
+
 class token
 {
 public:
@@ -103,6 +126,7 @@ public:
         this->charValue = '\0';
         this->boolValue = false;
         this->first_token_on_line = false;
+        this->array_upper_bound = -1;
     };
     int type = 0;
     int line_found = 0;
@@ -120,12 +144,17 @@ public:
 
     //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
     identifier_types identifer_type = I_NONE;
-    //this will need to be added to the procedure identifiers
-    std::vector<data_types> procedure_params;
+    //Procedure signatures use full value shapes.  Parameter names remain in
+    //the procedure body scope; a call only needs ordered type/array/bound
+    //information.
+    std::vector<value_shape> procedure_params;
     //a variable can be of type string, bool, int, float, or none
     data_types identifier_data_type = TYPE_NONE;
 
     bool is_array = false;
+    //Inclusive upper bound for a declared or synthesized array; -1 for a
+    //scalar or an otherwise unresolved shape.
+    int array_upper_bound = -1;
     // union value{
     //     int intValue;
     //     std::string stringValue;
@@ -134,6 +163,54 @@ public:
     //     char charValue;
     // };
 };
+
+inline value_shape shape_of(const token &value)
+{
+    value_shape shape;
+    shape.element_type = value.identifier_data_type;
+    shape.is_array = value.is_array;
+    shape.array_upper_bound = value.is_array ? value.array_upper_bound : -1;
+    return shape;
+}
+
+inline void apply_shape(token &value, const value_shape &shape)
+{
+    value.identifier_data_type = shape.element_type;
+    value.is_array = shape.is_array;
+    value.array_upper_bound = shape.is_array ? shape.array_upper_bound : -1;
+}
+
+inline bool same_shape(const value_shape &left, const value_shape &right)
+{
+    return left == right;
+}
+
+inline std::string shape_name(const value_shape &shape)
+{
+    std::string element_name = "unknown";
+    switch (shape.element_type)
+    {
+    case TYPE_INT:
+        element_name = "integer";
+        break;
+    case TYPE_FLOAT:
+        element_name = "float";
+        break;
+    case TYPE_STRING:
+        element_name = "string";
+        break;
+    case TYPE_BOOL:
+        element_name = "bool";
+        break;
+    case TYPE_NONE:
+        break;
+    }
+    if (!shape.is_array)
+    {
+        return element_name;
+    }
+    return element_name + "[" + std::to_string(shape.array_upper_bound) + "]";
+}
 
 struct token_and_status
 {

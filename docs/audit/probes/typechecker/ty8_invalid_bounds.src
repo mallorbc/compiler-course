@@ -1,0 +1,13 @@
+program Ty8InvalidBounds is
+variable floatBound : integer[2.0];
+variable negativeBound : integer[-1];
+variable emptyBound : integer[];
+variable missingCloser : integer[3;
+variable kept : integer[5];
+procedure retained : integer(variable values : integer[5])
+begin
+    return values[0];
+end procedure;
+begin
+    kept[0] := retained(kept);
+end program.

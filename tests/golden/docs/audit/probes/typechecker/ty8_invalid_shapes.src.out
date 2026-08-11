@@ -1,0 +1,31 @@
+The program parsed successfully with errors
+Error on line 15: Procedure return values must be scalar
+
+Error on line 18: Assignment target shape "integer" is not compatible with expression shape "integer[5]"
+
+Error on line 19: Assignment target shape "integer[5]" is not compatible with expression shape "integer"
+
+Error on line 20: Assignment target array upper bound "5" is not compatible with expression array upper bound "2"
+
+Error on line 21: Array operands must have the same upper bound
+
+Error on line 22: Bitwise and logical "&" operations require two integers or two bools
+
+Error on line 23: Assignment target type "bool" is not compatible with expression type "float"
+
+Error on line 24: Assignment target type "float" is not compatible with expression type "bool"
+
+Error on line 25: Assignment target type "string" is not compatible with expression type "integer"
+
+Error on line 26: Assignment target type "integer" is not compatible with expression type "string"
+
+Error on line 27: Argument 1 to procedure "putinteger" has type "integer[5]"; expected "integer"
+
+Error on line 28: Argument 1 to procedure "takesarray" has type "integer"; expected "integer[5]"
+
+Error on line 29: Argument 1 to procedure "takesarray" has type "integer[2]"; expected "integer[5]"
+
+Error on line 30: If statements must resolve to either type Bool or Integer
+
+Error on line 33: Loop statements must resolve to either type Bool or Integer
+

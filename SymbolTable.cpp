@@ -5,8 +5,15 @@
 namespace
 {
 
+value_shape scalar_shape(data_types type)
+{
+    value_shape shape;
+    shape.element_type = type;
+    return shape;
+}
+
 token builtin_procedure(const std::string &name, data_types return_type,
-                        const std::vector<data_types> &parameters)
+                        const std::vector<value_shape> &parameters)
 {
     token builtin;
     builtin.type = T_IDENTIFIER;
@@ -34,11 +41,11 @@ SymbolTable::SymbolTable()
         builtin_procedure("getinteger", TYPE_INT, {}),
         builtin_procedure("getfloat", TYPE_FLOAT, {}),
         builtin_procedure("getstring", TYPE_STRING, {}),
-        builtin_procedure("putbool", TYPE_BOOL, {TYPE_BOOL}),
-        builtin_procedure("putinteger", TYPE_BOOL, {TYPE_INT}),
-        builtin_procedure("putfloat", TYPE_BOOL, {TYPE_FLOAT}),
-        builtin_procedure("putstring", TYPE_BOOL, {TYPE_STRING}),
-        builtin_procedure("sqrt", TYPE_FLOAT, {TYPE_INT})};
+        builtin_procedure("putbool", TYPE_BOOL, {scalar_shape(TYPE_BOOL)}),
+        builtin_procedure("putinteger", TYPE_BOOL, {scalar_shape(TYPE_INT)}),
+        builtin_procedure("putfloat", TYPE_BOOL, {scalar_shape(TYPE_FLOAT)}),
+        builtin_procedure("putstring", TYPE_BOOL, {scalar_shape(TYPE_STRING)}),
+        builtin_procedure("sqrt", TYPE_FLOAT, {scalar_shape(TYPE_INT)})};
     declare_all(0, builtins);
 }
 
@@ -242,7 +249,8 @@ bool SymbolTable::replace_declared(const SymbolRef &reference, const token &repl
     return true;
 }
 
-bool SymbolTable::append_procedure_parameter(const SymbolRef &reference, data_types parameter_type)
+bool SymbolTable::append_procedure_parameter(const SymbolRef &reference,
+                                              const value_shape &parameter_type)
 {
     ScopeTable *scope = find_scope_mut(reference.scope_id);
     if (scope == NULL)
