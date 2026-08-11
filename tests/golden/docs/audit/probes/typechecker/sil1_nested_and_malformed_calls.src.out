@@ -1,0 +1,15 @@
+The program parsed successfully with errors
+Error on line 17: Argument 1 to procedure "outer" has type "float"; expected "integer"
+
+Error on line 18: Argument 1 to procedure "inner" has type "bool"; expected "float"
+
+Error on line 19: Identifier "callable" is not a procedure
+
+Error on line 20: Undeclared procedure "missing"
+
+Error on line 21: Invalid token for factor discovered
+
+Error on line 21: Error in expression
+
+Error on line 21: Error in expression
+

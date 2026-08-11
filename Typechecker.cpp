@@ -59,6 +59,24 @@ bool is_bool_or_integer(data_types value_type)
     return value_type == TYPE_BOOL || value_type == TYPE_INT;
 }
 
+std::string procedure_type_name(data_types value_type)
+{
+    switch (value_type)
+    {
+    case TYPE_INT:
+        return "integer";
+    case TYPE_FLOAT:
+        return "float";
+    case TYPE_STRING:
+        return "string";
+    case TYPE_BOOL:
+        return "bool";
+    case TYPE_NONE:
+        return "unknown";
+    }
+    return "unknown";
+}
+
 void report_expression_error(Typechecker *checker, const std::string &message,
                              const token &operator_token)
 {
@@ -75,6 +93,23 @@ void report_expression_error(Typechecker *checker, const std::string &message,
     //Expression folding is deliberately independent from the legacy token
     //accumulator.  In particular, an invalid fold must not clear or otherwise
     //mutate first_token, second_token, or relation_tokens.
+    checker->statement_suppressed = true;
+    checker->type_error_occured = true;
+}
+
+void report_call_error(Typechecker *checker, const std::string &message,
+                       const token &anchor)
+{
+    if (checker->statement_suppressed)
+    {
+        return;
+    }
+    if (checker->parser_parent != NULL)
+    {
+        checker->parser_parent->errors_occured = true;
+        checker->parser_parent->generate_error_report(message,
+                                                      valid_line(anchor.line_found));
+    }
     checker->statement_suppressed = true;
     checker->type_error_occured = true;
 }
@@ -396,6 +431,76 @@ token_and_status Typechecker::check_binary_expression(semantic_operator operatio
     result.resolved_token = make_expression_result(result_type, left_operand);
     result.semantic_valid = true;
     return result;
+}
+
+bool Typechecker::validate_procedure_call(
+    const token &canonical_procedure, const token &callee_occurrence,
+    const std::vector<token_and_status> &arguments)
+{
+    if (statement_suppressed || canonical_procedure.identifer_type != I_PROCEDURE)
+    {
+        return false;
+    }
+
+    //The parser calls us only after it has consumed a closing ')'.  Keep this
+    //guard here too: malformed or already-invalid arguments must never turn
+    //into a secondary arity/type diagnostic if a future call site forgets the
+    //parser-side gate.
+    for (std::size_t i = 0; i < arguments.size(); i++)
+    {
+        if (!arguments[i].valid_parse || !arguments[i].semantic_valid)
+        {
+            return false;
+        }
+    }
+
+    if (canonical_procedure.procedure_params.size() != arguments.size())
+    {
+        report_call_error(
+            this,
+            "Procedure \"" + callee_occurrence.stringValue + "\" expects " +
+                std::to_string(canonical_procedure.procedure_params.size()) +
+                " argument(s), got " + std::to_string(arguments.size()),
+            callee_occurrence);
+        return false;
+    }
+
+    for (std::size_t i = 0; i < arguments.size(); i++)
+    {
+        const data_types expected_type = canonical_procedure.procedure_params[i];
+        const data_types actual_type = expression_data_type(arguments[i].resolved_token);
+        if (expected_type == TYPE_NONE)
+        {
+            report_call_error(
+                this,
+                "Procedure \"" + callee_occurrence.stringValue + "\" parameter " +
+                    std::to_string(i + 1) + " has an unsupported unresolved type",
+                callee_occurrence);
+            return false;
+        }
+        if (actual_type == TYPE_NONE)
+        {
+            report_call_error(
+                this,
+                "Argument " + std::to_string(i + 1) + " to procedure \"" +
+                    callee_occurrence.stringValue +
+                    "\" has an unsupported unresolved type",
+                arguments[i].resolved_token);
+            return false;
+        }
+        if (expected_type != actual_type)
+        {
+            report_call_error(
+                this,
+                "Argument " + std::to_string(i + 1) + " to procedure \"" +
+                    callee_occurrence.stringValue + "\" has type \"" +
+                    procedure_type_name(actual_type) + "\"; expected \"" +
+                    procedure_type_name(expected_type) + "\"",
+                arguments[i].resolved_token);
+            return false;
+        }
+    }
+    return true;
 }
 
 bool Typechecker::token_is_relationship(token token_to_check)

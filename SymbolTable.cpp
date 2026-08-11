@@ -27,8 +27,8 @@ SymbolTable::SymbolTable()
     init_reserved_chars();
     create_scope(0, -1, false);
 
-    //The parser defers argument checking, but calls must still resolve in the
-    //same declaration model as source procedures.
+    //Builtin calls use the same canonical declarations and exact signature
+    //validation as source procedures.
     const std::vector<token> builtins = {
         builtin_procedure("getbool", TYPE_BOOL, {}),
         builtin_procedure("getinteger", TYPE_INT, {}),

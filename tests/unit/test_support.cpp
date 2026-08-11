@@ -277,3 +277,46 @@ TEST_CASE("TY-2E invalid helpers preserve the legacy accumulator without a paren
         CHECK(same_token(checker.relation_tokens[i], saved_relations[i]));
     }
 }
+
+TEST_CASE("SIL-1 call validation requires exact types and rejects unresolved types")
+{
+    token canonical;
+    canonical.type = T_IDENTIFIER;
+    canonical.identifer_type = I_PROCEDURE;
+    canonical.procedure_params = {TYPE_INT, TYPE_FLOAT};
+    token occurrence;
+    occurrence.type = T_IDENTIFIER;
+    occurrence.stringValue = "q";
+    occurrence.line_found = 5;
+
+    Typechecker valid_checker;
+    const token_and_status integer_argument = {
+        true, true, valid_checker.make_expression_result(TYPE_INT, occurrence)};
+    const token_and_status float_argument = {
+        true, true, valid_checker.make_expression_result(TYPE_FLOAT, occurrence)};
+    CHECK(valid_checker.validate_procedure_call(canonical, occurrence,
+                                                {integer_argument, float_argument}));
+    CHECK_FALSE(valid_checker.statement_suppressed);
+
+    Typechecker mismatched_checker;
+    const token_and_status bool_argument = {
+        true, true, mismatched_checker.make_expression_result(TYPE_BOOL, occurrence)};
+    CHECK_FALSE(mismatched_checker.validate_procedure_call(
+        canonical, occurrence, {integer_argument, bool_argument}));
+    CHECK(mismatched_checker.statement_suppressed);
+    CHECK(mismatched_checker.type_error_occured);
+
+    Typechecker unresolved_parameter_checker;
+    token unresolved_parameter = canonical;
+    unresolved_parameter.procedure_params[1] = TYPE_NONE;
+    CHECK_FALSE(unresolved_parameter_checker.validate_procedure_call(
+        unresolved_parameter, occurrence, {integer_argument, float_argument}));
+    CHECK(unresolved_parameter_checker.statement_suppressed);
+
+    Typechecker unresolved_argument_checker;
+    const token_and_status unresolved_argument = {
+        true, true, unresolved_argument_checker.make_expression_result(TYPE_NONE, occurrence)};
+    CHECK_FALSE(unresolved_argument_checker.validate_procedure_call(
+        canonical, occurrence, {integer_argument, unresolved_argument}));
+    CHECK(unresolved_argument_checker.statement_suppressed);
+}

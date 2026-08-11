@@ -369,7 +369,7 @@ TEST_CASE("procedure parameter lists own one closing parenthesis")
         "end procedure;\n"
         "variable result : integer;\n"
         "begin\n"
-        "    result := three(1, 2, 3);\n"
+        "    result := three(1, 2.0, true);\n"
         "end program.\n"};
     const std::vector<std::string> procedure_names = {"one", "two", "three"};
     const std::vector<std::vector<data_types>> expected_parameters = {
@@ -1011,4 +1011,144 @@ TEST_CASE("TY-2E keeps invalid call arguments safe and enum values focused")
 
     CHECK(enum_program.error_reports.size() == 1);
     CHECK(has_error(enum_program, "Identifier \"c\" has no resolved type"));
+}
+
+TEST_CASE("SIL-1 validates complete procedure calls by exact ordered signature")
+{
+    const std::vector<std::tuple<std::string, std::string, int>> cases = {
+        {"q(1, 2.0, true)", "", 0},
+        {"q(1 + 2, (1 + 2.0), not false)", "", 0},
+        {"zero()", "", 0},
+        {"q(1, 2.0, true, 0)", "Procedure \"q\" expects 3 argument(s), got 4", 1},
+        {"q(1)", "Procedure \"q\" expects 3 argument(s), got 1", 1},
+        {"zero(1)", "Procedure \"zero\" expects 0 argument(s), got 1", 1},
+        {"q(1.0, 2.0, true)", "Argument 1 to procedure \"q\" has type \"float\"; expected \"integer\"", 1},
+        {"q(1, 2, true)", "Argument 2 to procedure \"q\" has type \"integer\"; expected \"float\"", 1},
+        {"q(1, 2.0, 1)", "Argument 3 to procedure \"q\" has type \"integer\"; expected \"bool\"", 1}};
+
+    for (const std::tuple<std::string, std::string, int> &test_case : cases)
+    {
+        temp_source_file fixture(
+            "program calls is\n"
+            "type count is integer;\n"
+            "procedure q : integer(variable first : count, variable second : float, variable third : bool)\n"
+            "begin\n"
+            "    return first;\n"
+            "end procedure;\n"
+            "procedure zero : integer()\n"
+            "begin\n"
+            "    return 0;\n"
+            "end procedure;\n"
+            "variable value : integer;\n"
+            "begin\n"
+            "    value := " + std::get<0>(test_case) + ";\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_count() == std::get<2>(test_case));
+        if (!std::get<1>(test_case).empty())
+        {
+            CHECK(has_error(parsed, std::get<1>(test_case)));
+        }
+    }
+}
+
+TEST_CASE("SIL-1 keeps malformed and unresolved calls structural without signature cascades")
+{
+    const std::vector<std::string> malformed_calls = {
+        "q(, 1)", "q(1,)", "q(1,, 2)", "q(1"};
+    for (const std::string &call : malformed_calls)
+    {
+        temp_source_file fixture(
+            "program malformed is\n"
+            "procedure q : integer(variable value : integer)\n"
+            "begin\n"
+            "    return value;\n"
+            "end procedure;\n"
+            "variable result : integer;\n"
+            "begin\n"
+            "    result := " + call + ";\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_count() >= 1);
+        CHECK_FALSE(has_error(parsed, "expects "));
+        CHECK_FALSE(has_error(parsed, "Argument 1 to procedure"));
+    }
+
+    temp_source_file failed_then_valid(
+        "program reset is\n"
+        "procedure q : integer(variable value : integer)\n"
+        "begin\n"
+        "    return value;\n"
+        "end procedure;\n"
+        "variable callable : integer;\n"
+        "variable result : integer;\n"
+        "begin\n"
+        "    result := q(1, 2);\n"
+        "    result := q(1);\n"
+        "    result := callable(1, 2);\n"
+        "    result := missing(1, 2);\n"
+        "end program.\n");
+    captured_stdout reset_capture;
+    parser reset(failed_then_valid.name());
+    reset_capture.restore();
+
+    CHECK(reset.error_reports.size() == 3);
+    CHECK(has_error(reset, "Procedure \"q\" expects 1 argument(s), got 2"));
+    CHECK(has_error(reset, "Identifier \"callable\" is not a procedure"));
+    CHECK(has_error(reset, "Undeclared procedure \"missing\""));
+    CHECK_FALSE(has_error(reset, "Procedure \"callable\" expects"));
+    CHECK_FALSE(has_error(reset, "Procedure \"missing\" expects"));
+}
+
+TEST_CASE("SIL-1 anchors type mismatches at their argument and supports recursion")
+{
+    temp_source_file mismatch(
+        "program lines is\n"
+        "procedure q : integer(variable first : integer, variable second : float)\n"
+        "begin\n"
+        "    return first;\n"
+        "end procedure;\n"
+        "variable value : integer;\n"
+        "begin\n"
+        "    value := q(1,\n"
+        "               true);\n"
+        "end program.\n");
+    captured_stdout mismatch_capture;
+    parser multiline(mismatch.name());
+    mismatch_capture.restore();
+
+    CHECK(multiline.error_reports.size() == 1);
+    CHECK(has_error(multiline, "Error on line 9: Argument 2 to procedure \"q\""));
+
+    const std::vector<std::pair<std::string, std::string>> recursion_cases = {
+        {"recurse(1)", ""},
+        {"recurse(1.0)", "Argument 1 to procedure \"recurse\" has type \"float\"; expected \"integer\""}};
+    for (const std::pair<std::string, std::string> &test_case : recursion_cases)
+    {
+        temp_source_file fixture(
+            "program recursion is\n"
+            "procedure recurse : integer(variable value : integer)\n"
+            "begin\n"
+            "    return recurse(value);\n"
+            "end procedure;\n"
+            "variable answer : integer;\n"
+            "begin\n"
+            "    answer := " + test_case.first + ";\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_count() == (test_case.second.empty() ? 0 : 1));
+        if (!test_case.second.empty())
+        {
+            CHECK(has_error(parsed, test_case.second));
+        }
+    }
 }

@@ -138,6 +138,8 @@ public:
     bool parse_argument_list(std::vector<token_and_status> &arguments);
 
     token_and_status parse_procedure_call(const token &callee_occurrence,
+                                          const token &canonical_callee,
+                                          bool callee_resolved,
                                           const token_and_status &callee_result);
 
     bool resync_parser(parser_state state);

@@ -1,0 +1,22 @@
+program sil1_nested is
+procedure inner : float(variable value : float)
+begin
+    return value;
+end procedure;
+procedure outer : integer(variable value : integer)
+begin
+    return value;
+end procedure;
+procedure q : integer(variable value : integer)
+begin
+    return value;
+end procedure;
+variable callable : integer;
+variable result : integer;
+begin
+    result := outer(inner(1.0));
+    result := outer(inner(true));
+    result := callable(1, 2);
+    result := missing(1, 2);
+    result := q(, 1);
+end program.

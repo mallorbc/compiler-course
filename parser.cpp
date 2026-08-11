@@ -2027,10 +2027,12 @@ token_and_status parser::parse_factor()
         {
             const token callee_occurrence = Current_parse_token;
             token callee;
+            bool callee_resolved = false;
             token_and_status callee_result;
             callee_result.valid_parse = true;
             if (resolve_procedure_use(callee_occurrence, callee))
             {
+                callee_resolved = true;
                 if (callee.identifier_data_type == TYPE_NONE)
                 {
                     if (!type_checker->statement_suppressed)
@@ -2050,7 +2052,8 @@ token_and_status parser::parse_factor()
                 }
             }
             Current_parse_token = Get_Valid_Token();
-            return parse_procedure_call(callee_occurrence, callee_result);
+            return parse_procedure_call(callee_occurrence, callee, callee_resolved,
+                                        callee_result);
         }
         identifier_token = Current_parse_token;
         Current_parse_token = Get_Valid_Token();
@@ -2204,6 +2207,8 @@ bool parser::parse_argument_list(std::vector<token_and_status> &arguments)
 //ready to test
 //already consumes identifier token before parsing
 token_and_status parser::parse_procedure_call(const token &callee_occurrence,
+                                              const token &canonical_callee,
+                                              bool callee_resolved,
                                               const token_and_status &callee_result)
 {
     token_and_status call_parse;
@@ -2239,7 +2244,8 @@ token_and_status parser::parse_procedure_call(const token &callee_occurrence,
         errors_occured = true;
         return invalid_expression_result(false);
     }
-    if (!call_parse.valid_parse || !callee_result.semantic_valid ||
+    if (!call_parse.valid_parse || !callee_resolved ||
+        canonical_callee.identifer_type != I_PROCEDURE || !callee_result.semantic_valid ||
         type_checker->statement_suppressed)
     {
         call_parse.semantic_valid = false;
@@ -2248,16 +2254,22 @@ token_and_status parser::parse_procedure_call(const token &callee_occurrence,
     }
     for (std::size_t i = 0; i < arguments.size(); i++)
     {
-        if (!arguments[i].semantic_valid)
+        if (!arguments[i].valid_parse || !arguments[i].semantic_valid)
         {
             call_parse.semantic_valid = false;
             call_parse.resolved_token = token();
             return call_parse;
         }
     }
-    //The call is syntactically and semantically usable as an expression.  Its
-    //signature is intentionally not checked until SIL-1; preserve the callee
-    //occurrence as the source coordinate of the synthesized return type.
+    if (!type_checker->validate_procedure_call(canonical_callee, callee_occurrence,
+                                               arguments))
+    {
+        call_parse.semantic_valid = false;
+        call_parse.resolved_token = token();
+        return call_parse;
+    }
+    //The call return remains a synthetic expression result.  The declaration
+    //identity and signature stay in canonical_callee for validation only.
     call_parse = callee_result;
     call_parse.resolved_token.line_found = callee_occurrence.line_found;
     call_parse.resolved_token.column_found = callee_occurrence.column_found;

@@ -93,6 +93,13 @@ public:
                                               const token &operator_token,
                                               const token &left_operand,
                                               const token &right_operand);
+    //Procedure declarations remain canonical symbols in the scope table.  A
+    //call expression carries only a synthetic result type, so validate the
+    //canonical signature separately once the parser has consumed the full
+    //argument list.
+    bool validate_procedure_call(const token &canonical_procedure,
+                                 const token &callee_occurrence,
+                                 const std::vector<token_and_status> &arguments);
 
     bool check_assignment_statement(token destination_token, token resolved_token);
     bool are_tokens_full();

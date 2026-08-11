@@ -67,7 +67,7 @@ Tier definitions:
 | ID | Work | Notes / dependencies |
 |----|------|----------------------|
 | HARNESS | Test runner over testPgms/ + docs/audit/probes/ with expected outcomes; `-Wall -Wextra -Werror=return-type` in the build | **Do first (Batch 2)** — everything else lands with regression cover; needs Blake's OK on tooling choice (shell vs Python) |
-| SIL-1 | Procedure-call validation: callee lookup, arity, argument types | depends on SC-1/SC-4 lookups being trustworthy and REJ-1/2 (multi-param works) |
+| SIL-1 | Procedure-call validation: callee lookup, arity, argument types — **DONE Stage 2C** | depends on SC-1/SC-4 lookups being trustworthy and REJ-1/2 (multi-param works) |
 | SIL-6 | Duplicate-declaration detection (per scope; global uniqueness per spec) | needs scope-correct lookup (SC-1) |
 | SIL-7 | Real undeclared-identifier diagnostics; stop auto-vivifying blank entries | avoid cascade errors; touches lookup flow |
 | TY-6 | Wire loop-condition checking properly (clear accumulator before condition; use/or-retire `check_loop_statement`; fix wording) | full fidelity arrives with TY-2; wiring fix is standalone |
