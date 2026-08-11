@@ -59,6 +59,7 @@ token parser::Get_Valid_Token()
             Next_parse_token_type = Next_parse_token.type;
         }
     }
+    token_generation++;
     // Lexer->symbol_table.update_token_scope_id(Current_parse_token, current_scope_id);
     return Current_parse_token;
 }
@@ -241,11 +242,26 @@ bool parser::parse_program_body()
     //keeps parsing until keyword begin is found
     while (Current_parse_token_type != T_BEGIN)
     {
+        std::size_t iteration_start = token_generation;
         valid_parse = parse_base_declaration();
         //required a semicolon after parse
         if (Current_parse_token_type == T_SEMICOLON)
         {
             Current_parse_token = Get_Valid_Token();
+        }
+        else if (!valid_parse &&
+                 (Current_parse_token_type == T_PROCEDURE ||
+                  Current_parse_token_type == T_VARIABLE ||
+                  Current_parse_token_type == T_TYPE ||
+                  Current_parse_token_type == T_GLOBAL ||
+                  Current_parse_token_type == T_BEGIN ||
+                  Current_parse_token_type == T_END ||
+                  Current_parse_token_type == T_PROGRAM ||
+                  Current_parse_token_type == T_PERIOD))
+        {
+            //A malformed declaration stopped at the start of its sibling or
+            //at an enclosing-body delimiter.  The next loop/production owns it.
+            valid_parse = true;
         }
         else
         {
@@ -262,10 +278,15 @@ bool parser::parse_program_body()
                 {
                     generate_error_report("Unclosed block comment detected");
                     errors_occured = true;
-                    resync_status = true;
                 }
                 return false;
             }
+        }
+        if (Current_parse_token_type == T_END ||
+            Current_parse_token_type == T_PROGRAM ||
+            Current_parse_token_type == T_PERIOD)
+        {
+            break;
         }
         //happens after trying to resync
         if (valid_parse)
@@ -291,6 +312,14 @@ bool parser::parse_program_body()
             }
         }
         parsing_statements = false;
+        if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
+            Current_parse_token_type != T_BEGIN && Current_parse_token_type != T_END &&
+            Current_parse_token_type != T_PROGRAM && Current_parse_token_type != T_PERIOD &&
+            Current_parse_token_type != T_PROCEDURE && Current_parse_token_type != T_VARIABLE &&
+            Current_parse_token_type != T_TYPE && Current_parse_token_type != T_GLOBAL)
+        {
+            Current_parse_token = Get_Valid_Token();
+        }
     }
     //once the begin token is recieved
     if (Current_parse_token_type == T_BEGIN)
@@ -308,8 +337,11 @@ bool parser::parse_program_body()
         }
         //return false;
     }
-    while (Current_parse_token_type != T_END)
+    while (Current_parse_token_type != T_END &&
+           Current_parse_token_type != T_PROGRAM &&
+           Current_parse_token_type != T_PERIOD)
     {
+        std::size_t iteration_start = token_generation;
         valid_parse = parse_base_statement();
         if (Current_parse_token_type == T_SEMICOLON)
         {
@@ -332,7 +364,6 @@ bool parser::parse_program_body()
                 {
                     generate_error_report("Unclosed block comment detected");
                     errors_occured = true;
-                    resync_status = true;
                 }
                 return false;
             }
@@ -348,6 +379,12 @@ bool parser::parse_program_body()
         else
         {
             valid_parse = resync_parser(state);
+        }
+        if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
+            Current_parse_token_type != T_END && Current_parse_token_type != T_PROGRAM &&
+            Current_parse_token_type != T_PERIOD)
+        {
+            Current_parse_token = Get_Valid_Token();
         }
     }
     //once the end token is recieveds
@@ -396,7 +433,7 @@ bool parser::parse_base_declaration()
         {
             update_scopes(true);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration(is_global_declaration);
+            valid_parse = parse_procedure_declaration(is_global_declaration, true);
         }
         else if (Current_parse_token_type == T_VARIABLE)
         {
@@ -426,7 +463,7 @@ bool parser::parse_base_declaration()
             //increments the scope id
             update_scopes(true);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration(is_global_declaration);
+            valid_parse = parse_procedure_declaration(is_global_declaration, true);
         }
         else if (Current_parse_token_type == T_VARIABLE)
         {
@@ -453,14 +490,22 @@ bool parser::parse_base_declaration()
     return valid_parse;
 }
 
-bool parser::parse_procedure_declaration(bool is_global)
+bool parser::parse_procedure_declaration(bool is_global, bool owns_scope)
 {
     //this tracks the state of the parser
     parser_state state = S_PROCEDURE_DECLARATION;
-    bool valid_parse;
-    valid_parse = parse_procedure_header(is_global);
-    valid_parse = parse_procedure_body();
-    return valid_parse;
+    int procedure_scope_id = current_scope_id;
+    bool header_valid = parse_procedure_header(is_global);
+    bool body_valid = parse_procedure_body();
+    parsing_statements = false;
+
+    //parse_base_declaration enters the procedure scope.  Keep ownership here
+    //so every successful or recovered procedure exit balances that entry once.
+    if (owns_scope && current_scope_id == procedure_scope_id)
+    {
+        update_scopes(false);
+    }
+    return header_valid && body_valid;
 }
 
 //ready to test
@@ -561,10 +606,23 @@ bool parser::parse_procedure_body()
     //must be able to parse declarations until T_BEGIN is found
     while (Current_parse_token_type != T_BEGIN)
     {
+        std::size_t iteration_start = token_generation;
         valid_parse = parse_base_declaration();
         if (Current_parse_token_type == T_SEMICOLON)
         {
             Current_parse_token = Get_Valid_Token();
+        }
+        else if (!valid_parse &&
+                 (Current_parse_token_type == T_PROCEDURE ||
+                  Current_parse_token_type == T_VARIABLE ||
+                  Current_parse_token_type == T_TYPE ||
+                  Current_parse_token_type == T_GLOBAL ||
+                  Current_parse_token_type == T_BEGIN ||
+                  Current_parse_token_type == T_END))
+        {
+            //Keep a sibling declaration or enclosing-body delimiter available
+            //to this declaration loop's caller.
+            valid_parse = true;
         }
         else
         {
@@ -581,10 +639,22 @@ bool parser::parse_procedure_body()
                 {
                     generate_error_report("Unclosed block comment detected");
                     errors_occured = true;
-                    resync_status = true;
                 }
                 return false;
             }
+        }
+        if (Current_parse_token_type == T_END)
+        {
+            break;
+        }
+        if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
+            Current_parse_token_type != T_BEGIN && Current_parse_token_type != T_END &&
+            Current_parse_token_type != T_PROCEDURE &&
+            Current_parse_token_type != T_VARIABLE &&
+            Current_parse_token_type != T_TYPE &&
+            Current_parse_token_type != T_GLOBAL)
+        {
+            Current_parse_token = Get_Valid_Token();
         }
         if (valid_parse)
         {
@@ -628,6 +698,7 @@ bool parser::parse_procedure_body()
     parsing_statements = true;
     while (Current_parse_token_type != T_END)
     {
+        std::size_t iteration_start = token_generation;
         valid_parse = parse_base_statement();
         if (Current_parse_token_type == T_SEMICOLON)
         {
@@ -650,9 +721,23 @@ bool parser::parse_procedure_body()
                 {
                     generate_error_report("Unclosed block comment detected");
                     errors_occured = true;
-                    resync_status = true;
                 }
                 return false;
+            }
+        }
+        if (token_generation == iteration_start)
+        {
+            //A second begin while parsing procedure statements belongs to the
+            //enclosing body after a malformed/missing "end procedure".  Leave
+            //it for that caller; other stalled tokens are discarded once.
+            if (Current_parse_token_type == T_BEGIN ||
+                Current_parse_token_type == T_PROCEDURE)
+            {
+                break;
+            }
+            if (Current_parse_token_type != T_INVALID && Current_parse_token_type != T_END)
+            {
+                Current_parse_token = Get_Valid_Token();
             }
         }
         if (valid_parse)
@@ -671,27 +756,37 @@ bool parser::parse_procedure_body()
             }
         }
     }
+    bool consumed_end = false;
     if (Current_parse_token_type == T_END)
     {
         Current_parse_token = Get_Valid_Token();
+        consumed_end = true;
     }
     else
     {
         generate_error_report("Missing keyword \"end\" to close procedure body");
         errors_occured = true;
-        valid_parse = resync_parser(state);
+        valid_parse = false;
+        if (Current_parse_token_type != T_BEGIN &&
+            Current_parse_token_type != T_PROCEDURE)
+        {
+            resync_parser(state);
+        }
     }
-    if (Current_parse_token_type == T_PROCEDURE)
+    if (consumed_end && Current_parse_token_type == T_PROCEDURE)
     {
-        //updates the scope id
-        update_scopes(false);
         Current_parse_token = Get_Valid_Token();
     }
     else
     {
         generate_error_report("Missing keyword \"procedure\" to close procedure body");
         errors_occured = true;
-        valid_parse = resync_parser(state);
+        valid_parse = false;
+        if (consumed_end && Current_parse_token_type != T_BEGIN &&
+            Current_parse_token_type != T_PROCEDURE)
+        {
+            resync_parser(state);
+        }
     }
 
     return valid_parse;
@@ -1705,6 +1800,7 @@ bool parser::parse_if_statement()
         //may need to remove this if statement
         while (Current_parse_token_type != T_END)
         {
+            std::size_t iteration_start = token_generation;
             if (Current_parse_token_type == T_ELSE)
             {
                 Current_parse_token = Get_Valid_Token();
@@ -1731,10 +1827,14 @@ bool parser::parse_if_statement()
                     {
                         generate_error_report("Unclosed block comment detected");
                         errors_occured = true;
-                        resync_status = true;
                     }
                     return false;
                 }
+            }
+            if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
+                Current_parse_token_type != T_END && Current_parse_token_type != T_IF)
+            {
+                Current_parse_token = Get_Valid_Token();
             }
             //conditions to break loop
             if (valid_parse)
@@ -1837,6 +1937,7 @@ bool parser::parse_loop_statement()
                     Current_parse_token = Get_Valid_Token();
                     while (Current_parse_token_type != T_END)
                     {
+                        std::size_t iteration_start = token_generation;
                         valid_parse = parse_base_statement();
                         if (Current_parse_token_type == T_SEMICOLON)
                         {
@@ -1859,10 +1960,14 @@ bool parser::parse_loop_statement()
                                 {
                                     generate_error_report("Unclosed block comment detected");
                                     errors_occured = true;
-                                    resync_status = true;
                                 }
                                 return false;
                             }
+                        }
+                        if (token_generation == iteration_start && Current_parse_token_type != T_INVALID &&
+                            Current_parse_token_type != T_END && Current_parse_token_type != T_FOR)
+                        {
+                            Current_parse_token = Get_Valid_Token();
                         }
                         if (valid_parse)
                         {
@@ -2668,10 +2773,18 @@ bool parser::resync_parser(parser_state state)
 {
     int temp_token_type;
     resync_status = true;
+    struct resync_status_guard
+    {
+        bool &status;
+        ~resync_status_guard()
+        {
+            status = false;
+        }
+    } status_guard{resync_status};
     //state to return
-    bool return_state;
+    bool return_state = false;
     //may be used to call proper parse function if needed
-    parser_state new_state;
+    parser_state new_state = state;
     //will be used to store the original state
     parser_state original_state;
     original_state = state;
@@ -2716,7 +2829,13 @@ bool parser::resync_parser(parser_state state)
             }
             //DECLARATIONS
 
-            if (prev_token_type == T_PROCEDURE)
+            if (prev_token_type == T_PROCEDURE &&
+                Current_parse_token_type != T_PROCEDURE &&
+                Current_parse_token_type != T_VARIABLE &&
+                Current_parse_token_type != T_TYPE &&
+                Current_parse_token_type != T_GLOBAL &&
+                Current_parse_token_type != T_BEGIN &&
+                Current_parse_token_type != T_END)
             {
                 new_state = S_PROCEDURE_DECLARATION;
                 break;
@@ -2837,7 +2956,13 @@ bool parser::resync_parser(parser_state state)
 
             //DECLARATIONS
 
-            if (prev_token_type == T_PROCEDURE)
+            if (prev_token_type == T_PROCEDURE &&
+                Current_parse_token_type != T_PROCEDURE &&
+                Current_parse_token_type != T_VARIABLE &&
+                Current_parse_token_type != T_TYPE &&
+                Current_parse_token_type != T_GLOBAL &&
+                Current_parse_token_type != T_BEGIN &&
+                Current_parse_token_type != T_END)
             {
                 new_state = S_PROCEDURE_DECLARATION;
                 break;
@@ -3088,6 +3213,8 @@ bool parser::resync_parser(parser_state state)
         break;
     }
 
+    //Scanning is complete before a recovered production is dispatched, so its
+    //own diagnostics must not be suppressed as recovery-internal noise.
     resync_status = false;
     //calls appropriate parse function based on the new state
     switch (new_state)
@@ -3124,7 +3251,7 @@ bool parser::resync_parser(parser_state state)
             {
                 generate_error_report("Missing \";\" to complete declaration");
                 errors_occured = true;
-                resync_parser(original_state);
+                return_state = false;
             }
         }
         else
@@ -3135,7 +3262,7 @@ bool parser::resync_parser(parser_state state)
 
     //5
     case S_PROCEDURE_DECLARATION:
-        return_state = parse_procedure_declaration(false);
+        return_state = parse_procedure_declaration(false, false);
         if (return_state)
         {
             if (Current_parse_token_type == T_SEMICOLON)
@@ -3146,7 +3273,7 @@ bool parser::resync_parser(parser_state state)
             {
                 generate_error_report("Missing \";\" to complete declaration");
                 errors_occured = true;
-                resync_parser(original_state);
+                return_state = false;
             }
         }
         else
@@ -3194,7 +3321,7 @@ bool parser::resync_parser(parser_state state)
             {
                 generate_error_report("Missing \";\" to complete declaration");
                 errors_occured = true;
-                return_state = resync_parser(original_state);
+                return_state = false;
             }
         }
         else
@@ -3216,7 +3343,7 @@ bool parser::resync_parser(parser_state state)
             {
                 generate_error_report("Missing \";\" to complete declaration");
                 errors_occured = true;
-                return_state = resync_parser(original_state);
+                return_state = false;
             }
         }
         else
@@ -3248,7 +3375,7 @@ bool parser::resync_parser(parser_state state)
             {
                 generate_error_report("Missing \";\" to end program statement");
                 errors_occured = true;
-                return_state = resync_parser(original_state);
+                return_state = false;
             }
         }
 
@@ -3329,7 +3456,6 @@ bool parser::resync_parser(parser_state state)
         std::cout << "Error in resync start state" << std::endl;
         break;
     }
-    resync_status = false;
     return return_state;
 }
 

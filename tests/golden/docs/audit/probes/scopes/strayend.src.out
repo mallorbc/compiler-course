@@ -1,5 +1,3 @@
-Error in resync start state
-Error in resync start state
 The program had parsing errors
 Error on line 3: Missing keyworkd "program" to end program
 
@@ -16,8 +14,6 @@ Error on line 3: Expected keywords "procedure","variable" "type", or "begin" not
 Error on line 3: Missing keyword "begin" to begin procedure statements
 
 Error on line 4: Missing keyword "procedure" to close procedure body
-
-Error on line 5: Missing ";" to complete declaration
 
 Error on line 5: Missing "." to end the program
 

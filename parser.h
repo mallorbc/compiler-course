@@ -3,6 +3,7 @@
 #include "token.h"
 #include "Typechecker.h"
 #include <iostream>
+#include <cstddef>
 #include <string>
 #include <vector>
 #include "scanner.h"
@@ -62,6 +63,9 @@ public:
     //These values will store Look_ahead_tokens[0] for ease of access
     token Next_parse_token;
     int Next_parse_token_type;
+    //Monotonically records token-window advances so recovery loops can prove
+    //that each iteration either changed grammar state or consumed input.
+    std::size_t token_generation = 0;
     //vector that could be used to build up a queue of tokens
     std::vector<token> Look_ahead_tokens;
     token Get_Valid_Token();
@@ -94,7 +98,7 @@ public:
     bool parse_type_declaration(bool is_global);
 
     //methods for parsing part of the procedures
-    bool parse_procedure_declaration(bool is_global);
+    bool parse_procedure_declaration(bool is_global, bool owns_scope);
     bool parse_procedure_header(bool is_global);
     bool parse_procedure_body();
 

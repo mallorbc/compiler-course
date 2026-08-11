@@ -158,7 +158,71 @@ def main() -> int:
             f"unexpected separated-numbers stderr: {separated_numbers_result.stderr!r}",
         )
 
-    print("PASS: CLI and numeric paths terminate promptly with the expected result")
+        missing_begin = Path(temp_dir) / "missing-begin.src"
+        missing_begin.write_text(
+            "program missing_begin is\n"
+            "    variable value : integer;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        missing_begin_result = run_compiler(str(missing_begin))
+        check(
+            missing_begin_result.returncode == 1,
+            f"missing-begin exit was {missing_begin_result.returncode}, expected 1",
+        )
+        check(
+            'Missing keyword "begin" to begin program statements'
+            in missing_begin_result.stdout,
+            f"missing-begin diagnostic was lost: {missing_begin_result.stdout!r}",
+        )
+        check(
+            'Missing "." to end the program' not in missing_begin_result.stdout,
+            f"missing-begin recovery consumed the end boundary: "
+            f"{missing_begin_result.stdout!r}",
+        )
+        check(
+            missing_begin_result.stderr == "",
+            f"unexpected missing-begin stderr: {missing_begin_result.stderr!r}",
+        )
+
+    recovery_cases = (
+        (
+            "docs/audit/probes/resync/hang.src",
+            'Missing keyword "end" to close procedure body',
+        ),
+        (
+            "docs/audit/probes/scanner/t_case.src",
+            'Expected keyword "Program" not found',
+        ),
+        (
+            "docs/audit/probes/scopes/malformed_end_test.src",
+            'Missing keyword "end" to close procedure body',
+        ),
+        (
+            "docs/audit/probes/scopes/minimal_hang_test.src",
+            'Missing keyword "end" to close procedure body',
+        ),
+        (
+            "docs/audit/probes/scopes/strayend.src",
+            'Missing keyworkd "program" to end program',
+        ),
+    )
+    for relative_path, expected_diagnostic in recovery_cases:
+        recovery = run_compiler(str(REPO_ROOT / relative_path))
+        check(
+            recovery.returncode == 1,
+            f"{relative_path} exit was {recovery.returncode}, expected 1",
+        )
+        check(
+            expected_diagnostic in recovery.stdout,
+            f"{relative_path} lost its recovery diagnostic: {recovery.stdout!r}",
+        )
+        check(
+            recovery.stderr == "",
+            f"unexpected {relative_path} stderr: {recovery.stderr!r}",
+        )
+
+    print("PASS: CLI, numeric, and parser recovery paths terminate with the expected result")
     return 0
 
 

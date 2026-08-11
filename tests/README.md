@@ -21,8 +21,9 @@ python3 tests/run_golden.py --jobs 1             # serial (default: 8 concurrent
 
 Verify mode prints a line only for programs that diverge, then a summary table
 by status class. Full suite: ~2s wall at the default 8 workers (~12s serial).
-`--update` takes ~32s (it re-runs the four known hangs at the full 30s budget
-so a hang that starts terminating gets honestly re-recorded).
+`--update` also finishes promptly now that every recorded program terminates;
+it still gives each program the full 30-second budget so a new hang is recorded
+honestly.
 
 The runner itself uses Python 3.12 and only the standard library. That is a
 small-harness implementation choice, not a ban on test-only libraries (the
@@ -95,22 +96,14 @@ Manifest entry, verbatim:
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
 | `OK`      | exited 0                                 | 89             |
-| `ERRORS`  | exited nonzero, terminated normally      | 85             |
+| `ERRORS`  | exited nonzero, terminated normally      | 89             |
 | `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
-| `TIMEOUT` | still running when the budget expired    | 4              |
+| `TIMEOUT` | still running when the budget expired    | 0              |
 
-There are currently no recorded `CRASH` programs. Numeric conversion overflow
-now terminates normally with a counted lexical diagnostic.
-
-The four `TIMEOUT` programs never terminate today, so there is no meaningful
-stdout to record and no golden file exists for them. They run under a 2-second
-budget instead of the usual 30 (the default is generous because signal-killed
-programs pay ~1s of serialized core-dump handling on this host; terminating
-programs finish in milliseconds, so only a genuinely-new hang ever waits).
-**If one of them terminates within its 2s budget, verify fails** — that is a
-behaviour change and needs a deliberate `--update`, not a shrug. (A hang that
-"improves" to a 3-second run would slip past verify; `--update` runs everything
-at the full budget and would catch it.)
+There are currently no recorded `CRASH` or `TIMEOUT` programs. Numeric overflow
+and the formerly hanging parser-recovery cases now terminate normally with
+counted diagnostics. If a future `--update` records a timeout, its verification
+budget is shortened to two seconds because it has no complete stdout to compare.
 
 Note the raw `python3 tests/run_golden.py` invocation checks only that
 `./compiler` exists — it does not rebuild. Use `make check`/`make test` (or

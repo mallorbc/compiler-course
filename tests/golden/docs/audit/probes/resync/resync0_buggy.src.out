@@ -1,3 +1,5 @@
 The program parsed successfully with errors
 Error on line 5: Missing ";" to end statement in if statement
 
+Error on line 7: Missing ";" to end program statement
+
