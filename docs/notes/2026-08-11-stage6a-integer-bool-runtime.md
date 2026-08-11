@@ -29,7 +29,8 @@ EOF, and overflow yield `false`.  The fixed emitted support uses only standard
 C headers/functions (`ctype.h`, `stdint.h`, `inttypes.h`, and `stdio.h`) and is
 emitted only when a reachable call requires it.
 
-Float/String builtins, `sqrt`, arrays, and other external calls remain
-atomically Unsupported.  The compiler still emits C rather than invoking a
-host compiler; `tests/test_generated_c.py` alone compiles/runs generated C as
-test tooling.
+This was the Stage 6A boundary.  Stage 6B subsequently adds scalar Float I/O,
+Float arithmetic/conversions, and `sqrt` while String builtins, arrays, and
+other external calls remain atomically Unsupported.  The compiler still emits
+C rather than invoking a host compiler; `tests/test_generated_c.py` alone
+compiles/runs generated C as test tooling.

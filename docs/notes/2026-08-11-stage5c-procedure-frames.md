@@ -22,9 +22,9 @@ computes the deterministic user-procedure closure from Program: the whole
 module is still verified, while unreachable declarations do not emit labels,
 frames, runtime helpers, or strict-C unused-label warnings.
 
-Only scalar Integer/Bool procedures and the Stage 6A canonical Integer/Bool
-runtime builtins are lowered.  Arrays, Float/String, `sqrt`, static-link/capture semantics for nested
-procedures, and fallthrough/no-return procedures remain deliberately outside
-this slice.  Nested declaration emission restores the outer IR context, but
+This was the Stage 5C boundary.  Stage 6B subsequently lowers scalar Float
+procedures and `sqrt` without changing this frame ABI.  Arrays, String,
+static-link/capture semantics for nested procedures, and fallthrough/no-return
+procedures remain deliberately outside the supported slice.  Nested declaration emission restores the outer IR context, but
 the existing resolver policy still exposes only current/self and global names;
 no enclosing-local capture was introduced.

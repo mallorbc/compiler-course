@@ -2600,8 +2600,8 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     parser mixed_call(mixed_call_fixture.name());
     mixed_call_capture.restore();
     CHECK(mixed_call.frontend_valid());
-    CHECK(mixed_call.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(mixed_call.ir_module().functions.empty());
+    CHECK(mixed_call.ir_status() == ir::ModuleStatus::Ready);
+    CHECK_FALSE(mixed_call.ir_module().functions.empty());
 
     temp_source_file mixed_binary_fixture(
         "program mixed_binary is\n"
@@ -2613,8 +2613,8 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     parser mixed_binary(mixed_binary_fixture.name());
     mixed_binary_capture.restore();
     CHECK(mixed_binary.frontend_valid());
-    CHECK(mixed_binary.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(mixed_binary.ir_module().functions.empty());
+    CHECK(mixed_binary.ir_status() == ir::ModuleStatus::Ready);
+    CHECK_FALSE(mixed_binary.ir_module().functions.empty());
 
     temp_source_file if_call_fixture(
         "program conditional_call is\n"
@@ -2634,6 +2634,97 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     CHECK(if_call.frontend_valid());
     CHECK(if_call.ir_status() == ir::ModuleStatus::Ready);
     CHECK_FALSE(if_call.ir_module().functions.empty());
+}
+
+TEST_CASE("Stage 6B scalar binary lowering inserts only operand promotions")
+{
+    temp_source_file fixture(
+        "program float_promotions is\n"
+        "variable result : float;\n"
+        "variable truth : bool;\n"
+        "begin\n"
+        "    result := 1 + 2.0 * 3;\n"
+        "    result := 1.0 + 2 + 3;\n"
+        "    result := (1 + 2.0) * (3.0 - 4);\n"
+        "    truth := true < 2;\n"
+        "    truth := 2 >= false;\n"
+        "    truth := 1.0 == 1;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+
+    std::size_t int_to_float = 0;
+    std::size_t bool_to_int = 0;
+    for (const ir::BasicBlock &block : parsed.ir_module().functions[0].blocks)
+    {
+        for (const ir::Instruction &instruction : block.instructions)
+        {
+            const ir::Cast *cast = std::get_if<ir::Cast>(&instruction);
+            if (cast != NULL && cast->operation == ir::CastOp::IntToFloat)
+            {
+                int_to_float++;
+            }
+            if (cast != NULL && cast->operation == ir::CastOp::BoolToInt)
+            {
+                bool_to_int++;
+            }
+        }
+    }
+    CHECK(int_to_float == 7);
+    CHECK(bool_to_int == 2);
+}
+
+TEST_CASE("Stage 6B procedure returns lower both scalar Float conversions")
+{
+    temp_source_file fixture(
+        "program float_returns is\n"
+        "procedure promote : float()\n"
+        "begin\n"
+        "    return 1;\n"
+        "end procedure;\n"
+        "procedure truncate : integer()\n"
+        "begin\n"
+        "    return 1.5;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+
+    bool saw_int_to_float_return = false;
+    bool saw_float_to_int_return = false;
+    for (const ir::Function &function : parsed.ir_module().functions)
+    {
+        if (function.kind != ir::FunctionKind::Procedure)
+        {
+            continue;
+        }
+        for (const ir::BasicBlock &block : function.blocks)
+        {
+            const ir::ReturnTerminator *returned = std::get_if<ir::ReturnTerminator>(
+                &std::get<ir::Terminator>(block.terminator));
+            for (const ir::Instruction &instruction : block.instructions)
+            {
+                const ir::Cast *cast = std::get_if<ir::Cast>(&instruction);
+                if (cast == NULL || returned == NULL || returned->value != cast->result)
+                {
+                    continue;
+                }
+                saw_int_to_float_return = saw_int_to_float_return ||
+                                           cast->operation == ir::CastOp::IntToFloat;
+                saw_float_to_int_return = saw_float_to_int_return ||
+                                           cast->operation == ir::CastOp::FloatToInt;
+            }
+        }
+    }
+    CHECK(saw_int_to_float_return);
+    CHECK(saw_float_to_int_return);
 }
 
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")

@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -26,12 +28,13 @@ RestrictedCResult failure(RestrictedCStatus status, const std::string &diagnosti
 bool supported_shape(const value_shape &shape)
 {
     return !shape.is_array && shape.array_upper_bound == -1 &&
-           (shape.element_type == TYPE_INT || shape.element_type == TYPE_BOOL);
+           (shape.element_type == TYPE_INT || shape.element_type == TYPE_BOOL ||
+            shape.element_type == TYPE_FLOAT);
 }
 
 bool supported_unary(ir::UnaryOp operation, data_types type)
 {
-    return (operation == ir::UnaryOp::Negate && type == TYPE_INT) ||
+    return (operation == ir::UnaryOp::Negate && (type == TYPE_INT || type == TYPE_FLOAT)) ||
            (operation == ir::UnaryOp::Not && (type == TYPE_INT || type == TYPE_BOOL));
 }
 
@@ -43,7 +46,7 @@ bool supported_binary(ir::BinaryOp operation, data_types type)
     case ir::BinaryOp::Subtract:
     case ir::BinaryOp::Multiply:
     case ir::BinaryOp::Divide:
-        return type == TYPE_INT;
+        return type == TYPE_INT || type == TYPE_FLOAT;
     case ir::BinaryOp::And:
     case ir::BinaryOp::Or:
         return type == TYPE_INT || type == TYPE_BOOL;
@@ -53,14 +56,45 @@ bool supported_binary(ir::BinaryOp operation, data_types type)
     case ir::BinaryOp::GreaterEqual:
     case ir::BinaryOp::Equal:
     case ir::BinaryOp::NotEqual:
-        return type == TYPE_INT || type == TYPE_BOOL;
+        return type == TYPE_INT || type == TYPE_BOOL || type == TYPE_FLOAT;
     }
     return false;
 }
 
 bool supported_cast(ir::CastOp operation)
 {
-    return operation == ir::CastOp::IntToBool || operation == ir::CastOp::BoolToInt;
+    return operation == ir::CastOp::IntToBool || operation == ir::CastOp::BoolToInt ||
+           operation == ir::CastOp::IntToFloat || operation == ir::CastOp::FloatToInt;
+}
+
+bool host_has_binary32_float()
+{
+    return sizeof(float) == sizeof(std::uint32_t) &&
+           std::numeric_limits<float>::is_iec559 &&
+           std::numeric_limits<float>::radix == 2 &&
+           std::numeric_limits<float>::digits == 24 &&
+           std::numeric_limits<float>::max_exponent == 128;
+}
+
+bool float_word(float value, std::uint32_t &word)
+{
+    if (!host_has_binary32_float() || !std::isfinite(value))
+    {
+        return false;
+    }
+    std::array<unsigned char,
+               (sizeof(float) > sizeof(std::uint32_t) ? sizeof(float) : sizeof(std::uint32_t))>
+        bytes{};
+    std::memcpy(bytes.data(), &value, sizeof(value));
+    std::memcpy(&word, bytes.data(), sizeof(word));
+    return true;
+}
+
+std::string float_literal(float value)
+{
+    std::uint32_t word = 0;
+    return float_word(value, word) ?
+        "I32_FROM_U32(UINT32_C(" + std::to_string(word) + "))" : std::string();
 }
 
 const ir::Value *value_for(const ir::Function &function, ir::ValueId id)
@@ -123,6 +157,10 @@ struct RuntimeRequirements
     bool procedures = false;
     bool procedure_mode = false;
     std::vector<bool> reachable_functions;
+    bool float_words = false;
+    bool float_decode = false;
+    bool float_encode = false;
+    bool float_to_int = false;
 
     void require(BuiltinId id)
     {
@@ -137,19 +175,38 @@ struct RuntimeRequirements
     bool uses_runtime_io() const
     {
         return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger) ||
-               uses(BuiltinId::PutBool) || uses(BuiltinId::PutInteger);
+               uses(BuiltinId::GetFloat) || uses(BuiltinId::PutBool) ||
+               uses(BuiltinId::PutInteger) || uses(BuiltinId::PutFloat);
     }
 
     bool uses_token_input() const
     {
-        return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger);
+        return uses(BuiltinId::GetBool) || uses(BuiltinId::GetInteger) ||
+               uses(BuiltinId::GetFloat);
+    }
+
+    bool uses_float_helpers() const
+    {
+        return float_decode || float_encode;
+    }
+
+    bool uses_word_to_float() const
+    {
+        return float_decode;
+    }
+
+    bool uses_float_to_word() const
+    {
+        return float_encode;
     }
 };
 
 bool supported_external_builtin(BuiltinId id)
 {
     return id == BuiltinId::GetBool || id == BuiltinId::GetInteger ||
-           id == BuiltinId::PutBool || id == BuiltinId::PutInteger;
+           id == BuiltinId::GetFloat || id == BuiltinId::PutBool ||
+           id == BuiltinId::PutInteger || id == BuiltinId::PutFloat ||
+           id == BuiltinId::Sqrt;
 }
 
 RestrictedCResult validate_external_builtin_call(const ir::Module &module,
@@ -203,6 +260,11 @@ RestrictedCResult validate_external_builtin_call(const ir::Module &module,
     }
 
     runtime.require(builtin->id);
+    runtime.float_words = runtime.float_words || builtin->id == BuiltinId::GetFloat ||
+                          builtin->id == BuiltinId::PutFloat || builtin->id == BuiltinId::Sqrt;
+    runtime.float_decode = runtime.float_decode || builtin->id == BuiltinId::PutFloat;
+    runtime.float_encode = runtime.float_encode || builtin->id == BuiltinId::GetFloat ||
+                           builtin->id == BuiltinId::Sqrt;
     RestrictedCResult result_status;
     result_status.status = RestrictedCStatus::Success;
     return result_status;
@@ -289,10 +351,16 @@ std::string external_call_expression(const ir::Function &callee, const std::stri
         return "R_get_b1()";
     case BuiltinId::GetInteger:
         return "R_get_i32()";
+    case BuiltinId::GetFloat:
+        return "R_get_f32()";
     case BuiltinId::PutBool:
         return "R_put_b1(" + argument + ")";
     case BuiltinId::PutInteger:
         return "R_put_i32(" + argument + ")";
+    case BuiltinId::PutFloat:
+        return "R_put_f32(" + argument + ")";
+    case BuiltinId::Sqrt:
+        return "R_sqrt_i32(" + argument + ")";
     default:
         return std::string();
     }
@@ -300,6 +368,10 @@ std::string external_call_expression(const ir::Function &callee, const std::stri
 
 void emit_runtime_headers(std::ostringstream &output, const RuntimeRequirements &runtime)
 {
+    if (runtime.float_words)
+    {
+        output << "#include <float.h>\n";
+    }
     if (runtime.uses_token_input())
     {
         output << "#include <ctype.h>\n";
@@ -312,10 +384,62 @@ void emit_runtime_headers(std::ostringstream &output, const RuntimeRequirements 
     {
         output << "#include <stdio.h>\n";
     }
+    if (runtime.uses(BuiltinId::GetFloat))
+    {
+        output << "#include <stdlib.h>\n";
+    }
+    if (runtime.uses_float_helpers())
+    {
+        output << "#include <string.h>\n";
+    }
+    if (runtime.uses(BuiltinId::GetFloat) || runtime.uses(BuiltinId::PutFloat) ||
+        runtime.uses(BuiltinId::Sqrt) || runtime.float_to_int)
+    {
+        output << "#include <math.h>\n";
+    }
+}
+
+void emit_float_guard(std::ostringstream &output, const RuntimeRequirements &runtime)
+{
+    if (!runtime.float_words)
+    {
+        return;
+    }
+    output << "#if !defined(__STDC_IEC_559__) || __STDC_IEC_559__ != 1\n"
+           << "#error \"restricted C requires IEC 60559 floating point\"\n"
+           << "#endif\n"
+           << "#if FLT_RADIX != 2 || FLT_MANT_DIG != 24 || FLT_MAX_EXP != 128\n"
+           << "#error \"restricted C requires IEEE binary32 float\"\n"
+           << "#endif\n"
+           << "_Static_assert(sizeof(float) == 4, \"restricted C requires 32-bit float\");\n\n";
 }
 
 void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements &runtime)
 {
+    if (runtime.uses_word_to_float())
+    {
+        output << "static float R_word_f32(int32_t r0)\n{\n"
+               << "    const uint32_t r1 = (uint32_t)r0;\n"
+               << "    float r2;\n"
+               << "    memcpy(&r2, &r1, sizeof(r2));\n"
+               << "    return r2;\n}\n\n";
+    }
+    if (runtime.uses_float_to_word())
+    {
+        output << "static int32_t R_f32_word(float r0)\n{\n"
+               << "    uint32_t r1;\n"
+               << "    memcpy(&r1, &r0, sizeof(r1));\n"
+               << "    return I32_FROM_U32(r1);\n}\n\n";
+    }
+    if (runtime.float_to_int)
+    {
+        output << "static int32_t R_f32_i32(int32_t r0)\n{\n"
+               << "    const float r1 = R_word_f32(r0);\n"
+               << "    if (isnan(r1)) return INT32_C(0);\n"
+               << "    if (r1 >= 2147483648.0f) return INT32_MAX;\n"
+               << "    if (r1 <= -2147483648.0f) return INT32_MIN;\n"
+               << "    return (int32_t)r1;\n}\n\n";
+    }
     if (runtime.uses_token_input())
     {
         output << "static int R_next_token_char(void)\n{\n"
@@ -324,8 +448,11 @@ void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements 
                << "    {\n"
                << "        r0 = getchar();\n"
                << "    } while (r0 != EOF && isspace((unsigned char)r0));\n"
-               << "    return r0;\n}\n\n"
-               << "static int R_decimal_i32(int r0, int32_t *r1)\n{\n"
+               << "    return r0;\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::GetBool) || runtime.uses(BuiltinId::GetInteger))
+    {
+        output << "static int R_decimal_i32(int r0, int32_t *r1)\n{\n"
                << "    int r2 = INT32_C(1);\n"
                << "    int r3 = INT32_C(0);\n"
                << "    int r4 = INT32_C(0);\n"
@@ -469,6 +596,59 @@ void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements 
                << "    }\n"
                << "    return R_bool_word(r1) ? INT32_C(1) : INT32_C(0);\n}\n\n";
     }
+    if (runtime.uses(BuiltinId::GetFloat))
+    {
+        output << "static int R_decimal_f32_token(const char *r0)\n{\n"
+               << "    size_t r1 = 0u;\n"
+               << "    int r2 = INT32_C(0);\n"
+               << "    if (r0[r1] == '+' || r0[r1] == '-') ++r1;\n"
+               << "    while (r0[r1] >= '0' && r0[r1] <= '9') { r2 = INT32_C(1); ++r1; }\n"
+               << "    if (r0[r1] == '.')\n"
+               << "    {\n"
+               << "        ++r1;\n"
+               << "        while (r0[r1] >= '0' && r0[r1] <= '9') { r2 = INT32_C(1); ++r1; }\n"
+               << "    }\n"
+               << "    if (r2 == INT32_C(0)) return INT32_C(0);\n"
+               << "    if (r0[r1] == 'e' || r0[r1] == 'E')\n"
+               << "    {\n"
+               << "        int r3 = INT32_C(0);\n"
+               << "        ++r1;\n"
+               << "        if (r0[r1] == '+' || r0[r1] == '-') ++r1;\n"
+               << "        while (r0[r1] >= '0' && r0[r1] <= '9') { r3 = INT32_C(1); ++r1; }\n"
+               << "        if (r3 == INT32_C(0)) return INT32_C(0);\n"
+               << "    }\n"
+               << "    return r0[r1] == '\\0' ? INT32_C(1) : INT32_C(0);\n}\n\n"
+               << "static int32_t R_get_f32(void)\n{\n"
+               << "    size_t r0 = 64u;\n"
+               << "    size_t r1 = 0u;\n"
+               << "    int r2 = R_next_token_char();\n"
+               << "    int r3 = INT32_C(0);\n"
+               << "    char *r4;\n"
+               << "    char *r5;\n"
+               << "    char *r6;\n"
+               << "    float r7;\n"
+               << "    if (r2 == EOF) return INT32_C(0);\n"
+               << "    r4 = (char *)malloc(r0);\n"
+               << "    while (r2 != EOF && !isspace((unsigned char)r2))\n"
+               << "    {\n"
+               << "        if (r4 != NULL && r1 + 1u >= r0)\n"
+               << "        {\n"
+               << "            const size_t r8 = r0 <= ((size_t)-1) / 2u ? r0 * 2u : 0u;\n"
+               << "            r5 = r8 == 0u ? NULL : (char *)realloc(r4, r8);\n"
+               << "            if (r5 == NULL) { free(r4); r4 = NULL; }\n"
+               << "            else { r4 = r5; r0 = r8; }\n"
+               << "        }\n"
+               << "        if (r4 != NULL) r4[r1++] = (char)r2;\n"
+               << "        r2 = getchar();\n"
+               << "    }\n"
+               << "    if (r4 == NULL) return INT32_C(0);\n"
+               << "    r4[r1] = '\\0';\n"
+               << "    if (!R_decimal_f32_token(r4)) { free(r4); return INT32_C(0); }\n"
+               << "    r7 = strtof(r4, &r6);\n"
+               << "    if (r6 != r4 + r1 || !isfinite(r7)) r3 = INT32_C(1);\n"
+               << "    free(r4);\n"
+               << "    return r3 ? INT32_C(0) : R_f32_word(r7);\n}\n\n";
+    }
     if (runtime.uses(BuiltinId::PutInteger))
     {
         output << "static int32_t R_put_i32(int32_t r0)\n{\n"
@@ -479,6 +659,22 @@ void emit_runtime_support(std::ostringstream &output, const RuntimeRequirements 
         output << "static int32_t R_put_b1(int32_t r0)\n{\n"
                << "    return printf(\"%s\\n\", r0 == INT32_C(0) ? \"false\" : \"true\") < 0 ? "
                << "INT32_C(0) : INT32_C(1);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::PutFloat))
+    {
+        output << "static int32_t R_put_f32(int32_t r0)\n{\n"
+               << "    const float r1 = R_word_f32(r0);\n"
+               << "    int r2;\n"
+               << "    if (isnan(r1)) r2 = printf(\"nan\\n\");\n"
+               << "    else if (isinf(r1)) r2 = printf(signbit(r1) ? \"-inf\\n\" : \"inf\\n\");\n"
+               << "    else r2 = printf(\"%.*g\\n\", FLT_DECIMAL_DIG, (double)r1);\n"
+               << "    return r2 < 0 ? INT32_C(0) : INT32_C(1);\n}\n\n";
+    }
+    if (runtime.uses(BuiltinId::Sqrt))
+    {
+        output << "static int32_t R_sqrt_i32(int32_t r0)\n{\n"
+               << "    if (r0 < INT32_C(0)) return I32_FROM_U32(UINT32_C(2143289344));\n"
+               << "    return R_f32_word(sqrtf((float)r0));\n}\n\n";
     }
 }
 
@@ -559,29 +755,74 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             if (!supported_shape(function.return_type))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar Integer and Bool procedure returns only");
+                               "restricted C supports scalar numeric and Bool procedure returns only");
             }
+            runtime.float_words = runtime.float_words ||
+                                  function.return_type.element_type == TYPE_FLOAT;
         }
         for (const value_shape &shape : function.parameter_types)
         {
             if (!supported_shape(shape))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar Integer and Bool parameters only");
+                               "restricted C supports scalar numeric and Bool parameters only");
             }
+            runtime.float_words = runtime.float_words || shape.element_type == TYPE_FLOAT;
         }
         for (const ir::Value &value : function.values)
         {
             if (!supported_shape(value.type))
             {
                 return failure(RestrictedCStatus::Unsupported,
-                               "restricted C supports scalar Integer and Bool values only");
+                               "restricted C supports scalar numeric and Bool values only");
             }
+            runtime.float_words = runtime.float_words || value.type.element_type == TYPE_FLOAT;
         }
         for (const ir::BasicBlock &block : function.blocks)
         {
             for (const ir::Instruction &instruction : block.instructions)
             {
+                if (const ir::Constant *constant = std::get_if<ir::Constant>(&instruction))
+                {
+                    const ir::Value *value = value_for(function, constant->result);
+                    if (value != NULL && value->type.element_type == TYPE_FLOAT)
+                    {
+                        if (!std::holds_alternative<float>(constant->payload) ||
+                            !std::isfinite(std::get<float>(constant->payload)))
+                        {
+                            return failure(RestrictedCStatus::InvalidIR,
+                                           "restricted C Float constant must be finite binary32");
+                        }
+                        runtime.float_words = true;
+                    }
+                }
+                else if (const ir::Unary *unary = std::get_if<ir::Unary>(&instruction))
+                {
+                    const ir::Value *operand = value_for(function, unary->operand);
+                    const ir::Value *result = value_for(function, unary->result);
+                    runtime.float_decode = runtime.float_decode ||
+                        (operand != NULL && operand->type.element_type == TYPE_FLOAT);
+                    runtime.float_encode = runtime.float_encode ||
+                        (result != NULL && result->type.element_type == TYPE_FLOAT);
+                }
+                else if (const ir::Binary *binary = std::get_if<ir::Binary>(&instruction))
+                {
+                    const ir::Value *left = value_for(function, binary->left);
+                    const ir::Value *result = value_for(function, binary->result);
+                    runtime.float_decode = runtime.float_decode ||
+                        (left != NULL && left->type.element_type == TYPE_FLOAT);
+                    runtime.float_encode = runtime.float_encode ||
+                        (result != NULL && result->type.element_type == TYPE_FLOAT);
+                }
+                else if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
+                {
+                    runtime.float_to_int = runtime.float_to_int ||
+                                           cast->operation == ir::CastOp::FloatToInt;
+                    runtime.float_encode = runtime.float_encode ||
+                                           cast->operation == ir::CastOp::IntToFloat;
+                    runtime.float_decode = runtime.float_decode ||
+                                           cast->operation == ir::CastOp::FloatToInt;
+                }
                 if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
                 {
                     const ir::Function *callee = function_for(module, call->callee);
@@ -611,7 +852,12 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             !supported_shape(storage.type))
         {
             return failure(RestrictedCStatus::Unsupported,
-                           "restricted C supports scalar Integer and Bool storage only");
+                           "restricted C supports scalar numeric and Bool storage only");
+        }
+        if (storage.kind == ir::StorageKind::Global ||
+            runtime.reachable_functions[storage.owner.index])
+        {
+            runtime.float_words = runtime.float_words || storage.type.element_type == TYPE_FLOAT;
         }
     }
     RestrictedCResult result;
@@ -687,16 +933,18 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
             !supported_shape(storage.type))
         {
             return failure(RestrictedCStatus::Unsupported,
-                           "restricted C supports scalar Integer and Bool globals only");
+                           "restricted C supports scalar numeric and Bool globals only");
         }
+        runtime.float_words = runtime.float_words || storage.type.element_type == TYPE_FLOAT;
     }
     for (const ir::Value &value : program->values)
     {
         if (!supported_shape(value.type))
         {
             return failure(RestrictedCStatus::Unsupported,
-                           "restricted C supports scalar Integer and Bool values only");
+                           "restricted C supports scalar numeric and Bool values only");
         }
+        runtime.float_words = runtime.float_words || value.type.element_type == TYPE_FLOAT;
     }
     for (const ir::BasicBlock &block : program->blocks)
     {
@@ -710,7 +958,10 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                  (!std::holds_alternative<int>(constant->payload) ||
                   int32_literal(std::get<int>(constant->payload)).empty())) ||
                 (result->type.element_type == TYPE_BOOL &&
-                 !std::holds_alternative<bool>(constant->payload)))
+                 !std::holds_alternative<bool>(constant->payload)) ||
+                (result->type.element_type == TYPE_FLOAT &&
+                 (!std::holds_alternative<float>(constant->payload) ||
+                  !std::isfinite(std::get<float>(constant->payload)))))
             {
                 return failure(RestrictedCStatus::InvalidIR,
                                "restricted C constant does not match its result");
@@ -748,6 +999,10 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                 return failure(RestrictedCStatus::InvalidIR,
                                "restricted C unary instruction is invalid");
             }
+            runtime.float_decode = runtime.float_decode ||
+                                   operand->type.element_type == TYPE_FLOAT;
+            runtime.float_encode = runtime.float_encode ||
+                                   result->type.element_type == TYPE_FLOAT;
         }
         else if (const ir::Binary *binary = std::get_if<ir::Binary>(&instruction))
         {
@@ -774,6 +1029,10 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                 return failure(RestrictedCStatus::InvalidIR,
                                "restricted C binary result has the wrong type");
             }
+            runtime.float_decode = runtime.float_decode ||
+                                   left->type.element_type == TYPE_FLOAT;
+            runtime.float_encode = runtime.float_encode ||
+                                   result->type.element_type == TYPE_FLOAT;
         }
         else if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
         {
@@ -783,11 +1042,21 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                 (cast->operation == ir::CastOp::IntToBool &&
                  (operand->type.element_type != TYPE_INT || result->type.element_type != TYPE_BOOL)) ||
                 (cast->operation == ir::CastOp::BoolToInt &&
-                 (operand->type.element_type != TYPE_BOOL || result->type.element_type != TYPE_INT)))
+                 (operand->type.element_type != TYPE_BOOL || result->type.element_type != TYPE_INT)) ||
+                (cast->operation == ir::CastOp::IntToFloat &&
+                 (operand->type.element_type != TYPE_INT || result->type.element_type != TYPE_FLOAT)) ||
+                (cast->operation == ir::CastOp::FloatToInt &&
+                 (operand->type.element_type != TYPE_FLOAT || result->type.element_type != TYPE_INT)))
             {
                 return failure(RestrictedCStatus::InvalidIR,
                                "restricted C cast is invalid");
             }
+            runtime.float_to_int = runtime.float_to_int ||
+                                   cast->operation == ir::CastOp::FloatToInt;
+            runtime.float_encode = runtime.float_encode ||
+                                   cast->operation == ir::CastOp::IntToFloat;
+            runtime.float_decode = runtime.float_decode ||
+                                   cast->operation == ir::CastOp::FloatToInt;
         }
         else if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
         {
@@ -819,6 +1088,37 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
 std::string binary_expression_text(ir::BinaryOp operation, data_types type,
                                    const std::string &left, const std::string &right)
 {
+    if (type == TYPE_FLOAT)
+    {
+        const std::string decoded_left = "R_word_f32(" + left + ")";
+        const std::string decoded_right = "R_word_f32(" + right + ")";
+        switch (operation)
+        {
+        case ir::BinaryOp::Add:
+            return "R_f32_word(" + decoded_left + " + " + decoded_right + ")";
+        case ir::BinaryOp::Subtract:
+            return "R_f32_word(" + decoded_left + " - " + decoded_right + ")";
+        case ir::BinaryOp::Multiply:
+            return "R_f32_word(" + decoded_left + " * " + decoded_right + ")";
+        case ir::BinaryOp::Divide:
+            return "R_f32_word(" + decoded_left + " / " + decoded_right + ")";
+        case ir::BinaryOp::Less:
+            return "(" + decoded_left + " < " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::LessEqual:
+            return "(" + decoded_left + " <= " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::Greater:
+            return "(" + decoded_left + " > " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::GreaterEqual:
+            return "(" + decoded_left + " >= " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::Equal:
+            return "(" + decoded_left + " == " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::NotEqual:
+            return "(" + decoded_left + " != " + decoded_right + ") ? INT32_C(1) : INT32_C(0)";
+        case ir::BinaryOp::And:
+        case ir::BinaryOp::Or:
+            return std::string();
+        }
+    }
     switch (operation)
     {
     case ir::BinaryOp::Add:
@@ -1094,6 +1394,7 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
     std::ostringstream output;
     output << "#include <stdint.h>\n";
     emit_runtime_headers(output, runtime);
+    emit_float_guard(output, runtime);
     output << "\n#define MM_BYTES (" << RestrictedCEmitter::memory_byte_capacity() << "u)\n";
     output << "#define MM_WORDS (MM_BYTES / sizeof(int32_t))\n";
     output << "#define REGISTER_COUNT " << layout.count << "u\n\n";
@@ -1128,7 +1429,8 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 {
                     const data_types type = function.values[constant->result.index].type.element_type;
                     const std::string literal = type == TYPE_INT ? int32_literal(std::get<int>(constant->payload)) :
-                        (std::get<bool>(constant->payload) ? "INT32_C(1)" : "INT32_C(0)");
+                        (type == TYPE_FLOAT ? float_literal(std::get<float>(constant->payload)) :
+                         (std::get<bool>(constant->payload) ? "INT32_C(1)" : "INT32_C(0)"));
                     if (procedure_function)
                     {
                         output << "    " << register_slot(layout.temporary_a) << " = " << literal << ";\n";
@@ -1184,7 +1486,14 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                     output << "    " << result << " = ";
                     if (unary->operation == ir::UnaryOp::Negate)
                     {
-                        output << "I32_FROM_U32(UINT32_C(0) - (uint32_t)" << staged_operand << ")";
+                        if (type == TYPE_FLOAT)
+                        {
+                            output << "R_f32_word(-R_word_f32(" << staged_operand << "))";
+                        }
+                        else
+                        {
+                            output << "I32_FROM_U32(UINT32_C(0) - (uint32_t)" << staged_operand << ")";
+                        }
                     }
                     else if (type == TYPE_BOOL)
                     {
@@ -1215,7 +1524,7 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                         output << "    " << left << " = " << value_read(function, binary->left) << ";\n";
                         output << "    " << right << " = " << value_read(function, binary->right) << ";\n";
                     }
-                    if (binary->operation == ir::BinaryOp::Divide)
+                    if (binary->operation == ir::BinaryOp::Divide && type == TYPE_INT)
                     {
                         const std::string prefix = "L_f" + std::to_string(function.id.index) + "_d" +
                                                    std::to_string(division_number++) + "_";
@@ -1262,6 +1571,14 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                     {
                         output << "(" << operand
                                << " != INT32_C(0)) ? INT32_C(1) : INT32_C(0)";
+                    }
+                    else if (cast->operation == ir::CastOp::IntToFloat)
+                    {
+                        output << "R_f32_word((float)" << operand << ")";
+                    }
+                    else if (cast->operation == ir::CastOp::FloatToInt)
+                    {
+                        output << "R_f32_i32(" << operand << ")";
                     }
                     else
                     {
@@ -1406,6 +1723,10 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
     RestrictedCResult result;
     result.status = RestrictedCStatus::Success;
     result.text = output.str();
+    if (runtime.uses(BuiltinId::Sqrt))
+    {
+        result.links.push_back(RestrictedCLink::Math);
+    }
     return result;
 }
 
@@ -1419,6 +1740,15 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
     if (!checked.succeeded())
     {
         return checked;
+    }
+    if (runtime.float_words && !host_has_binary32_float())
+    {
+        return failure(RestrictedCStatus::Unsupported,
+                       "restricted C Float lowering requires host IEEE binary32");
+    }
+    if (runtime.uses(BuiltinId::Sqrt))
+    {
+        checked.links.push_back(RestrictedCLink::Math);
     }
 
     if (runtime.procedure_mode)
@@ -1435,6 +1765,7 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
     std::ostringstream output;
     output << "#include <stdint.h>\n";
     emit_runtime_headers(output, runtime);
+    emit_float_guard(output, runtime);
     output << "\n";
     output << "#define MM_BYTES (" << RestrictedCEmitter::memory_byte_capacity() << "u)\n";
     output << "#define REGISTER_COUNT " << layout.count << "u\n\n";
@@ -1462,6 +1793,10 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
             {
                 output << int32_literal(std::get<int>(constant->payload));
             }
+            else if (result.type.element_type == TYPE_FLOAT)
+            {
+                output << float_literal(std::get<float>(constant->payload));
+            }
             else
             {
                 output << (std::get<bool>(constant->payload) ? "INT32_C(1)" : "INT32_C(0)");
@@ -1484,8 +1819,15 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
             output << "    " << value_register(unary->result) << " = ";
             if (unary->operation == ir::UnaryOp::Negate)
             {
-                output << "I32_FROM_U32(UINT32_C(0) - (uint32_t)" << value_register(unary->operand)
-                       << ")";
+                if (type == TYPE_FLOAT)
+                {
+                    output << "R_f32_word(-R_word_f32(" << value_register(unary->operand) << "))";
+                }
+                else
+                {
+                    output << "I32_FROM_U32(UINT32_C(0) - (uint32_t)" << value_register(unary->operand)
+                           << ")";
+                }
             }
             else if (type == TYPE_BOOL)
             {
@@ -1501,7 +1843,7 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
         else if (const ir::Binary *binary = std::get_if<ir::Binary>(&instruction))
         {
             const data_types type = program->values[binary->left.index].type.element_type;
-            if (binary->operation == ir::BinaryOp::Divide)
+            if (binary->operation == ir::BinaryOp::Divide && type == TYPE_INT)
             {
                 const std::string label_prefix = "L_f0_d" + std::to_string(division_number) + "_";
                 const std::string zero_label = label_prefix + "0";
@@ -1542,6 +1884,14 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
             {
                 output << "(" << value_register(cast->operand)
                        << " != INT32_C(0)) ? INT32_C(1) : INT32_C(0)";
+            }
+            else if (cast->operation == ir::CastOp::IntToFloat)
+            {
+                output << "R_f32_word((float)" << value_register(cast->operand) << ")";
+            }
+            else if (cast->operation == ir::CastOp::FloatToInt)
+            {
+                output << "R_f32_i32(" << value_register(cast->operand) << ")";
             }
             else
             {

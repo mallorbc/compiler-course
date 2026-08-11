@@ -2,6 +2,7 @@
 #include "../../IRBuilder.h"
 #include "../../RestrictedCEmitter.h"
 
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <variant>
@@ -344,17 +345,16 @@ TEST_CASE("Stage 5B restricted C emits verifier-valid cyclic Program flow")
     CHECK(invalid.text.empty());
 }
 
-TEST_CASE("Stage 5A restricted C preflights every branch atomically")
+TEST_CASE("Stage 6B restricted C preflights Float branches atomically")
 {
     RestrictedCEmitter emitter;
     const ir::Module float_in_then = branch_local_float_module();
     REQUIRE(ir::verify_module(float_in_then).valid);
     REQUIRE(float_in_then.functions[0].blocks.size() == 4);
     REQUIRE(float_in_then.functions[0].blocks[0].instructions.size() == 1);
-    const RestrictedCResult unsupported = emitter.emit(float_in_then);
-    CHECK(unsupported.status == RestrictedCStatus::Unsupported);
-    CHECK(unsupported.text.empty());
-    CHECK(unsupported.diagnostic.find("Integer and Bool") != std::string::npos);
+    const RestrictedCResult supported = emitter.emit(float_in_then);
+    CHECK(supported.status == RestrictedCStatus::Success);
+    CHECK(supported.text.find("restricted C requires IEEE binary32 float") != std::string::npos);
 
     ir::Module malformed = branch_module();
     ir::BranchTerminator &branch = std::get<ir::BranchTerminator>(
@@ -479,8 +479,10 @@ TEST_CASE("Stage 6A restricted C lowers catalog-canonical Integer and Bool runti
     unsupported_builder.finalize(true);
     REQUIRE(unsupported_builder.status() == ir::ModuleStatus::Ready);
     const RestrictedCResult unsupported = emitter.emit(unsupported_builder.module());
-    CHECK(unsupported.status == RestrictedCStatus::Unsupported);
-    CHECK(unsupported.text.empty());
+    CHECK(unsupported.status == RestrictedCStatus::Success);
+    REQUIRE(unsupported.links.size() == 1);
+    CHECK(unsupported.links[0] == RestrictedCLink::Math);
+    CHECK(unsupported.text.find("R_sqrt_i32") != std::string::npos);
 
     ir::IRBuilder dead_unsupported_builder;
     REQUIRE(dead_unsupported_builder.register_program(SymbolRef{0, "dead_runtime"},
@@ -505,6 +507,7 @@ TEST_CASE("Stage 6A restricted C lowers catalog-canonical Integer and Bool runti
     REQUIRE(dead_unsupported_builder.status() == ir::ModuleStatus::Ready);
     const RestrictedCResult dead_unsupported = emitter.emit(dead_unsupported_builder.module());
     CHECK(dead_unsupported.status == RestrictedCStatus::Success);
+    CHECK(dead_unsupported.links.empty());
     CHECK(dead_unsupported.text.find("L_f10_") == std::string::npos);
     CHECK(dead_unsupported.text.find("R_sqrt") == std::string::npos);
 }
@@ -543,8 +546,9 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     call_builder.finalize(true);
     REQUIRE(call_builder.status() == ir::ModuleStatus::Ready);
     const RestrictedCResult call = emitter.emit(call_builder.module());
-    CHECK(call.status == RestrictedCStatus::Unsupported);
-    CHECK(call.text.empty());
+    CHECK(call.status == RestrictedCStatus::Success);
+    REQUIRE(call.links.size() == 1);
+    CHECK(call.links[0] == RestrictedCLink::Math);
 
     ir::IRBuilder put_bool_builder;
     REQUIRE(put_bool_builder.register_program(SymbolRef{0, "put_bool_program"}, "put_bool_program").valid());
@@ -580,19 +584,12 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     CHECK(get_integer_call.text.find("R_put_") == std::string::npos);
     CHECK(get_integer_call.text.find("#include <inttypes.h>") == std::string::npos);
 
-    for (data_types unsupported_type : {TYPE_FLOAT, TYPE_STRING})
+    for (data_types unsupported_type : {TYPE_STRING})
     {
         ir::IRBuilder scalar_builder;
         REQUIRE(scalar_builder.register_program(SymbolRef{0, "scalar_program"}, "scalar_program").valid());
         scalar_builder.seed_external_builtins();
-        if (unsupported_type == TYPE_FLOAT)
-        {
-            REQUIRE(scalar_builder.emit_constant(scalar(TYPE_FLOAT), 1.5f).valid());
-        }
-        else
-        {
-            REQUIRE(scalar_builder.emit_constant(scalar(TYPE_STRING), std::string("value")).valid());
-        }
+        REQUIRE(scalar_builder.emit_constant(scalar(unsupported_type), std::string("value")).valid());
         REQUIRE(scalar_builder.emit_halt());
         scalar_builder.finalize(true);
         REQUIRE(scalar_builder.status() == ir::ModuleStatus::Ready);
@@ -605,4 +602,106 @@ TEST_CASE("Stage 5C restricted C lowers scalar procedures and rejects unsupporte
     const RestrictedCResult malformed = emitter.emit(invalid);
     CHECK(malformed.status == RestrictedCStatus::InvalidIR);
     CHECK(malformed.text.empty());
+}
+
+TEST_CASE("Stage 6B Float words, helpers, casts, and link metadata are exact")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "float_words"}, "float_words").valid());
+    builder.seed_external_builtins();
+    const ir::ValueId positive_zero = builder.emit_constant(scalar(TYPE_FLOAT), 0.0f);
+    const ir::ValueId negative_zero = builder.emit_constant(scalar(TYPE_FLOAT), -0.0f);
+    const ir::ValueId one_and_half = builder.emit_constant(scalar(TYPE_FLOAT), 1.5f);
+    const ir::ValueId one_tenth = builder.emit_constant(scalar(TYPE_FLOAT), 0.1f);
+    const ir::ValueId subnormal = builder.emit_constant(
+        scalar(TYPE_FLOAT), std::numeric_limits<float>::denorm_min());
+    const ir::ValueId maximum = builder.emit_constant(
+        scalar(TYPE_FLOAT), std::numeric_limits<float>::max());
+    const ir::ValueId integer = builder.emit_constant(scalar(TYPE_INT), 9);
+    REQUIRE(positive_zero.valid());
+    REQUIRE(negative_zero.valid());
+    REQUIRE(one_and_half.valid());
+    REQUIRE(one_tenth.valid());
+    REQUIRE(subnormal.valid());
+    REQUIRE(maximum.valid());
+    REQUIRE(integer.valid());
+    REQUIRE(builder.emit_binary(ir::BinaryOp::Divide, one_and_half, negative_zero).valid());
+    const ir::ValueId promoted = builder.emit_cast(ir::CastOp::IntToFloat, integer);
+    REQUIRE(promoted.valid());
+    REQUIRE(builder.emit_cast(ir::CastOp::FloatToInt, promoted).valid());
+    const ir::FunctionId sqrt = builder.function_for(SymbolRef{0, "sqrt"});
+    REQUIRE(sqrt.valid());
+    REQUIRE(builder.emit_call(sqrt, {integer}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+
+    RestrictedCEmitter emitter;
+    const RestrictedCResult result = emitter.emit(builder.module());
+    REQUIRE(result.succeeded());
+    REQUIRE(result.links.size() == 1);
+    CHECK(result.links[0] == RestrictedCLink::Math);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(0))") != std::string::npos);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(2147483648))") != std::string::npos);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(1069547520))") != std::string::npos);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(1036831949))") != std::string::npos);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(1))") != std::string::npos);
+    CHECK(result.text.find("I32_FROM_U32(UINT32_C(2139095039))") != std::string::npos);
+    CHECK(result.text.find("memcpy(&r2, &r1, sizeof(r2))") != std::string::npos);
+    CHECK(result.text.find("R_f32_i32") != std::string::npos);
+    CHECK(result.text.find("R_word_f32") != std::string::npos);
+    CHECK(result.text.find("union") == std::string::npos);
+    CHECK(result.text.find("goto L_f0_d") == std::string::npos);
+
+    const std::filesystem::path output =
+        std::filesystem::temp_directory_path() / "compiler-stage6b-link-metadata.c";
+    std::error_code cleanup_error;
+    std::filesystem::remove(output, cleanup_error);
+    const RestrictedCResult published = emitter.emit_to_file(builder.module(), output);
+    REQUIRE(published.succeeded());
+    REQUIRE(published.links.size() == 1);
+    CHECK(published.links[0] == RestrictedCLink::Math);
+    const RestrictedCResult publication_failure =
+        emitter.emit_to_file(builder.module(), std::filesystem::path());
+    CHECK(publication_failure.status == RestrictedCStatus::IoError);
+    CHECK(publication_failure.text.empty());
+    CHECK(publication_failure.links.empty());
+    cleanup_error.clear();
+    std::filesystem::remove(output, cleanup_error);
+
+    ir::Module nonfinite = builder.module();
+    bool replaced = false;
+    for (ir::Instruction &instruction : nonfinite.functions[0].blocks[0].instructions)
+    {
+        ir::Constant *constant = std::get_if<ir::Constant>(&instruction);
+        if (constant != NULL && constant->result == one_and_half)
+        {
+            constant->payload = std::numeric_limits<float>::infinity();
+            replaced = true;
+            break;
+        }
+    }
+    REQUIRE(replaced);
+    const RestrictedCResult invalid = emitter.emit(nonfinite);
+    CHECK(invalid.status == RestrictedCStatus::InvalidIR);
+    CHECK(invalid.text.empty());
+    CHECK(invalid.links.empty());
+
+    ir::Module nan_constant = builder.module();
+    replaced = false;
+    for (ir::Instruction &instruction : nan_constant.functions[0].blocks[0].instructions)
+    {
+        ir::Constant *constant = std::get_if<ir::Constant>(&instruction);
+        if (constant != NULL && constant->result == one_and_half)
+        {
+            constant->payload = std::numeric_limits<float>::quiet_NaN();
+            replaced = true;
+            break;
+        }
+    }
+    REQUIRE(replaced);
+    const RestrictedCResult invalid_nan = emitter.emit(nan_constant);
+    CHECK(invalid_nan.status == RestrictedCStatus::InvalidIR);
+    CHECK(invalid_nan.text.empty());
+    CHECK(invalid_nan.links.empty());
 }

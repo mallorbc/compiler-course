@@ -83,6 +83,65 @@ bool is_relation_start(int token_type)
            token_type == T_ASSIGN || token_type == T_EXCLAM;
 }
 
+bool is_relational_operation(semantic_operator operation)
+{
+    return operation == SEM_LESS || operation == SEM_LESS_EQUAL ||
+           operation == SEM_GREATER || operation == SEM_GREATER_EQUAL ||
+           operation == SEM_EQUAL || operation == SEM_NOT_EQUAL;
+}
+
+//Binary semantic checking decides whether a mixed scalar expression is legal.
+//This helper mirrors only the corresponding IR promotion rule: it never
+//converts arrays, unresolved shapes, logical operands, or exact operands.
+bool promote_scalar_binary_operands(ir::IRBuilder *builder, semantic_operator operation,
+                                    const value_shape &left_shape,
+                                    const value_shape &right_shape,
+                                    ir::ValueId &left, ir::ValueId &right)
+{
+    if (builder == NULL || !left.valid() || !right.valid())
+    {
+        return false;
+    }
+    if (!ir::is_ready_type(left_shape) || !ir::is_ready_type(right_shape))
+    {
+        builder->mark_unsupported("array or unresolved binary expression");
+        return false;
+    }
+    if (left_shape == right_shape)
+    {
+        return true;
+    }
+    if ((left_shape.element_type == TYPE_INT && right_shape.element_type == TYPE_FLOAT) ||
+        (left_shape.element_type == TYPE_FLOAT && right_shape.element_type == TYPE_INT))
+    {
+        if (left_shape.element_type == TYPE_INT)
+        {
+            left = builder->emit_cast(ir::CastOp::IntToFloat, left);
+        }
+        else
+        {
+            right = builder->emit_cast(ir::CastOp::IntToFloat, right);
+        }
+        return left.valid() && right.valid();
+    }
+    if (is_relational_operation(operation) &&
+        ((left_shape.element_type == TYPE_BOOL && right_shape.element_type == TYPE_INT) ||
+         (left_shape.element_type == TYPE_INT && right_shape.element_type == TYPE_BOOL)))
+    {
+        if (left_shape.element_type == TYPE_BOOL)
+        {
+            left = builder->emit_cast(ir::CastOp::BoolToInt, left);
+        }
+        else
+        {
+            right = builder->emit_cast(ir::CastOp::BoolToInt, right);
+        }
+        return left.valid() && right.valid();
+    }
+    builder->mark_unsupported("mixed or array binary expression");
+    return false;
+}
+
 } // namespace
 
 //ready for testing
@@ -2308,8 +2367,8 @@ lowered_expression parser::parse_expression()
             expression_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
-                    expression_parse.value.valid() && right_parse.value.valid())
+                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                                   expression_parse.value, right_parse.value))
                 {
                     expression_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), expression_parse.value, right_parse.value);
@@ -2382,8 +2441,8 @@ lowered_expression parser::parse_arithOp()
             arithop_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
-                    arithop_parse.value.valid() && right_parse.value.valid())
+                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                                   arithop_parse.value, right_parse.value))
                 {
                     arithop_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), arithop_parse.value, right_parse.value);
@@ -2544,8 +2603,8 @@ lowered_expression parser::parse_relation()
             relation_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
-                    relation_parse.value.valid() && right_parse.value.valid())
+                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                                   relation_parse.value, right_parse.value))
                 {
                     relation_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), relation_parse.value, right_parse.value);
@@ -2629,8 +2688,8 @@ lowered_expression parser::parse_term()
             term_parse.semantics = checked;
             if (checked.semantic_valid && ir_builder != NULL)
             {
-                if (ir::is_ready_type(left_shape) && left_shape == right_shape &&
-                    term_parse.value.valid() && right_parse.value.valid())
+                if (promote_scalar_binary_operands(ir_builder, operation, left_shape, right_shape,
+                                                   term_parse.value, right_parse.value))
                 {
                     term_parse.value = ir_builder->emit_binary(
                         ir_binary_operation(operation), term_parse.value, right_parse.value);

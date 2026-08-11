@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 //This is deliberately a backend boundary: it consumes finalized IR only and
 //does not know about scanner/parser tokens or frontend symbol tables.
@@ -18,6 +19,11 @@ enum class RestrictedCStatus
     IoError
 };
 
+enum class RestrictedCLink
+{
+    Math
+};
+
 struct RestrictedCResult
 {
     RestrictedCStatus status = RestrictedCStatus::InvalidIR;
@@ -25,6 +31,9 @@ struct RestrictedCResult
     //Only a successful in-memory render exposes text.  File failures clear it
     //as well, so callers never observe a partial program.
     std::string text;
+    //Libraries are named semantically so drivers can map them to platform
+    //linker switches without the backend embedding a toolchain convention.
+    std::vector<RestrictedCLink> links;
 
     bool succeeded() const noexcept { return status == RestrictedCStatus::Success; }
 };

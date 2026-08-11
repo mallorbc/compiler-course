@@ -47,6 +47,7 @@ def strict_c11_syntax_check(generated: Path) -> None:
     if c_compiler is None:
         print("SKIP test_generated_c.py: no C11 compiler available for syntax-only check")
         return
+    object_file = generated.with_suffix(".o")
     result = subprocess.run(
         [
             c_compiler,
@@ -55,8 +56,10 @@ def strict_c11_syntax_check(generated: Path) -> None:
             "-Wextra",
             "-Werror",
             "-pedantic-errors",
-            "-fsyntax-only",
+            "-c",
             str(generated),
+            "-o",
+            str(object_file),
         ],
         cwd=REPO_ROOT,
         stdin=subprocess.DEVNULL,
@@ -68,13 +71,17 @@ def strict_c11_syntax_check(generated: Path) -> None:
     )
     check(
         result.returncode == 0,
-        "strict C11 syntax check failed:\n"
+        "strict C11 object compilation failed:\n"
         f"stdout={result.stdout!r}\nstderr={result.stderr!r}\nsource={generated.read_text()!r}",
     )
 
 
 def strict_c11_compile_and_run(
-    generated: Path, expected_stdout: str, expected_returncode: int = 0, stdin_text: str = ""
+    generated: Path,
+    expected_stdout: str,
+    expected_returncode: int = 0,
+    stdin_text: str = "",
+    link_math: bool = False,
 ) -> None:
     c_compiler = next(
         (candidate for candidate in ("cc", "gcc", "clang") if shutil.which(candidate)), None
@@ -83,8 +90,7 @@ def strict_c11_compile_and_run(
         print("SKIP test_generated_c.py: no C11 compiler available for Gate4 runtime check")
         return
     executable = generated.with_suffix(".native")
-    compilation = subprocess.run(
-        [
+    command = [
             c_compiler,
             "-std=c11",
             "-Wall",
@@ -94,7 +100,11 @@ def strict_c11_compile_and_run(
             str(generated),
             "-o",
             str(executable),
-        ],
+        ]
+    if link_math:
+        command.append("-lm")
+    compilation = subprocess.run(
+        command,
         cwd=REPO_ROOT,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
@@ -998,6 +1008,191 @@ def main() -> int:
         check(loop_taken_divide.returncode == 0,
               f"taken loop divide emit failed: {loop_taken_divide.stderr!r}")
         strict_c11_compile_and_run(loop_taken_divide_output, "", expected_returncode=1)
+
+        float_source = root / "stage6b-float.src"
+        float_output = root / "stage6b-float.c"
+        float_source.write_text(
+            "program Stage6BFloat is\n"
+            "variable value : float;\n"
+            "variable printed : bool;\n"
+            "procedure recurse : float(variable current : float, variable n : integer)\n"
+            "variable scratch : float;\n"
+            "begin\n"
+            "    scratch := current;\n"
+            "    if (n == 0) then\n"
+            "        return scratch;\n"
+            "    else\n"
+            "        return recurse(scratch + 0.5, n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    value := recurse(1.0, 2);\n"
+            "    printed := putFloat(value);\n"
+            "    printed := putFloat(0.0);\n"
+            "    printed := putFloat(-0.0);\n"
+            "    printed := putFloat(0.1);\n"
+            "    printed := putFloat(1.0 / 0.0);\n"
+            "    printed := putFloat(1.0 / -0.0);\n"
+            "    printed := putFloat(0.0 / 0.0);\n"
+            "    printed := putFloat(sqrt(9));\n"
+            "    printed := putFloat(sqrt(2));\n"
+            "    printed := putFloat(sqrt(-1));\n"
+            "    printed := putBool(1.0 < 2.0);\n"
+            "    printed := putBool(1.0 <= 1.0);\n"
+            "    printed := putBool(1.0 > 2.0);\n"
+            "    printed := putBool(2.0 >= 2.0);\n"
+            "    printed := putBool(0.0 == -0.0);\n"
+            "    value := 0.0 / 0.0;\n"
+            "    printed := putBool(value != value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        float_emit = run_compiler("--emit-c", str(float_output), str(float_source))
+        check(float_emit.returncode == 0, f"Stage6B Float emit failed: {float_emit.stderr!r}")
+        float_c = float_output.read_text(encoding="utf-8")
+        check("memcpy" in float_c and "union" not in float_c, "Float transport is not memcpy-only")
+        check("goto L_f0_d" not in float_c, "Float division used the integer trap path")
+        check(not re.search(r"R_(?:word_f32|f32_word|f32_i32)\([^\n]*MM\[", float_c),
+              "procedure Float helper received an MM operand")
+        strict_c11_compile_and_run(
+            float_output,
+            "2\n0\n-0\n0.100000001\ninf\n-inf\nnan\n3\n1.41421354\nnan\n"
+            "true\ntrue\nfalse\ntrue\ntrue\ntrue\n",
+            link_math=True,
+        )
+
+        float_cast_source = root / "stage6b-float-casts.src"
+        float_cast_output = root / "stage6b-float-casts.c"
+        float_cast_source.write_text(
+            "program Stage6BFloatCasts is\n"
+            "variable value : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    value := 1.9;\n"
+            "    printed := putInteger(value);\n"
+            "    value := -1.9;\n"
+            "    printed := putInteger(value);\n"
+            "    value := 1.0 / 0.0;\n"
+            "    printed := putInteger(value);\n"
+            "    value := -1.0 / 0.0;\n"
+            "    printed := putInteger(value);\n"
+            "    value := 0.0 / 0.0;\n"
+            "    printed := putInteger(value);\n"
+            "    value := 2147483648.0;\n"
+            "    printed := putInteger(value);\n"
+            "    value := -2147483648.0;\n"
+            "    printed := putInteger(value);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        float_cast_emit = run_compiler(
+            "--emit-c", str(float_cast_output), str(float_cast_source)
+        )
+        check(float_cast_emit.returncode == 0,
+              f"Stage6B Float cast emit failed: {float_cast_emit.stderr!r}")
+        strict_c11_compile_and_run(
+            float_cast_output,
+            "1\n-1\n2147483647\n-2147483648\n0\n2147483647\n-2147483648\n",
+        )
+
+        float_input_source = root / "stage6b-float-input.src"
+        float_input_output = root / "stage6b-float-input.c"
+        statements = "".join(
+            "    value := getFloat();\n    printed := putFloat(value);\n" for _ in range(23)
+        )
+        float_input_source.write_text(
+            "program Stage6BFloatInput is\n"
+            "variable value : float;\n"
+            "variable printed : bool;\n"
+            "begin\n" + statements + "end program.\n",
+            encoding="utf-8",
+        )
+        float_input_emit = run_compiler(
+            "--emit-c", str(float_input_output), str(float_input_source)
+        )
+        check(float_input_emit.returncode == 0,
+              f"Stage6B Float input emit failed: {float_input_emit.stderr!r}")
+        strict_c11_compile_and_run(
+            float_input_output,
+            "1.25\n-0\n100\n0.5\n1.40129846e-45\n3.40282347e+38\n"
+            "0\n11.5\n0\n12.5\n0\n13.5\n0\n14.5\n"
+            "0\n15.5\n0\n16.5\n0\n17.5\n0\n18.5\n0\n",
+            stdin_text=(
+                "1.25 -0 1e2 .5 1.40129846e-45 3.40282347e38 "
+                "bad 11.5 1.0f 12.5 0x1 13.5 1_0 14.5 "
+                "nan 15.5 inf 16.5 1e999 17.5 "
+                + ("9" * 10000)
+                + "x 18.5"
+            ),
+        )
+
+        singleton_bodies = {
+            "constant": "variable value : float;\nbegin\n    value := 1.5;\n",
+            "arithmetic": "variable value : float;\nbegin\n    value := 1.0 + 2.0;\n",
+            "comparison": (
+                "variable value : bool;\nbegin\n"
+                "    value := 1.0 < 2.0;\n"
+                "    value := 1.0 <= 2.0;\n"
+                "    value := 1.0 > 2.0;\n"
+                "    value := 1.0 >= 2.0;\n"
+                "    value := 1.0 == 2.0;\n"
+                "    value := 1.0 != 2.0;\n"
+            ),
+            "int_to_float": "variable value : float;\nbegin\n    value := 1;\n",
+            "float_to_int": "variable value : integer;\nbegin\n    value := 1.5;\n",
+            "get_float": "variable value : float;\nbegin\n    value := getFloat();\n",
+            "put_float": (
+                "variable value : bool;\nbegin\n    value := putFloat(1.5);\n"
+            ),
+            "sqrt": "variable value : float;\nbegin\n    value := sqrt(2);\n",
+        }
+        for singleton_name, singleton_body in singleton_bodies.items():
+            singleton_source = root / f"stage6b-singleton-{singleton_name}.src"
+            singleton_output = root / f"stage6b-singleton-{singleton_name}.c"
+            singleton_source.write_text(
+                f"program Stage6BSingleton{singleton_name} is\n"
+                + singleton_body
+                + "end program.\n",
+                encoding="utf-8",
+            )
+            singleton_emit = run_compiler(
+                "--emit-c", str(singleton_output), str(singleton_source)
+            )
+            check(singleton_emit.returncode == 0,
+                  f"Stage6B singleton {singleton_name} failed: {singleton_emit.stderr!r}")
+            if singleton_name == "comparison":
+                comparison_c = singleton_output.read_text(encoding="utf-8")
+                check("R_word_f32" in comparison_c,
+                      "comparison-only Float omitted its decode helper")
+                check("R_f32_word" not in comparison_c,
+                      "comparison-only Float emitted an unused encode helper")
+            strict_c11_syntax_check(singleton_output)
+
+        procedure_comparison_source = root / "stage6b-procedure-comparison.src"
+        procedure_comparison_output = root / "stage6b-procedure-comparison.c"
+        procedure_comparison_source.write_text(
+            "program Stage6BProcedureComparison is\n"
+            "variable value : bool;\n"
+            "procedure compare : bool(variable left : float, variable right : float)\n"
+            "begin\n"
+            "    return left < right;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    value := compare(1.0, 2.0);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        procedure_comparison_emit = run_compiler(
+            "--emit-c", str(procedure_comparison_output), str(procedure_comparison_source)
+        )
+        check(procedure_comparison_emit.returncode == 0,
+              f"Stage6B procedure comparison failed: {procedure_comparison_emit.stderr!r}")
+        procedure_comparison_c = procedure_comparison_output.read_text(encoding="utf-8")
+        check("R_word_f32" in procedure_comparison_c,
+              "procedure Float comparison omitted its decode helper")
+        check("R_f32_word" not in procedure_comparison_c,
+              "procedure Float comparison emitted an unused encode helper")
+        strict_c11_syntax_check(procedure_comparison_output)
 
         hostile_output = root / "hostile ; $ [name].c"
         hostile = run_compiler("--emit-c", str(hostile_output), str(source))
