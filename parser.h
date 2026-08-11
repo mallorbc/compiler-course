@@ -64,6 +64,7 @@ struct lowered_destination
 {
     token_and_status semantics;
     ir::StorageId storage;
+    ir::ValueId checked_index;
 };
 
 class parser
@@ -145,7 +146,9 @@ public:
     lowered_destination parse_assignment_destination(token destination_token);
     bool parse_optional_index(const token &base_occurrence, bool base_resolved,
                               const value_shape &base_shape,
-                              lowered_expression &base_result);
+                              ir::StorageId storage, bool load_element,
+                              lowered_expression &base_result,
+                              ir::ValueId &checked_index);
 
     bool parse_if_statement(const token &if_token);
     bool parse_loop_statement();

@@ -54,6 +54,9 @@ public:
                           const std::variant<int, float, bool, std::string> &payload);
     ValueId emit_load(StorageId source);
     bool emit_store(StorageId destination, ValueId value);
+    ValueId emit_check_index(StorageId storage, ValueId raw_index);
+    ValueId emit_element_load(StorageId storage, ValueId checked_index);
+    bool emit_element_store(StorageId storage, ValueId checked_index, ValueId value);
     ValueId emit_unary(UnaryOp operation, ValueId operand);
     ValueId emit_binary(BinaryOp operation, ValueId left, ValueId right);
     ValueId emit_cast(CastOp operation, ValueId operand);

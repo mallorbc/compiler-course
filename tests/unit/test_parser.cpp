@@ -4,6 +4,7 @@
 #include "../vendor/doctest.h"
 #include "../../parser.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -1382,6 +1383,44 @@ TEST_CASE("TY-8 records inclusive canonical bounds and exact parameter shapes")
     REQUIRE(keep.procedure_params.size() == 1);
     const value_shape expected_array_parameter{TYPE_INT, true, 5};
     CHECK(keep.procedure_params[0] == expected_array_parameter);
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+    const ir::Function &program = parsed.ir_module().functions[0];
+    std::size_t destination_check = program.blocks[0].instructions.size();
+    std::size_t rhs_snapshot = program.blocks[0].instructions.size();
+    std::size_t call = program.blocks[0].instructions.size();
+    std::size_t element_store = program.blocks[0].instructions.size();
+    bool loaded_destination_base = false;
+    for (std::size_t i = 0; i < program.blocks[0].instructions.size(); i++)
+    {
+        const ir::Instruction &instruction = program.blocks[0].instructions[i];
+        if (const ir::CheckIndex *check = std::get_if<ir::CheckIndex>(&instruction))
+        {
+            destination_check = std::min(destination_check, i);
+            CHECK(check->storage == parsed.ir_module().storages[0].id);
+        }
+        else if (const ir::Load *load = std::get_if<ir::Load>(&instruction))
+        {
+            loaded_destination_base = loaded_destination_base ||
+                                      load->source == parsed.ir_module().storages[0].id;
+            if (load->source == parsed.ir_module().storages[1].id)
+            {
+                rhs_snapshot = i;
+            }
+        }
+        else if (std::holds_alternative<ir::Call>(instruction))
+        {
+            call = i;
+        }
+        else if (std::holds_alternative<ir::ElementStore>(instruction))
+        {
+            element_store = i;
+        }
+    }
+    CHECK_FALSE(loaded_destination_base);
+    CHECK(destination_check < rhs_snapshot);
+    CHECK(rhs_snapshot < call);
+    CHECK(call < element_store);
 }
 
 TEST_CASE("TY-8 bound errors are transactional and retain a first procedure signature")
@@ -2582,9 +2621,24 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     parser array(array_fixture.name());
     array_capture.restore();
     CHECK(array.frontend_valid());
-    CHECK_FALSE(array.can_generate_code());
-    CHECK(array.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(array.ir_module().functions.empty());
+    CHECK(array.can_generate_code());
+    CHECK(array.ir_status() == ir::ModuleStatus::Ready);
+    REQUIRE(array.ir_module().storages.size() == 1);
+    CHECK((array.ir_module().storages[0].type == value_shape{TYPE_INT, true, 0}));
+
+    temp_source_file inline_enum_fixture(
+        "program inline_enum is\n"
+        "variable value : enum{red, green};\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout inline_enum_capture;
+    parser inline_enum(inline_enum_fixture.name());
+    inline_enum_capture.restore();
+    CHECK(inline_enum.frontend_valid());
+    CHECK_FALSE(inline_enum.can_generate_code());
+    CHECK(inline_enum.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(inline_enum.ir_module().functions.empty());
+    CHECK(inline_enum.ir_module().storages.empty());
 
     temp_source_file mixed_call_fixture(
         "program mixed is\n"
@@ -2756,6 +2810,59 @@ TEST_CASE("Stage 6C parser lowers String literals as semantic bytes")
     CHECK(payloads[0] == "MiXeD");
     CHECK(payloads[1].empty());
     CHECK(payloads[2] == "two\nlines");
+}
+
+TEST_CASE("Stage 6D1 parser lowers aggregate assignment casts and defers lifted operators")
+{
+    temp_source_file fixture(
+        "program array_conversions is\n"
+        "variable integers : integer[1];\n"
+        "variable floats : float[1];\n"
+        "variable bools : bool[1];\n"
+        "begin\n"
+        "    floats := integers;\n"
+        "    integers := floats;\n"
+        "    bools := integers;\n"
+        "    integers := bools;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+    REQUIRE(parsed.frontend_valid());
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+
+    const std::vector<ir::CastOp> expected{
+        ir::CastOp::IntToFloat, ir::CastOp::FloatToInt,
+        ir::CastOp::IntToBool, ir::CastOp::BoolToInt};
+    std::vector<ir::CastOp> actual;
+    for (const ir::Instruction &instruction :
+         parsed.ir_module().functions[0].blocks[0].instructions)
+    {
+        if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
+        {
+            actual.push_back(cast->operation);
+            const ir::Value &result =
+                parsed.ir_module().functions[0].values[cast->result.index];
+            CHECK(result.type.is_array);
+            CHECK(result.type.array_upper_bound == 1);
+        }
+    }
+    CHECK(actual == expected);
+
+    temp_source_file lifted_fixture(
+        "program lifted_array is\n"
+        "variable values : integer[1];\n"
+        "begin\n"
+        "    values := values + 1;\n"
+        "end program.\n");
+    captured_stdout lifted_capture;
+    parser lifted(lifted_fixture.name());
+    lifted_capture.restore();
+    CHECK(lifted.frontend_valid());
+    CHECK_FALSE(lifted.can_generate_code());
+    CHECK(lifted.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(lifted.ir_module().functions.empty());
 }
 
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")

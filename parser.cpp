@@ -1261,9 +1261,10 @@ bool parser::parse_variable_declaration(bool is_global)
         if (live_context && Lexer->symbol_table.lookup_declared(reference, canonical))
         {
             const value_shape shape = shape_of(canonical);
-            if (!ir::is_ready_type(shape))
+            if (!ir::is_resolved_value_shape(shape))
             {
-                ir_builder->mark_unsupported("arrays or unresolved declaration types need runtime lowering");
+                ir_builder->mark_unsupported(
+                    "enum and unresolved variable types need runtime lowering");
             }
             else
             {
@@ -1332,10 +1333,6 @@ bool parser::parse_array_suffix(token &candidate, bool &semantic_valid)
     }
     candidate.is_array = true;
     candidate.array_upper_bound = -1;
-    if (ir_builder != NULL && ir_builder->emission_enabled())
-    {
-        ir_builder->mark_unsupported("arrays require bounds-check lowering");
-    }
     Current_parse_token = Get_Valid_Token();
     if (!parse_bound(candidate.array_upper_bound, semantic_valid))
     {
@@ -1523,7 +1520,13 @@ bool parser::parse_assignment_statement(token destination_token)
                             value = ir_builder->emit_cast(cast, value);
                         }
                     }
-                    if (value.valid())
+                    if (value.valid() && destination_parse.checked_index.valid())
+                    {
+                        (void)ir_builder->emit_element_store(destination_parse.storage,
+                                                             destination_parse.checked_index,
+                                                             value);
+                    }
+                    else if (value.valid())
                     {
                         (void)ir_builder->emit_store(destination_parse.storage, value);
                     }
@@ -2186,7 +2189,8 @@ lowered_destination parser::parse_assignment_destination(token destination_token
     lowered_expression indexed_destination;
     indexed_destination.semantics = destination_parse.semantics;
     if (!parse_optional_index(destination_token, resolved_variable, base_shape,
-                              indexed_destination))
+                              destination_parse.storage, false, indexed_destination,
+                              destination_parse.checked_index))
     {
         destination_parse.semantics = indexed_destination.semantics;
         return destination_parse;
@@ -2203,15 +2207,13 @@ lowered_destination parser::parse_assignment_destination(token destination_token
 
 bool parser::parse_optional_index(const token &base_occurrence, bool base_resolved,
                                   const value_shape &base_shape,
-                                  lowered_expression &base_result)
+                                  ir::StorageId storage, bool load_element,
+                                  lowered_expression &base_result,
+                                  ir::ValueId &checked_index)
 {
     if (Current_parse_token_type != T_LBRACKET)
     {
         return true;
-    }
-    if (ir_builder != NULL)
-    {
-        ir_builder->mark_unsupported("array indexes require runtime bounds lowering");
     }
     Current_parse_token = Get_Valid_Token();
     const lowered_expression index_parse = parse_expression();
@@ -2243,6 +2245,19 @@ bool parser::parse_optional_index(const token &base_occurrence, bool base_resolv
     value_shape element_shape;
     element_shape.element_type = base_shape.element_type;
     base_result.semantics = typed_expression_result(type_checker, element_shape, base_occurrence);
+    if (ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        if (!storage.valid() || !index_parse.value.valid())
+        {
+            ir_builder->mark_invalid("validated array index has no IR storage or value");
+            return true;
+        }
+        checked_index = ir_builder->emit_check_index(storage, index_parse.value);
+        if (load_element && checked_index.valid())
+        {
+            base_result.value = ir_builder->emit_element_load(storage, checked_index);
+        }
+    }
     return true;
 }
 
@@ -2892,6 +2907,7 @@ lowered_expression parser::parse_name(token identifier_token)
 {
     lowered_expression name_parse;
     token resolved_identifier;
+    ir::StorageId storage;
     const bool resolved = resolve_identifier_use(identifier_token, resolved_identifier);
     if (resolved)
     {
@@ -2913,31 +2929,34 @@ lowered_expression parser::parse_name(token identifier_token)
                                                            identifier_token);
             if (ir_builder != NULL && ir_builder->emission_enabled())
             {
-                const value_shape shape = shape_of(resolved_identifier);
-                if (ir::is_ready_type(shape))
+                if (ir::is_resolved_value_shape(shape_of(resolved_identifier)))
                 {
-                    const ir::StorageId storage = ir_builder->storage_for(
+                    storage = ir_builder->storage_for(
                         SymbolRef{resolved_identifier.scope_id,
                                   resolved_identifier.stringValue});
-                    if (storage.valid())
+                    if (!storage.valid())
                     {
-                        name_parse.value = ir_builder->emit_load(storage);
-                    }
-                    else
-                    {
-                        ir_builder->mark_invalid("resolved scalar name has no IR storage");
+                        ir_builder->mark_invalid("resolved name has no IR storage");
                     }
                 }
                 else
                 {
-                    ir_builder->mark_unsupported("arrays or unresolved values need runtime lowering");
+                    ir_builder->mark_invalid("resolved name has an unresolved value shape");
                 }
             }
         }
     }
-    if (!parse_optional_index(identifier_token, resolved, shape_of(resolved_identifier), name_parse))
+    const bool indexed = Current_parse_token_type == T_LBRACKET;
+    ir::ValueId checked_index;
+    if (!parse_optional_index(identifier_token, resolved, shape_of(resolved_identifier),
+                              storage, true, name_parse, checked_index))
     {
         return name_parse;
+    }
+    if (!indexed && resolved && name_parse.semantics.semantic_valid && ir_builder != NULL &&
+        ir_builder->emission_enabled() && storage.valid())
+    {
+        name_parse.value = ir_builder->emit_load(storage);
     }
     if (!resolved)
     {

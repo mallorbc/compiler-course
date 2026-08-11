@@ -81,15 +81,15 @@ Tier definitions:
 | ID | Work | Subsumes |
 |----|------|----------|
 | TY-2 | **DONE through Stage 2F frontend consumers**: each `parse_*` expression function returns its synthesized type; the live parser no longer uses the `feed_in_tokens` side-channel; assignment/return/condition consumers retain pure scalar/array conversion plans | TY-3 (parens), TY-4 (call return types), TY-5 (unary desync), TY-10 (matrix asymmetry). Conversion plans deliberately stop before backend casts, IR, or runtime representation. |
-| TY-8 | **DONE Stage 2E frontend shape layer**: canonical inclusive bounds, index-must-be-integer, exact array call signatures, and elementwise shape checking | Runtime `BoundsCheck`, allocation/copy/broadcast lowering, and compile-time OOB folding remain a codegen slice |
+| TY-8 | **DONE through Stage 6D1 representation slice**: canonical inclusive bounds, checked element access, MM allocation, snapshots/copies, elementwise assignment casts, and exact by-value array calls | Lifted unary/binary/broadcast lowering remains Stage 6D2; compile-time OOB folding is intentionally unnecessary because checks execute at runtime |
 
 ## Critical — 3 items (blocked on Blake)
 
 | ID | Decision / scope | Notes |
 |----|-------------------|-------|
 | POLICY-1 | `type`/`enum`: drop (match 2024 target) or keep as documented extension | vintage-correct feature (see AUDIT §1); pure decision, then Low-Medium implementation |
-| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for scalar Program and procedure CFG/manual-frame recursion; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String | Stage 4A supplies the typed IR seam; arrays, nested captures, and host executable production remain separate |
-| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`, with deterministic numeric-token/String-line input, binary32 words, String handles, and typed Math link metadata | Array runtime and the host adapter remain separate |
+| CODEGEN | Restricted-C target chosen; **Stage 5A/5B/5C DONE** for Program/procedure CFG/manual frames; **Stage 6A/6B/6C DONE** for scalar Integer/Bool/Float/String; **Stage 6D1 DONE** for array representation, checked elements, copies/conversions, and exact calls | Lifted array operators, nested captures, and host executable production remain separate |
+| RUNTIME | Stage 6A/6B/6C lower canonical scalar I/O plus `sqrt`; Stage 6D1 adds one-word-per-element arrays, flat copy/conversion loops, by-value frames, and bounds/capacity exits | Lifted/broadcast array operations and the host adapter remain separate |
 
 ## Batch 2 discoveries (2026-08-03, filed during the test-harness build)
 

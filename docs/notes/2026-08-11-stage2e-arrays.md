@@ -21,8 +21,8 @@ conditions.  Indexed uses validate that the base is an array and the index is
 an exact scalar integer, while retaining ordinary parser recovery.
 
 The 2024 requirement for bounds checks is deliberately not approximated with
-literal folding: every indexed access needs a runtime `BoundsCheck` when the
-future lowering/IR exists.  The canonical bound is retained now for that
-backend work, but this frontend slice does not allocate arrays, emit checks,
-or record copy/broadcast/cast instructions.  In particular, the historical
-out-of-range probe remains accepted until runtime lowering is implemented.
+literal folding.  At this Stage 2E boundary every indexed access still awaited
+runtime lowering, so the historical out-of-range probe remained accepted.
+Stage 6D1 subsequently adds linear `CheckIndex`/element IR, MM spans, snapshots,
+whole copies, elementwise assignment casts, and exact by-value calls.  Lifted
+unary/binary/broadcast operations remain the separate Stage 6D2 slice.

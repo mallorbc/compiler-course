@@ -47,7 +47,7 @@ bool valid_binary(BinaryOp operation, data_types type)
 
 bool cast_matches(CastOp operation, const value_shape &source, value_shape &target)
 {
-    if (!is_ready_type(source))
+    if (!is_resolved_value_shape(source))
     {
         return false;
     }
@@ -208,9 +208,9 @@ FunctionId IRBuilder::register_procedure(
             mark_invalid("procedure parameter conflicts with canonical identity");
             return FunctionId();
         }
-        if (!is_ready_type(parameter.second))
+        if (!is_resolved_value_shape(parameter.second))
         {
-            mark_unsupported("procedure needs supported scalar parameters");
+            mark_unsupported("procedure needs resolved scalar or array parameters");
             return FunctionId();
         }
     }
@@ -465,9 +465,9 @@ StorageId IRBuilder::register_storage(const SymbolRef &symbol, const value_shape
         return StorageId();
     }
     Function *owner_function = current_function_mut();
-    if (!is_ready_type(type))
+    if (!is_resolved_value_shape(type))
     {
-        mark_unsupported("storage needs a supported scalar type");
+        mark_unsupported("storage needs a resolved scalar or array type");
         return StorageId();
     }
     if (!owner.valid() || (kind == StorageKind::Global && owner != program_id) ||
@@ -504,6 +504,11 @@ ValueId IRBuilder::emit_constant(const value_shape &type,
 {
     if (!can_emit_value(type))
     {
+        return ValueId();
+    }
+    if (!is_ready_type(type))
+    {
+        mark_invalid("constant must have a scalar type");
         return ValueId();
     }
     BasicBlock *block = current_block_mut();
@@ -582,6 +587,117 @@ bool IRBuilder::emit_store(StorageId destination, ValueId value)
     return true;
 }
 
+ValueId IRBuilder::emit_check_index(StorageId storage_id, ValueId raw_index)
+{
+    if (!emission_enabled())
+    {
+        return ValueId();
+    }
+    const Storage *storage = storage_for_id(storage_id);
+    const Value *index = value_for_id(raw_index);
+    BasicBlock *block = current_block_mut();
+    if (storage == NULL || !storage->type.is_array || index == NULL ||
+        index->type != value_shape{TYPE_INT, false, -1} || block == NULL ||
+        (storage->kind != StorageKind::Global && storage->owner != current_function()))
+    {
+        mark_invalid("checked index is ill typed or out of scope");
+        return ValueId();
+    }
+    if (!std::holds_alternative<std::monostate>(block->terminator))
+    {
+        mark_unsupported("post-return statements need control-flow lowering");
+        return ValueId();
+    }
+    const value_shape index_type{TYPE_INT, false, -1};
+    const ValueId result = append_value(index_type, ValueLocation::CheckedIndex);
+    if (result.valid())
+    {
+        block->instructions.push_back(CheckIndex{result, storage_id, raw_index});
+    }
+    return result;
+}
+
+ValueId IRBuilder::emit_element_load(StorageId storage_id, ValueId checked_index)
+{
+    if (!emission_enabled())
+    {
+        return ValueId();
+    }
+    const Storage *storage = storage_for_id(storage_id);
+    const Value *checked = value_for_id(checked_index);
+    BasicBlock *block = current_block_mut();
+    const auto matching_check = [block, storage_id, checked_index]() {
+        if (block == NULL)
+        {
+            return false;
+        }
+        return std::find_if(block->instructions.begin(), block->instructions.end(),
+                            [storage_id, checked_index](const Instruction &instruction) {
+            const CheckIndex *check = std::get_if<CheckIndex>(&instruction);
+            return check != NULL && check->result == checked_index &&
+                   check->storage == storage_id;
+        }) != block->instructions.end();
+    };
+    if (storage == NULL || !storage->type.is_array || checked == NULL ||
+        checked->location != ValueLocation::CheckedIndex || !matching_check() ||
+        (storage->kind != StorageKind::Global && storage->owner != current_function()))
+    {
+        mark_invalid("element load has no matching checked index");
+        return ValueId();
+    }
+    value_shape element_type;
+    element_type.element_type = storage->type.element_type;
+    const ValueId result = append_value(element_type, ValueLocation::ElementLoad);
+    if (result.valid())
+    {
+        block->instructions.push_back(ElementLoad{result, storage_id, checked_index});
+    }
+    return result;
+}
+
+bool IRBuilder::emit_element_store(StorageId storage_id, ValueId checked_index, ValueId value_id)
+{
+    if (!emission_enabled())
+    {
+        return false;
+    }
+    const Storage *storage = storage_for_id(storage_id);
+    const Value *checked = value_for_id(checked_index);
+    const Value *value = value_for_id(value_id);
+    BasicBlock *block = current_block_mut();
+    bool matching_check = false;
+    if (block != NULL)
+    {
+        matching_check = std::find_if(block->instructions.begin(), block->instructions.end(),
+                                      [storage_id, checked_index](const Instruction &instruction) {
+            const CheckIndex *check = std::get_if<CheckIndex>(&instruction);
+            return check != NULL && check->result == checked_index &&
+                   check->storage == storage_id;
+        }) != block->instructions.end();
+    }
+    value_shape element_type;
+    if (storage != NULL)
+    {
+        element_type.element_type = storage->type.element_type;
+    }
+    if (storage == NULL || !storage->type.is_array || checked == NULL ||
+        checked->location != ValueLocation::CheckedIndex || !matching_check || value == NULL ||
+        value->type != element_type ||
+        (storage->kind != StorageKind::Global && storage->owner != current_function()) ||
+        block == NULL)
+    {
+        mark_invalid("element store has no matching checked index or scalar value");
+        return false;
+    }
+    if (!std::holds_alternative<std::monostate>(block->terminator))
+    {
+        mark_unsupported("post-return statements need control-flow lowering");
+        return false;
+    }
+    block->instructions.push_back(ElementStore{storage_id, checked_index, value_id});
+    return true;
+}
+
 ValueId IRBuilder::emit_unary(UnaryOp operation, ValueId operand)
 {
     if (!emission_enabled())
@@ -589,6 +705,11 @@ ValueId IRBuilder::emit_unary(UnaryOp operation, ValueId operand)
         return ValueId();
     }
     const Value *source = value_for_id(operand);
+    if (source != NULL && source->type.is_array)
+    {
+        mark_unsupported("array unary expressions are deferred");
+        return ValueId();
+    }
     if (source == NULL || !is_ready_type(source->type) ||
         !valid_unary(operation, source->type.element_type))
     {
@@ -618,6 +739,12 @@ ValueId IRBuilder::emit_binary(BinaryOp operation, ValueId left, ValueId right)
     }
     const Value *left_value = value_for_id(left);
     const Value *right_value = value_for_id(right);
+    if (left_value != NULL && right_value != NULL &&
+        (left_value->type.is_array || right_value->type.is_array))
+    {
+        mark_unsupported("array binary expressions are deferred");
+        return ValueId();
+    }
     if (left_value == NULL || right_value == NULL ||
         left_value->type != right_value->type ||
         !valid_binary(operation, left_value->type.element_type))
@@ -976,7 +1103,7 @@ ValueId IRBuilder::append_value(const value_shape &type, ValueLocation location)
 {
     Function *function = current_function_mut();
     BasicBlock *block = current_block_mut();
-    if (function == NULL || block == NULL || !is_ready_type(type))
+    if (function == NULL || block == NULL || !is_resolved_value_shape(type))
     {
         mark_invalid("value has no supported owner or type");
         return ValueId();
@@ -1013,9 +1140,10 @@ bool IRBuilder::can_emit_value(const value_shape &type)
     {
         return false;
     }
-    if (!is_ready_type(type) || current_function_mut() == NULL || current_block_mut() == NULL)
+    if (!is_resolved_value_shape(type) || current_function_mut() == NULL ||
+        current_block_mut() == NULL)
     {
-        mark_invalid("value has no valid active basic block or scalar type");
+        mark_invalid("value has no valid active basic block or resolved shape");
         return false;
     }
     BasicBlock *block = current_block_mut();

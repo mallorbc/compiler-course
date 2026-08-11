@@ -99,6 +99,8 @@ enum class ValueLocation
 {
     Constant,
     Load,
+    CheckedIndex,
+    ElementLoad,
     Unary,
     Binary,
     Cast,
@@ -171,6 +173,27 @@ struct Store
     ValueId value;
 };
 
+struct CheckIndex
+{
+    ValueId result;
+    StorageId storage;
+    ValueId raw_index;
+};
+
+struct ElementLoad
+{
+    ValueId result;
+    StorageId storage;
+    ValueId checked_index;
+};
+
+struct ElementStore
+{
+    StorageId storage;
+    ValueId checked_index;
+    ValueId value;
+};
+
 struct Unary
 {
     ValueId result;
@@ -200,7 +223,8 @@ struct Call
     std::vector<ValueId> arguments;
 };
 
-using Instruction = std::variant<Constant, Load, Store, Unary, Binary, Cast, Call>;
+using Instruction = std::variant<Constant, Load, Store, CheckIndex, ElementLoad, ElementStore,
+                                 Unary, Binary, Cast, Call>;
 
 struct ReturnTerminator
 {
@@ -240,7 +264,8 @@ struct Function
     std::string name;
     SymbolRef symbol;
     //Program has no result and retains the default TYPE_NONE scalar shape.
-    //Procedures and external builtins must use a fully resolved scalar shape.
+    //Procedure/external results remain scalar.  User procedure parameters may
+    //also be resolved arrays; canonical external signatures remain scalar.
     value_shape return_type;
     std::vector<value_shape> parameter_types;
     std::vector<StorageId> parameters;
@@ -261,6 +286,11 @@ struct VerificationResult
     std::string reason;
 };
 
+//A resolved value shape is either a scalar with the canonical -1 bound or an
+//array with an inclusive nonnegative upper bound.  Scalar-only contexts retain
+//is_ready_type so return values, constants, conditions, and builtins do not
+//silently acquire aggregate semantics.
+bool is_resolved_value_shape(const value_shape &shape);
 bool is_ready_type(const value_shape &shape);
 VerificationResult verify_module(const Module &module);
 

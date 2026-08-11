@@ -35,6 +35,28 @@ def check(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def check_flat_array_c(generated: str, fixture: str) -> None:
+    check(not re.search(r"MM\[[^\n;]*\]\s*=\s*MM\[", generated),
+          f"{fixture}: direct MM-to-MM assignment")
+    check(not re.search(r"\b[A-Za-z_]\w*\([^;\n]*MM\[", generated),
+          f"{fixture}: helper receives a direct MM operand")
+    check(not re.search(r"\bif\s*\([^\n)]*MM\[", generated),
+          f"{fixture}: branch consumes MM directly")
+    for line in generated.splitlines():
+        stripped = line.strip()
+        if " = " not in stripped:
+            continue
+        right_hand_side = stripped.split(" = ", 1)[1]
+        if "MM[" not in right_hand_side:
+            continue
+        check(not stripped.startswith("MM["),
+              f"{fixture}: MM-to-MM store: {stripped}")
+        check(right_hand_side.startswith("MM[") and
+              right_hand_side.endswith("];") and
+              right_hand_side.count("MM[") == 1,
+              f"{fixture}: MM appears outside one pure load: {stripped}")
+
+
 def check_no_temp_debris(directory: Path) -> None:
     debris = list(directory.rglob("*restricted-c-tmp-*"))
     check(not debris, f"restricted-C temporary debris remains: {debris!r}")
@@ -1476,6 +1498,7 @@ def main() -> int:
             "program Stage6CStringCollision is\n"
             "variable value : string;\n"
             "procedure echo : string(variable text : string)\n"
+            "variable scratch : integer[5];\n"
             "begin\n"
             "    return text;\n"
             "end procedure;\n"
@@ -1498,8 +1521,393 @@ def main() -> int:
             string_collision_output,
             "",
             expected_returncode=1,
-            stdin_text="x" * ((16 * 1024 * 1024) - 4),
+            stdin_text="x" * ((16 * 1024 * 1024) - 10),
             timeout_sec=30.0,
+        )
+
+        declaration_array_source = root / "stage6d1-array-declaration-only.src"
+        declaration_array_output = root / "stage6d1-array-declaration-only.c"
+        declaration_array_source.write_text(
+            "program Stage6D1ArrayDeclarationOnly is\n"
+            "variable values : integer[2];\n"
+            "begin\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        declaration_array_emit = run_compiler(
+            "--emit-c", str(declaration_array_output), str(declaration_array_source)
+        )
+        check(declaration_array_emit.returncode == 0,
+              f"Stage6D1 declaration-only array emit failed: {declaration_array_emit.stderr!r}")
+        declaration_array_c = declaration_array_output.read_text(encoding="utf-8")
+        check("L_f0_s0:" not in declaration_array_c,
+              "declaration-only array emitted an unreferenced failure label")
+        strict_c11_syntax_check(declaration_array_output)
+        strict_c11_compile_and_run(declaration_array_output, "")
+
+        copy_cast_array_source = root / "stage6d1-array-copy-cast-only.src"
+        copy_cast_array_output = root / "stage6d1-array-copy-cast-only.c"
+        copy_cast_array_source.write_text(
+            "program Stage6D1ArrayCopyCastOnly is\n"
+            "variable ints : integer[2];\n"
+            "variable copy : integer[2];\n"
+            "variable floats : float[2];\n"
+            "begin\n"
+            "    copy := ints;\n"
+            "    floats := copy;\n"
+            "    ints := floats;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        copy_cast_array_emit = run_compiler(
+            "--emit-c", str(copy_cast_array_output), str(copy_cast_array_source)
+        )
+        check(copy_cast_array_emit.returncode == 0,
+              f"Stage6D1 copy/cast-only array emit failed: {copy_cast_array_emit.stderr!r}")
+        copy_cast_array_c = copy_cast_array_output.read_text(encoding="utf-8")
+        check("L_f0_s0:" not in copy_cast_array_c,
+              "copy/cast-only arrays emitted an unreferenced failure label")
+        check_flat_array_c(copy_cast_array_c, "copy/cast-only arrays")
+        strict_c11_syntax_check(copy_cast_array_output)
+        strict_c11_compile_and_run(copy_cast_array_output, "")
+
+        array_source = root / "stage6d1-array-basics.src"
+        array_output = root / "stage6d1-array-basics.c"
+        array_source.write_text(
+            "program Stage6D1ArrayBasics is\n"
+            "variable ints : integer[5];\n"
+            "variable copy : integer[5];\n"
+            "variable floats : float[5];\n"
+            "variable bools : bool[5];\n"
+            "variable index : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    ints[0] := 10;\n"
+            "    ints[5] := 60;\n"
+            "    index := 5;\n"
+            "    copy := ints;\n"
+            "    copy := copy;\n"
+            "    printed := putInteger(copy[0]);\n"
+            "    printed := putInteger(copy[index]);\n"
+            "    floats := copy;\n"
+            "    copy := floats;\n"
+            "    bools := copy;\n"
+            "    copy := bools;\n"
+            "    printed := putInteger(copy[0]);\n"
+            "    printed := putInteger(copy[index]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        array_emit = run_compiler("--emit-c", str(array_output), str(array_source))
+        check(array_emit.returncode == 0,
+              f"Stage6D1 array basics emit failed: {array_emit.stderr!r}")
+        array_c = array_output.read_text(encoding="utf-8")
+        check("for (" not in array_c and "while (" not in array_c,
+              "Stage6D1 generated a C loop instead of flat numeric labels")
+        check("Stage6D1ArrayBasics" not in array_c and "ints" not in array_c,
+              "Stage6D1 leaked source names into generated C")
+        check(not re.search(r"MM\[[^\n;]*\]\s*=\s*MM\[", array_c),
+              "Stage6D1 emitted an MM-to-MM aggregate copy")
+        check_flat_array_c(array_c, "array basics")
+        strict_c11_compile_and_run(array_output, "10\n60\n1\n1\n")
+
+        zero_bound_source = root / "stage6d1-array-zero-bound.src"
+        zero_bound_output = root / "stage6d1-array-zero-bound.c"
+        zero_bound_source.write_text(
+            "program Stage6D1ArrayZeroBound is\n"
+            "variable values : integer[0];\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    values[0] := 7;\n"
+            "    printed := putInteger(values[0]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        zero_bound_emit = run_compiler(
+            "--emit-c", str(zero_bound_output), str(zero_bound_source)
+        )
+        check(zero_bound_emit.returncode == 0,
+              f"Stage6D1 zero-bound array emit failed: {zero_bound_emit.stderr!r}")
+        check_flat_array_c(zero_bound_output.read_text(encoding="utf-8"),
+                           "zero-bound arrays")
+        strict_c11_compile_and_run(zero_bound_output, "7\n")
+
+        for oob_name, oob_statement in (
+            ("negative-read", "printed := putInteger(values[-1]);"),
+            ("negative-write", "values[-1] := 7;"),
+            ("upper-read", "printed := putInteger(values[1]);"),
+            ("upper-write", "values[1] := 7;"),
+        ):
+            boundary_source = root / f"stage6d1-array-{oob_name}.src"
+            boundary_output = root / f"stage6d1-array-{oob_name}.c"
+            boundary_source.write_text(
+                "program Stage6D1ArrayBoundary is\n"
+                "variable values : integer[0];\n"
+                "variable printed : bool;\n"
+                "begin\n"
+                f"    {oob_statement}\n"
+                "end program.\n",
+                encoding="utf-8",
+            )
+            boundary_emit = run_compiler(
+                "--emit-c", str(boundary_output), str(boundary_source)
+            )
+            check(boundary_emit.returncode == 0,
+                  f"Stage6D1 {oob_name} emit failed: {boundary_emit.stderr!r}")
+            boundary_c = boundary_output.read_text(encoding="utf-8")
+            check("goto L_f0_s0;" in boundary_c and "L_f0_s0:" in boundary_c,
+                  f"Stage6D1 {oob_name} omitted its reachable failure edge")
+            check_flat_array_c(boundary_c, f"array {oob_name}")
+            strict_c11_compile_and_run(boundary_output, "", expected_returncode=1)
+
+        index_once_source = root / "stage6d1-array-index-once.src"
+        index_once_output = root / "stage6d1-array-index-once.c"
+        index_once_source.write_text(
+            "program Stage6D1ArrayIndexOnce is\n"
+            "variable values : integer[0];\n"
+            "variable counter : integer;\n"
+            "variable printed : bool;\n"
+            "procedure next : integer()\n"
+            "begin\n"
+            "    counter := counter + 1;\n"
+            "    return 0;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    counter := 0;\n"
+            "    values[next()] := 7;\n"
+            "    printed := putInteger(counter);\n"
+            "    printed := putInteger(values[next()]);\n"
+            "    printed := putInteger(counter);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        index_once_emit = run_compiler(
+            "--emit-c", str(index_once_output), str(index_once_source)
+        )
+        check(index_once_emit.returncode == 0,
+              f"Stage6D1 side-effecting index emit failed: {index_once_emit.stderr!r}")
+        index_once_c = index_once_output.read_text(encoding="utf-8")
+        check_flat_array_c(index_once_c, "side-effecting array indexes")
+        strict_c11_compile_and_run(index_once_output, "1\n7\n2\n")
+
+        array_call_source = root / "stage6d1-array-call.src"
+        array_call_output = root / "stage6d1-array-call.c"
+        array_call_source.write_text(
+            "program Stage6D1ArrayCall is\n"
+            "variable values : integer[1];\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "procedure recurse : integer(variable input : integer[1], variable n : integer)\n"
+            "variable values : integer[1];\n"
+            "begin\n"
+            "    values := input;\n"
+            "    input[0] := 99;\n"
+            "    if (n == 0) then\n"
+            "        return values[0];\n"
+            "    else\n"
+            "        values[0] := values[0] + 1;\n"
+            "        return recurse(values, n - 1);\n"
+            "    end if;\n"
+            "end procedure;\n"
+            "procedure mutate : integer()\n"
+            "begin\n"
+            "    values[0] := 88;\n"
+            "    return 1;\n"
+            "end procedure;\n"
+            "procedure choose : integer(variable first : integer[1], variable later : integer)\n"
+            "begin\n"
+            "    return first[0];\n"
+            "end procedure;\n"
+            "begin\n"
+            "    values[0] := 7;\n"
+            "    values[1] := 8;\n"
+            "    answer := recurse(values, 3);\n"
+            "    printed := putInteger(answer);\n"
+            "    printed := putInteger(values[0]);\n"
+            "    answer := choose(values, mutate());\n"
+            "    printed := putInteger(answer);\n"
+            "    printed := putInteger(values[0]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        array_call_emit = run_compiler(
+            "--emit-c", str(array_call_output), str(array_call_source)
+        )
+        check(array_call_emit.returncode == 0,
+              f"Stage6D1 array call emit failed: {array_call_emit.stdout!r} {array_call_emit.stderr!r}")
+        array_call_c = array_call_output.read_text(encoding="utf-8")
+        check_flat_array_c(array_call_c, "array calls")
+        strict_c11_compile_and_run(array_call_output, "10\n7\n7\n88\n")
+
+        string_array_source = root / "stage6d1-string-array.src"
+        string_array_output = root / "stage6d1-string-array.c"
+        string_array_source.write_text(
+            "program Stage6D1StringArray is\n"
+            "variable values : string[1];\n"
+            "variable copy : string[1];\n"
+            "variable printed : bool;\n"
+            "procedure show : bool(variable input : string[1])\n"
+            "variable local : string[1];\n"
+            "variable shown : bool;\n"
+            "begin\n"
+            "    shown := putString(local[0]);\n"
+            "    local := input;\n"
+            "    return putString(local[1]);\n"
+            "end procedure;\n"
+            "begin\n"
+            "    printed := putString(values[0]);\n"
+            "    values[1] := \"same\";\n"
+            "    copy := values;\n"
+            "    values[1] := \"changed\";\n"
+            "    printed := putBool(copy[1] == \"same\");\n"
+            "    printed := putString(copy[1]);\n"
+            "    printed := show(copy);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        string_array_emit = run_compiler(
+            "--emit-c", str(string_array_output), str(string_array_source)
+        )
+        check(string_array_emit.returncode == 0,
+              f"Stage6D1 String array emit failed: {string_array_emit.stderr!r}")
+        check_flat_array_c(string_array_output.read_text(encoding="utf-8"), "String arrays")
+        strict_c11_compile_and_run(string_array_output, "\ntrue\nsame\n\nsame\n")
+
+        oob_source = root / "stage6d1-oob-before-rhs.src"
+        oob_output = root / "stage6d1-oob-before-rhs.c"
+        oob_source.write_text(
+            "program Stage6D1OOB is\n"
+            "variable values : integer[5];\n"
+            "begin\n"
+            "    values[6] := putInteger(99);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        oob_emit = run_compiler("--emit-c", str(oob_output), str(oob_source))
+        check(oob_emit.returncode == 0,
+              f"Stage6D1 OOB emit failed: {oob_emit.stderr!r}")
+        strict_c11_compile_and_run(oob_output, "", expected_returncode=1)
+
+        large_array_source = root / "stage6d1-large-array.src"
+        large_array_output = root / "stage6d1-large-array.c"
+        large_array_source.write_text(
+            "program Stage6D1LargeArray is\n"
+            "variable values : integer[16777215];\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    values[16777215] := 7;\n"
+            "    printed := putInteger(values[16777215]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        large_array_emit = run_compiler(
+            "--emit-c", str(large_array_output), str(large_array_source)
+        )
+        check(large_array_emit.returncode != 0 and
+              "codegen: unsupported" in large_array_emit.stderr,
+              "Stage6D1 reachable over-capacity global was not rejected atomically")
+        check(not large_array_output.exists(),
+              "Stage6D1 over-capacity global published partial output")
+
+        compact_array_source = root / "stage6d1-compact-array.src"
+        compact_array_output = root / "stage6d1-compact-array.c"
+        compact_array_source.write_text(
+            "program Stage6D1CompactArray is\n"
+            "variable values : integer[1000000];\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    values[1000000] := 7;\n"
+            "    printed := putInteger(values[1000000]);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        compact_array_emit = run_compiler(
+            "--emit-c", str(compact_array_output), str(compact_array_source)
+        )
+        check(compact_array_emit.returncode == 0,
+              f"Stage6D1 compact large array emit failed: {compact_array_emit.stderr!r}")
+        compact_array_c = compact_array_output.read_text(encoding="utf-8")
+        check(len(compact_array_c) < 20000,
+              "Stage6D1 generated source grew proportionally with a large bound")
+        strict_c11_compile_and_run(compact_array_output, "7\n")
+
+        dead_huge_source = root / "stage6d1-dead-huge-array.src"
+        dead_huge_output = root / "stage6d1-dead-huge-array.c"
+        dead_huge_source.write_text(
+            "program Stage6D1DeadHuge is\n"
+            "variable answer : integer;\n"
+            "procedure hidden : integer()\n"
+            "variable huge : integer[16777215];\n"
+            "begin\n"
+            "    return 1;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := 7;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        dead_huge_emit = run_compiler(
+            "--emit-c", str(dead_huge_output), str(dead_huge_source)
+        )
+        check(dead_huge_emit.returncode == 0,
+              f"Stage6D1 dead huge array was not pruned: {dead_huge_emit.stderr!r}")
+        dead_huge_c = dead_huge_output.read_text(encoding="utf-8")
+        check("L_f10_" not in dead_huge_c and "16777216" not in dead_huge_c,
+              "Stage6D1 dead huge array contributed layout or labels")
+        strict_c11_syntax_check(dead_huge_output)
+
+        reachable_huge_source = root / "stage6d1-reachable-huge-array.src"
+        reachable_huge_output = root / "stage6d1-reachable-huge-array.c"
+        reachable_huge_source.write_text(
+            "program Stage6D1ReachableHuge is\n"
+            "variable answer : integer;\n"
+            "procedure huge : integer()\n"
+            "variable values : integer[16777215];\n"
+            "begin\n"
+            "    return 1;\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := huge();\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        reachable_huge_output.write_text("preserve huge output\n", encoding="utf-8")
+        reachable_huge_emit = run_compiler(
+            "--emit-c", str(reachable_huge_output), str(reachable_huge_source)
+        )
+        check(reachable_huge_emit.returncode != 0 and
+              "codegen: unsupported" in reachable_huge_emit.stderr,
+              "Stage6D1 reachable huge frame was not Unsupported")
+        check(reachable_huge_output.read_text(encoding="utf-8") == "preserve huge output\n",
+              "Stage6D1 reachable huge frame replaced its output sentinel")
+
+        recursive_frame_source = root / "stage6d1-recursive-array-frame.src"
+        recursive_frame_output = root / "stage6d1-recursive-array-frame.c"
+        recursive_frame_source.write_text(
+            "program Stage6D1RecursiveArrayFrame is\n"
+            "variable seed : integer[0];\n"
+            "variable answer : integer;\n"
+            "procedure descend : integer(variable input : integer[0])\n"
+            "variable pressure : integer[1048575];\n"
+            "begin\n"
+            "    return descend(input);\n"
+            "end procedure;\n"
+            "begin\n"
+            "    answer := descend(seed);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        recursive_frame_emit = run_compiler(
+            "--emit-c", str(recursive_frame_output), str(recursive_frame_source)
+        )
+        check(recursive_frame_emit.returncode == 0,
+              f"Stage6D1 recursive frame emit failed: {recursive_frame_emit.stderr!r}")
+        recursive_frame_c = recursive_frame_output.read_text(encoding="utf-8")
+        check("goto L_f0_s0;" in recursive_frame_c and "L_f0_s0:" in recursive_frame_c,
+              "Stage6D1 recursive frame omitted controlled capacity failure")
+        check_flat_array_c(recursive_frame_c, "recursive array frames")
+        strict_c11_compile_and_run(
+            recursive_frame_output, "", expected_returncode=1, timeout_sec=10.0
         )
 
         hostile_output = root / "hostile ; $ [name].c"
@@ -1528,6 +1936,7 @@ def main() -> int:
             "program unsupported_source is\n"
             "variable values : integer[0];\n"
             "begin\n"
+            "    values := values + values;\n"
             "end program.\n",
             encoding="utf-8",
         )
@@ -1536,22 +1945,24 @@ def main() -> int:
         check("codegen: unsupported" in unsupported.stderr, f"missing unsupported error: {unsupported.stderr!r}")
         check(sentinel.read_text(encoding="utf-8") == "do not replace\n", "unsupported input replaced sentinel")
 
-        string_array_source = root / "unsupported-string-array.src"
-        string_array_source.write_text(
-            "program UnsupportedStringArray is\n"
-            "variable values : string[1];\n"
+        lifted_array_source = root / "unsupported-lifted-array.src"
+        lifted_array_source.write_text(
+            "program UnsupportedLiftedArray is\n"
+            "variable values : integer[1];\n"
+            "variable other : integer[1];\n"
             "begin\n"
+            "    values := values + other;\n"
             "end program.\n",
             encoding="utf-8",
         )
-        string_array = run_compiler(
-            "--emit-c", str(sentinel), str(string_array_source)
+        lifted_array = run_compiler(
+            "--emit-c", str(sentinel), str(lifted_array_source)
         )
-        check(string_array.returncode != 0, "String array unexpectedly emitted C")
-        check("codegen: unsupported" in string_array.stderr,
-              f"String array lacked unsupported status: {string_array.stderr!r}")
+        check(lifted_array.returncode != 0, "lifted array operation unexpectedly emitted C")
+        check("codegen: unsupported" in lifted_array.stderr,
+              f"lifted array operation lacked unsupported status: {lifted_array.stderr!r}")
         check(sentinel.read_text(encoding="utf-8") == "do not replace\n",
-              "String array replaced the output sentinel")
+              "lifted array operation replaced the output sentinel")
 
         output_directory = root / "output-directory"
         output_directory.mkdir()

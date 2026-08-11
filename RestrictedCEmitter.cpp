@@ -27,9 +27,36 @@ RestrictedCResult failure(RestrictedCStatus status, const std::string &diagnosti
 
 bool supported_shape(const value_shape &shape)
 {
-    return !shape.is_array && shape.array_upper_bound == -1 &&
+    return ir::is_resolved_value_shape(shape) &&
            (shape.element_type == TYPE_INT || shape.element_type == TYPE_BOOL ||
             shape.element_type == TYPE_FLOAT || shape.element_type == TYPE_STRING);
+}
+
+bool shape_width(const value_shape &shape, std::size_t &width)
+{
+    if (!ir::is_resolved_value_shape(shape))
+    {
+        return false;
+    }
+    const std::uint64_t widened = shape.is_array ?
+        static_cast<std::uint64_t>(static_cast<unsigned int>(shape.array_upper_bound)) + 1U : 1U;
+    if (widened > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()))
+    {
+        return false;
+    }
+    width = static_cast<std::size_t>(widened);
+    return true;
+}
+
+bool reserve_words(std::size_t &cursor, std::size_t width)
+{
+    if (cursor > RestrictedCEmitter::memory_word_capacity() ||
+        width > RestrictedCEmitter::memory_word_capacity() - cursor)
+    {
+        return false;
+    }
+    cursor += width;
+    return true;
 }
 
 bool supported_unary(ir::UnaryOp operation, data_types type)
@@ -165,6 +192,8 @@ struct RuntimeRequirements
     bool float_to_int = false;
     bool string_words = false;
     bool string_equality = false;
+    bool arrays = false;
+    bool bounds_checks = false;
     std::vector<std::string> string_literals;
 
     void require(BuiltinId id)
@@ -787,7 +816,16 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
     std::size_t global_count = 0;
     for (const ir::Storage &storage : module.storages)
     {
-        global_count += storage.kind == ir::StorageKind::Global ? 1U : 0U;
+        if (storage.kind == ir::StorageKind::Global)
+        {
+            std::size_t width = 0;
+            if (!shape_width(storage.type, width) ||
+                !reserve_words(global_count, width))
+            {
+                return failure(RestrictedCStatus::Unsupported,
+                               "restricted C global storage exceeds the fixed memory capacity");
+            }
+        }
     }
     if (!RestrictedCEmitter::storage_count_fits_memory(global_count))
     {
@@ -863,6 +901,7 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             }
             runtime.float_words = runtime.float_words || shape.element_type == TYPE_FLOAT;
             runtime.string_words = runtime.string_words || shape.element_type == TYPE_STRING;
+            runtime.arrays = runtime.arrays || shape.is_array;
         }
         for (const ir::Value &value : function.values)
         {
@@ -873,6 +912,7 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
             }
             runtime.float_words = runtime.float_words || value.type.element_type == TYPE_FLOAT;
             runtime.string_words = runtime.string_words || value.type.element_type == TYPE_STRING;
+            runtime.arrays = runtime.arrays || value.type.is_array;
         }
         for (const ir::BasicBlock &block : function.blocks)
         {
@@ -937,6 +977,10 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
                     runtime.float_decode = runtime.float_decode ||
                                            cast->operation == ir::CastOp::FloatToInt;
                 }
+                else if (std::holds_alternative<ir::CheckIndex>(instruction))
+                {
+                    runtime.bounds_checks = true;
+                }
                 if (const ir::Call *call = std::get_if<ir::Call>(&instruction))
                 {
                     const ir::Function *callee = function_for(module, call->callee);
@@ -973,9 +1017,10 @@ RestrictedCResult preflight_with_procedures(const ir::Module &module,
         {
             runtime.float_words = runtime.float_words || storage.type.element_type == TYPE_FLOAT;
             runtime.string_words = runtime.string_words || storage.type.element_type == TYPE_STRING;
+            runtime.arrays = runtime.arrays || storage.type.is_array;
         }
     }
-    runtime.procedure_mode = runtime.procedure_mode || runtime.string_words;
+    runtime.procedure_mode = runtime.procedure_mode || runtime.string_words || runtime.arrays;
     RestrictedCResult result;
     result.status = RestrictedCStatus::Success;
     return result;
@@ -1351,19 +1396,35 @@ bool make_procedure_frames(const ir::Module &module, const std::vector<bool> &re
         }
         ProcedureFrame &frame = frames[function.id.index];
         frame.words = 4U; //old SP, old FP, continuation, result-word address
-        for (ir::StorageId ignored : function.parameters)
+        for (ir::StorageId parameter : function.parameters)
         {
-            (void)ignored;
-            frame.parameter_offsets.push_back(frame.words++);
+            const ir::Storage &storage = module.storages[parameter.index];
+            std::size_t width = 0;
+            frame.parameter_offsets.push_back(frame.words);
+            if (!shape_width(storage.type, width) || !reserve_words(frame.words, width))
+            {
+                return false;
+            }
         }
-        for (ir::StorageId ignored : function.locals)
+        for (ir::StorageId local : function.locals)
         {
-            (void)ignored;
-            frame.local_offsets.push_back(frame.words++);
+            const ir::Storage &storage = module.storages[local.index];
+            std::size_t width = 0;
+            frame.local_offsets.push_back(frame.words);
+            if (!shape_width(storage.type, width) || !reserve_words(frame.words, width))
+            {
+                return false;
+            }
         }
         for (std::size_t value = 0; value < function.values.size(); value++)
         {
-            frame.value_offsets.push_back(frame.words++);
+            std::size_t width = 0;
+            frame.value_offsets.push_back(frame.words);
+            if (!shape_width(function.values[value].type, width) ||
+                !reserve_words(frame.words, width))
+            {
+                return false;
+            }
         }
         if (frame.words > RestrictedCEmitter::memory_word_capacity() - static_words)
         {
@@ -1426,12 +1487,13 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
     {
         if (storage.kind == ir::StorageKind::Global)
         {
-            if (static_words == RestrictedCEmitter::memory_word_capacity())
+            std::size_t width = 0;
+            global_words[storage.id.index] = static_words;
+            if (!shape_width(storage.type, width) || !reserve_words(static_words, width))
             {
                 return failure(RestrictedCStatus::Unsupported,
                                "restricted C globals exceed fixed memory capacity");
             }
-            global_words[storage.id.index] = static_words++;
         }
     }
     std::vector<std::size_t> program_spills(program.values.size(),
@@ -1476,6 +1538,22 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
             static_words += literal.size() + 1U;
         }
     }
+    std::vector<std::size_t> program_aggregate_words(program.values.size(),
+                                                     std::numeric_limits<std::size_t>::max());
+    for (const ir::Value &value : program.values)
+    {
+        if (!value.type.is_array)
+        {
+            continue;
+        }
+        std::size_t width = 0;
+        program_aggregate_words[value.id.index] = static_words;
+        if (!shape_width(value.type, width) || !reserve_words(static_words, width))
+        {
+            return failure(RestrictedCStatus::Unsupported,
+                           "restricted C Program aggregate temporaries exceed fixed memory capacity");
+        }
+    }
     std::vector<ProcedureFrame> frames;
     if (!make_procedure_frames(module, runtime.reachable_functions, frames, static_words))
     {
@@ -1517,6 +1595,29 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
             return value_register(value);
         }
         return frame_word(frames[function.id.index].value_offsets[value.index]);
+    };
+    const auto storage_base = [&module, &frames, &global_words](const ir::Function &function,
+                                                                ir::StorageId storage) {
+        const ir::Storage &entry = module.storages[storage.index];
+        if (entry.kind == ir::StorageKind::Global)
+        {
+            return std::to_string(global_words[storage.index]) + "u";
+        }
+        return std::string("((uint32_t)Reg[1u] + ") +
+               std::to_string(frame_storage_offset(function, frames[function.id.index], storage)) +
+               "u)";
+    };
+    const auto value_base = [&frames, &program_aggregate_words](const ir::Function &function,
+                                                                 ir::ValueId value) {
+        if (function.kind == ir::FunctionKind::Program)
+        {
+            return std::to_string(program_aggregate_words[value.index]) + "u";
+        }
+        return std::string("((uint32_t)Reg[1u] + ") +
+               std::to_string(frames[function.id.index].value_offsets[value.index]) + "u)";
+    };
+    const auto indexed_word = [](const std::string &base, const std::string &index) {
+        return std::string("MM[") + base + " + (uint32_t)" + index + "]";
     };
     const auto result_address = [&frames, &program_spills](const ir::Function &function,
                                                              ir::ValueId value) {
@@ -1564,6 +1665,72 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
     }
     output << "int32_t MM[MM_WORDS];\nint32_t Reg[REGISTER_COUNT];\n\n";
     emit_runtime_support(output, runtime);
+    std::size_t aggregate_loop_number = 0;
+    const auto emit_fill_loop = [&output, &layout, &indexed_word, &aggregate_loop_number](
+                                    const std::string &base, std::size_t width,
+                                    const std::string &fill) {
+        const std::string prefix = "L_a" + std::to_string(aggregate_loop_number++) + "_";
+        const std::string index = register_slot(layout.temporary_a);
+        const std::string condition = register_slot(layout.temporary_c);
+        output << "    " << index << " = INT32_C(0);\n";
+        output << prefix << "0:\n";
+        output << "    " << condition << " = ((uint32_t)" << index << " < UINT32_C("
+               << width << ")) ? INT32_C(1) : INT32_C(0);\n";
+        output << "    if (" << condition << ") goto " << prefix << "1;\n";
+        output << "    goto " << prefix << "2;\n";
+        output << prefix << "1:\n";
+        output << "    " << indexed_word(base, index) << " = " << fill << ";\n";
+        output << "    " << index << " = I32_FROM_U32((uint32_t)" << index
+               << " + UINT32_C(1));\n";
+        output << "    goto " << prefix << "0;\n";
+        output << prefix << "2:\n";
+    };
+    const auto cast_word = [](ir::CastOp operation, const std::string &operand) {
+        if (operation == ir::CastOp::IntToBool)
+        {
+            return "(" + operand + " != INT32_C(0)) ? INT32_C(1) : INT32_C(0)";
+        }
+        if (operation == ir::CastOp::IntToFloat)
+        {
+            return "R_f32_word((float)" + operand + ")";
+        }
+        if (operation == ir::CastOp::FloatToInt)
+        {
+            return "R_f32_i32(" + operand + ")";
+        }
+        return operand;
+    };
+    const auto emit_copy_loop = [&output, &layout, &indexed_word, &aggregate_loop_number,
+                                 &cast_word](const std::string &source,
+                                             const std::string &destination,
+                                             std::size_t width,
+                                             const ir::CastOp *conversion) {
+        const std::string prefix = "L_a" + std::to_string(aggregate_loop_number++) + "_";
+        const std::string index = register_slot(layout.temporary_a);
+        const std::string element = register_slot(layout.temporary_b);
+        const std::string scratch = register_slot(layout.temporary_c);
+        output << "    " << index << " = INT32_C(0);\n";
+        output << prefix << "0:\n";
+        output << "    " << scratch << " = ((uint32_t)" << index << " < UINT32_C("
+               << width << ")) ? INT32_C(1) : INT32_C(0);\n";
+        output << "    if (" << scratch << ") goto " << prefix << "1;\n";
+        output << "    goto " << prefix << "2;\n";
+        output << prefix << "1:\n";
+        output << "    " << element << " = " << indexed_word(source, index) << ";\n";
+        if (conversion != NULL)
+        {
+            output << "    " << scratch << " = " << cast_word(*conversion, element) << ";\n";
+            output << "    " << indexed_word(destination, index) << " = " << scratch << ";\n";
+        }
+        else
+        {
+            output << "    " << indexed_word(destination, index) << " = " << element << ";\n";
+        }
+        output << "    " << index << " = I32_FROM_U32((uint32_t)" << index
+               << " + UINT32_C(1));\n";
+        output << "    goto " << prefix << "0;\n";
+        output << prefix << "2:\n";
+    };
     output << "int main(void)\n{\n";
     output << "    " << register_slot(layout.exit) << " = INT32_C(0);\n";
     output << "    Reg[0u] = INT32_C(" << static_words << ");\n";
@@ -1580,8 +1747,18 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
             if (storage.kind == ir::StorageKind::Global &&
                 storage.type.element_type == TYPE_STRING)
             {
-                output << "    " << word(global_words[storage.id.index]) << " = INT32_C("
-                       << empty_string_handle << ");\n";
+                if (storage.type.is_array)
+                {
+                    std::size_t width = 0;
+                    (void)shape_width(storage.type, width);
+                    emit_fill_loop(std::to_string(global_words[storage.id.index]) + "u", width,
+                                   "STRING_EMPTY_HANDLE");
+                }
+                else
+                {
+                    output << "    " << word(global_words[storage.id.index]) << " = INT32_C("
+                           << empty_string_handle << ");\n";
+                }
             }
         }
         output << "    " << word(empty_string_handle) << " = INT32_C(0);\n";
@@ -1639,7 +1816,15 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 }
                 else if (const ir::Load *load = std::get_if<ir::Load>(&instruction))
                 {
-                    if (procedure_function)
+                    const value_shape shape = function.values[load->result.index].type;
+                    if (shape.is_array)
+                    {
+                        std::size_t width = 0;
+                        (void)shape_width(shape, width);
+                        emit_copy_loop(storage_base(function, load->source),
+                                       value_base(function, load->result), width, NULL);
+                    }
+                    else if (procedure_function)
                     {
                         output << "    " << register_slot(layout.temporary_a) << " = "
                                << storage_read(function, load->source) << ";\n";
@@ -1654,7 +1839,15 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 }
                 else if (const ir::Store *store = std::get_if<ir::Store>(&instruction))
                 {
-                    if (procedure_function)
+                    const value_shape shape = function.values[store->value.index].type;
+                    if (shape.is_array)
+                    {
+                        std::size_t width = 0;
+                        (void)shape_width(shape, width);
+                        emit_copy_loop(value_base(function, store->value),
+                                       storage_base(function, store->destination), width, NULL);
+                    }
+                    else if (procedure_function)
                     {
                         output << "    " << register_slot(layout.temporary_a) << " = "
                                << value_read(function, store->value) << ";\n";
@@ -1666,6 +1859,43 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                         output << "    " << storage_read(function, store->destination) << " = "
                                << value_read(function, store->value) << ";\n";
                     }
+                }
+                else if (const ir::CheckIndex *check = std::get_if<ir::CheckIndex>(&instruction))
+                {
+                    const ir::Storage &storage = module.storages[check->storage.index];
+                    output << "    " << register_slot(layout.temporary_a) << " = "
+                           << value_read(function, check->raw_index) << ";\n";
+                    output << "    " << register_slot(layout.temporary_c) << " = ("
+                           << register_slot(layout.temporary_a) << " < INT32_C(0) || (uint32_t)"
+                           << register_slot(layout.temporary_a) << " > UINT32_C("
+                           << storage.type.array_upper_bound
+                           << ")) ? INT32_C(1) : INT32_C(0);\n";
+                    output << "    if (" << register_slot(layout.temporary_c)
+                           << ") goto L_f0_s0;\n";
+                    output << "    " << value_write(function, check->result) << " = "
+                           << register_slot(layout.temporary_a) << ";\n";
+                }
+                else if (const ir::ElementLoad *load =
+                             std::get_if<ir::ElementLoad>(&instruction))
+                {
+                    output << "    " << register_slot(layout.temporary_a) << " = "
+                           << value_read(function, load->checked_index) << ";\n";
+                    output << "    " << register_slot(layout.temporary_b) << " = "
+                           << indexed_word(storage_base(function, load->storage),
+                                           register_slot(layout.temporary_a)) << ";\n";
+                    output << "    " << value_write(function, load->result) << " = "
+                           << register_slot(layout.temporary_b) << ";\n";
+                }
+                else if (const ir::ElementStore *store =
+                             std::get_if<ir::ElementStore>(&instruction))
+                {
+                    output << "    " << register_slot(layout.temporary_a) << " = "
+                           << value_read(function, store->checked_index) << ";\n";
+                    output << "    " << register_slot(layout.temporary_b) << " = "
+                           << value_read(function, store->value) << ";\n";
+                    output << "    " << indexed_word(storage_base(function, store->storage),
+                                                        register_slot(layout.temporary_a))
+                           << " = " << register_slot(layout.temporary_b) << ";\n";
                 }
                 else if (const ir::Unary *unary = std::get_if<ir::Unary>(&instruction))
                 {
@@ -1753,6 +1983,16 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                 }
                 else if (const ir::Cast *cast = std::get_if<ir::Cast>(&instruction))
                 {
+                    const value_shape shape = function.values[cast->result.index].type;
+                    if (shape.is_array)
+                    {
+                        std::size_t width = 0;
+                        (void)shape_width(shape, width);
+                        emit_copy_loop(value_base(function, cast->operand),
+                                       value_base(function, cast->result), width,
+                                       &cast->operation);
+                        continue;
+                    }
                     const std::string operand = procedure_function ? register_slot(layout.temporary_a) :
                                                                       value_read(function, cast->operand);
                     const std::string result = procedure_function ? register_slot(layout.temporary_b) :
@@ -1838,11 +2078,27 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                         output << "    if (" << register_slot(layout.temporary_a) << ") goto L_f0_s0;\n";
                         for (std::size_t argument = 0; argument < call->arguments.size(); argument++)
                         {
-                            output << "    " << register_slot(layout.temporary_b) << " = "
-                                   << value_read(function, call->arguments[argument]) << ";\n";
-                            output << "    MM[(uint32_t)Reg[0u] + "
-                                   << callee_frame.parameter_offsets[argument] << "u] = "
-                                   << register_slot(layout.temporary_b) << ";\n";
+                            const value_shape argument_shape =
+                                function.values[call->arguments[argument].index].type;
+                            if (argument_shape.is_array)
+                            {
+                                std::size_t width = 0;
+                                (void)shape_width(argument_shape, width);
+                                emit_copy_loop(
+                                    value_base(function, call->arguments[argument]),
+                                    "((uint32_t)Reg[0u] + " +
+                                        std::to_string(callee_frame.parameter_offsets[argument]) +
+                                        "u)",
+                                    width, NULL);
+                            }
+                            else
+                            {
+                                output << "    " << register_slot(layout.temporary_b) << " = "
+                                       << value_read(function, call->arguments[argument]) << ";\n";
+                                output << "    MM[(uint32_t)Reg[0u] + "
+                                       << callee_frame.parameter_offsets[argument] << "u] = "
+                                       << register_slot(layout.temporary_b) << ";\n";
+                            }
                         }
                         output << "    MM[(uint32_t)Reg[0u]] = Reg[0u];\n";
                         output << "    MM[(uint32_t)Reg[0u] + 1u] = Reg[1u];\n";
@@ -1851,20 +2107,73 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                                << result_address(function, call->result) << ";\n";
                         output << "    MM[(uint32_t)Reg[0u] + 3u] = "
                                << register_slot(layout.temporary_c) << ";\n";
-                        for (std::size_t offset = 4U + callee_frame.parameter_offsets.size();
-                             offset < callee_frame.words; offset++)
+                        if (!runtime.arrays)
                         {
-                            output << "    MM[(uint32_t)Reg[0u] + " << offset << "u] = INT32_C(0);\n";
-                        }
-                        for (std::size_t local_index = 0; local_index < callee.locals.size();
-                             local_index++)
-                        {
-                            const ir::Storage &local = module.storages[callee.locals[local_index].index];
-                            if (local.type.element_type == TYPE_STRING)
+                            for (std::size_t offset = 4U + callee_frame.parameter_offsets.size();
+                                 offset < callee_frame.words; offset++)
                             {
-                                output << "    MM[(uint32_t)Reg[0u] + "
-                                       << callee_frame.local_offsets[local_index]
-                                       << "u] = INT32_C(" << empty_string_handle << ");\n";
+                                output << "    MM[(uint32_t)Reg[0u] + " << offset
+                                       << "u] = INT32_C(0);\n";
+                            }
+                        }
+                        else
+                        {
+                            for (std::size_t local_index = 0; local_index < callee.locals.size();
+                                 local_index++)
+                            {
+                                const ir::Storage &local =
+                                    module.storages[callee.locals[local_index].index];
+                                std::size_t width = 0;
+                                (void)shape_width(local.type, width);
+                                const std::string base = "((uint32_t)Reg[0u] + " +
+                                    std::to_string(callee_frame.local_offsets[local_index]) + "u)";
+                                if (local.type.is_array)
+                                {
+                                    emit_fill_loop(base, width,
+                                        local.type.element_type == TYPE_STRING ?
+                                            "STRING_EMPTY_HANDLE" : "INT32_C(0)");
+                                }
+                                else
+                                {
+                                    output << "    MM[(uint32_t)Reg[0u] + "
+                                           << callee_frame.local_offsets[local_index] << "u] = "
+                                           << (local.type.element_type == TYPE_STRING ?
+                                                   "STRING_EMPTY_HANDLE" : "INT32_C(0)")
+                                           << ";\n";
+                                }
+                            }
+                            for (std::size_t value_index = 0; value_index < callee.values.size();
+                                 value_index++)
+                            {
+                                std::size_t width = 0;
+                                (void)shape_width(callee.values[value_index].type, width);
+                                const std::string base = "((uint32_t)Reg[0u] + " +
+                                    std::to_string(callee_frame.value_offsets[value_index]) + "u)";
+                                if (callee.values[value_index].type.is_array)
+                                {
+                                    emit_fill_loop(base, width, "INT32_C(0)");
+                                }
+                                else
+                                {
+                                    output << "    MM[(uint32_t)Reg[0u] + "
+                                           << callee_frame.value_offsets[value_index]
+                                           << "u] = INT32_C(0);\n";
+                                }
+                            }
+                        }
+                        if (!runtime.arrays)
+                        {
+                            for (std::size_t local_index = 0; local_index < callee.locals.size();
+                                 local_index++)
+                            {
+                                const ir::Storage &local =
+                                    module.storages[callee.locals[local_index].index];
+                                if (local.type.element_type == TYPE_STRING)
+                                {
+                                    output << "    MM[(uint32_t)Reg[0u] + "
+                                           << callee_frame.local_offsets[local_index]
+                                           << "u] = INT32_C(" << empty_string_handle << ");\n";
+                                }
                             }
                         }
                         output << "    Reg[1u] = Reg[0u];\n";
@@ -1934,6 +2243,9 @@ RestrictedCResult emit_with_procedures(const ir::Module &module, const ir::Funct
                    << continuations[continuation] << ";\n";
         }
         output << "    " << register_slot(layout.exit) << " = INT32_C(1);\n    goto L_f0_x0;\n";
+    }
+    if (runtime.procedures || runtime.bounds_checks)
+    {
         output << "L_f0_s0:\n    " << register_slot(layout.exit)
                << " = INT32_C(1);\n    goto L_f0_x0;\n";
     }

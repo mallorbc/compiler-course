@@ -46,7 +46,9 @@ bool is_visible_storage(const Storage &storage, FunctionId function, FunctionId 
 
 bool matches_cast(CastOp operation, const value_shape &source, const value_shape &target)
 {
-    if (source.is_array || target.is_array)
+    if (!is_resolved_value_shape(source) || !is_resolved_value_shape(target) ||
+        source.is_array != target.is_array ||
+        (source.is_array && source.array_upper_bound != target.array_upper_bound))
     {
         return false;
     }
@@ -101,8 +103,18 @@ bool valid_binary(BinaryOp operation, data_types type)
 
 bool is_ready_type(const value_shape &shape)
 {
-    return shape.element_type != TYPE_NONE && !shape.is_array &&
+    return (shape.element_type == TYPE_INT || shape.element_type == TYPE_FLOAT ||
+            shape.element_type == TYPE_STRING || shape.element_type == TYPE_BOOL) &&
+           !shape.is_array &&
            shape.array_upper_bound == -1;
+}
+
+bool is_resolved_value_shape(const value_shape &shape)
+{
+    return (shape.element_type == TYPE_INT || shape.element_type == TYPE_FLOAT ||
+            shape.element_type == TYPE_STRING || shape.element_type == TYPE_BOOL) &&
+           ((!shape.is_array && shape.array_upper_bound == -1) ||
+            (shape.is_array && shape.array_upper_bound >= 0));
 }
 
 bool is_program_result_shape(const value_shape &shape)
@@ -146,9 +158,11 @@ VerificationResult verify_module(const Module &module)
         }
         for (const value_shape &parameter : function.parameter_types)
         {
-            if (function.kind == FunctionKind::Program || !is_ready_type(parameter))
+            if (function.kind == FunctionKind::Program ||
+                (function.kind == FunctionKind::ExternalBuiltin ? !is_ready_type(parameter) :
+                                                                  !is_resolved_value_shape(parameter)))
             {
-                return failure("function has unresolved or array parameter type");
+                return failure("function has an invalid parameter type");
             }
         }
         if (function.kind == FunctionKind::Program)
@@ -201,7 +215,7 @@ VerificationResult verify_module(const Module &module)
     {
         const Storage &storage = module.storages[storage_index];
         if (storage.id != StorageId(static_cast<std::uint32_t>(storage_index)) ||
-            !is_ready_type(storage.type) || storage.symbol.name.empty() ||
+            !is_resolved_value_shape(storage.type) || storage.symbol.name.empty() ||
             storage.symbol.scope_id < 0 ||
             (storage.kind == StorageKind::Global && storage.symbol.scope_id != 0) ||
             (storage.kind != StorageKind::Global && storage.symbol.scope_id == 0) ||
@@ -484,7 +498,8 @@ VerificationResult verify_module(const Module &module)
                 return false;
             }
             const Value &value = function.values[id.index];
-            if (value.id != id || value.location != location || !is_ready_type(value.type))
+            if (value.id != id || value.location != location ||
+                !is_resolved_value_shape(value.type))
             {
                 return false;
             }
@@ -509,6 +524,16 @@ VerificationResult verify_module(const Module &module)
                     result_valid = define(load->result, ValueLocation::Load, block_index,
                                           instruction_index);
                 }
+                else if (const CheckIndex *check = std::get_if<CheckIndex>(&instruction))
+                {
+                    result_valid = define(check->result, ValueLocation::CheckedIndex, block_index,
+                                          instruction_index);
+                }
+                else if (const ElementLoad *load = std::get_if<ElementLoad>(&instruction))
+                {
+                    result_valid = define(load->result, ValueLocation::ElementLoad, block_index,
+                                          instruction_index);
+                }
                 else if (const Unary *unary = std::get_if<Unary>(&instruction))
                 {
                     result_valid = define(unary->result, ValueLocation::Unary, block_index,
@@ -531,7 +556,7 @@ VerificationResult verify_module(const Module &module)
                 }
                 else
                 {
-                    result_valid = true; //Store has no result.
+                    result_valid = true; //Store and ElementStore have no result.
                 }
                 if (!result_valid)
                 {
@@ -561,7 +586,33 @@ VerificationResult verify_module(const Module &module)
                 return NULL;
             }
             const Value &value = function.values[id.index];
-            return value.id == id ? &value : NULL;
+            return value.id == id && value.location != ValueLocation::CheckedIndex ? &value : NULL;
+        };
+
+        std::vector<unsigned int> checked_index_consumers(function.values.size(), 0U);
+        const auto checked_index_for = [&function, &definitions](ValueId id,
+                                                                  std::size_t block,
+                                                                  std::size_t instruction,
+                                                                  StorageId storage) -> bool {
+            if (!id.valid() || id.function != function.id || id.index >= function.values.size() ||
+                !definitions[id.index].present)
+            {
+                return false;
+            }
+            const Definition &definition = definitions[id.index];
+            if (definition.block != block || definition.instruction >= instruction)
+            {
+                return false;
+            }
+            const Value &value = function.values[id.index];
+            if (value.id != id || value.location != ValueLocation::CheckedIndex ||
+                value.type != value_shape{TYPE_INT, false, -1})
+            {
+                return false;
+            }
+            const CheckIndex *check = std::get_if<CheckIndex>(
+                &function.blocks[block].instructions[definition.instruction]);
+            return check != NULL && check->result == id && check->storage == storage;
         };
 
         for (std::size_t block_index = 0; block_index < block_count; block_index++)
@@ -574,7 +625,8 @@ VerificationResult verify_module(const Module &module)
                 if (const Constant *constant = std::get_if<Constant>(&instruction))
                 {
                     const value_shape type = function.values[constant->result.index].type;
-                    if ((type.element_type == TYPE_INT && !std::holds_alternative<int>(constant->payload)) ||
+                    if (!is_ready_type(type) ||
+                        (type.element_type == TYPE_INT && !std::holds_alternative<int>(constant->payload)) ||
                         (type.element_type == TYPE_FLOAT && !std::holds_alternative<float>(constant->payload)) ||
                         (type.element_type == TYPE_BOOL && !std::holds_alternative<bool>(constant->payload)) ||
                         (type.element_type == TYPE_STRING && !std::holds_alternative<std::string>(constant->payload)))
@@ -602,10 +654,62 @@ VerificationResult verify_module(const Module &module)
                         return failure("invalid store");
                     }
                 }
+                else if (const CheckIndex *check = std::get_if<CheckIndex>(&instruction))
+                {
+                    const Storage *storage = find_storage(module, check->storage);
+                    const Value *raw_index = value_for(check->raw_index, block_index,
+                                                       instruction_index);
+                    if (storage == NULL || !storage->type.is_array ||
+                        !is_visible_storage(*storage, function.id, program_id) ||
+                        raw_index == NULL ||
+                        raw_index->type != value_shape{TYPE_INT, false, -1} ||
+                        function.values[check->result.index].type !=
+                            value_shape{TYPE_INT, false, -1})
+                    {
+                        return failure("invalid checked index");
+                    }
+                }
+                else if (const ElementLoad *load = std::get_if<ElementLoad>(&instruction))
+                {
+                    const Storage *storage = find_storage(module, load->storage);
+                    value_shape element_type;
+                    if (storage != NULL)
+                    {
+                        element_type.element_type = storage->type.element_type;
+                    }
+                    if (storage == NULL || !storage->type.is_array ||
+                        !is_visible_storage(*storage, function.id, program_id) ||
+                        !checked_index_for(load->checked_index, block_index, instruction_index,
+                                           load->storage) ||
+                        function.values[load->result.index].type != element_type)
+                    {
+                        return failure("invalid element load");
+                    }
+                    checked_index_consumers[load->checked_index.index]++;
+                }
+                else if (const ElementStore *store = std::get_if<ElementStore>(&instruction))
+                {
+                    const Storage *storage = find_storage(module, store->storage);
+                    const Value *value = value_for(store->value, block_index, instruction_index);
+                    value_shape element_type;
+                    if (storage != NULL)
+                    {
+                        element_type.element_type = storage->type.element_type;
+                    }
+                    if (storage == NULL || !storage->type.is_array || value == NULL ||
+                        !is_visible_storage(*storage, function.id, program_id) ||
+                        !checked_index_for(store->checked_index, block_index, instruction_index,
+                                           store->storage) || value->type != element_type)
+                    {
+                        return failure("invalid element store");
+                    }
+                    checked_index_consumers[store->checked_index.index]++;
+                }
                 else if (const Unary *unary = std::get_if<Unary>(&instruction))
                 {
                     const Value *operand = value_for(unary->operand, block_index, instruction_index);
                     if (operand == NULL || function.values[unary->result.index].type != operand->type ||
+                        operand->type.is_array ||
                         !valid_unary(unary->operation, operand->type.element_type))
                     {
                         return failure("invalid unary instruction");
@@ -619,6 +723,7 @@ VerificationResult verify_module(const Module &module)
                         (binary_returns_bool(binary->operation) ?
                              value_shape{TYPE_BOOL, false, -1} : left->type);
                     if (left == NULL || right == NULL || left->type != right->type ||
+                        left->type.is_array ||
                         function.values[binary->result.index].type != expected_result ||
                         !valid_binary(binary->operation, left->type.element_type))
                     {
@@ -676,6 +781,14 @@ VerificationResult verify_module(const Module &module)
                 {
                     return failure("procedure must return an exact typed value");
                 }
+            }
+        }
+        for (std::size_t value_index = 0; value_index < function.values.size(); value_index++)
+        {
+            if (function.values[value_index].location == ValueLocation::CheckedIndex &&
+                checked_index_consumers[value_index] != 1U)
+            {
+                return failure("checked index must have exactly one same-block element consumer");
             }
         }
     }

@@ -843,3 +843,56 @@ TEST_CASE("Stage 6C String static layout is category ordered and exact deduplica
     CHECK(emitted.text.find(p_word, p_position + p_word.size()) == std::string::npos);
     CHECK(emitted.text.find(q_word, q_position + q_word.size()) == std::string::npos);
 }
+
+TEST_CASE("Stage 6D1 aggregate layout expands spans after the String pool atomically")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "aggregate_layout"},
+                                     "aggregate_layout").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId numbers = builder.register_storage(
+        SymbolRef{0, "numbers"}, value_shape{TYPE_INT, true, 1},
+        ir::StorageKind::Global);
+    const ir::StorageId text_storage = builder.register_storage(
+        SymbolRef{0, "text"}, scalar(TYPE_STRING), ir::StorageKind::Global);
+    REQUIRE(numbers.valid());
+    REQUIRE(text_storage.valid());
+    const ir::FunctionId procedure = builder.register_procedure(
+        SymbolRef{0, "scalar_call"}, "scalar_call", scalar(TYPE_INT), {});
+    REQUIRE(procedure.valid());
+    REQUIRE(builder.enter_function(procedure));
+    const ir::ValueId seven = builder.emit_constant(scalar(TYPE_INT), 7);
+    REQUIRE(seven.valid());
+    REQUIRE(builder.emit_return(seven));
+    REQUIRE(builder.leave_function());
+    REQUIRE(builder.emit_constant(scalar(TYPE_STRING), std::string("S")).valid());
+    const ir::ValueId snapshot = builder.emit_load(numbers);
+    REQUIRE(snapshot.valid());
+    REQUIRE(builder.emit_call(procedure, {}).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+
+    RestrictedCEmitter emitter;
+    const RestrictedCResult emitted = emitter.emit(builder.module());
+    REQUIRE(emitted.succeeded());
+    CHECK(emitted.links.empty());
+    CHECK(emitted.text.find("#define STRING_EMPTY_HANDLE INT32_C(4)\n") != std::string::npos);
+    CHECK(emitted.text.find("    Reg[0u] = INT32_C(9);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[2u] = INT32_C(4);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[4u] = INT32_C(0);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[5u] = INT32_C(83);\n") != std::string::npos);
+    CHECK(emitted.text.find("    MM[6u] = INT32_C(0);\n") != std::string::npos);
+    CHECK(emitted.text.find("MM[0u + (uint32_t)") != std::string::npos);
+    CHECK(emitted.text.find("MM[7u + (uint32_t)") != std::string::npos);
+    CHECK(emitted.text.find(" = 3u;\n") != std::string::npos);
+    CHECK(emitted.text.find("aggregate_layout") == std::string::npos);
+    CHECK(emitted.text.find("numbers") == std::string::npos);
+
+    ir::Module malformed = builder.module();
+    malformed.functions[0].values[snapshot.index].type.array_upper_bound = 0;
+    const RestrictedCResult rejected = emitter.emit(malformed);
+    CHECK(rejected.status == RestrictedCStatus::InvalidIR);
+    CHECK(rejected.text.empty());
+    CHECK(rejected.links.empty());
+}

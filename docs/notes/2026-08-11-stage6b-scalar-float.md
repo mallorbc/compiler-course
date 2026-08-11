@@ -56,4 +56,7 @@ durable.
 
 This was the Stage 6B boundary.  Stage 6C subsequently adds scalar String
 handles, content equality, line input, output, and the persistent downward
-String heap while preserving the binary32 and manual-frame contracts above.
+String heap.  Stage 6D1 subsequently carries Float words and String handles
+through one-word-per-element array spans, elementwise assignment casts, and
+exact by-value calls while preserving the binary32 and manual-frame contracts
+above.

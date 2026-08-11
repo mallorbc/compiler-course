@@ -27,6 +27,73 @@ value_shape scalar(data_types type)
     return shape;
 }
 
+value_shape array_shape(data_types type, int upper_bound)
+{
+    return value_shape{type, true, upper_bound};
+}
+
+ir::Module ready_array_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "array_fixture"}, "array_fixture").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId source = builder.register_storage(
+        SymbolRef{0, "source"}, array_shape(TYPE_INT, 2), ir::StorageKind::Global);
+    const ir::StorageId other = builder.register_storage(
+        SymbolRef{0, "other"}, array_shape(TYPE_INT, 2), ir::StorageKind::Global);
+    const ir::StorageId floats = builder.register_storage(
+        SymbolRef{0, "floats"}, array_shape(TYPE_FLOAT, 2), ir::StorageKind::Global);
+    const ir::StorageId scalar_result = builder.register_storage(
+        SymbolRef{0, "scalar_result"}, scalar(TYPE_INT), ir::StorageKind::Global);
+    REQUIRE(source.valid());
+    REQUIRE(other.valid());
+    REQUIRE(floats.valid());
+    REQUIRE(scalar_result.valid());
+
+    const ir::FunctionId inspect = builder.register_procedure(
+        SymbolRef{0, "inspect"}, "inspect", scalar(TYPE_INT),
+        {{SymbolRef{1, "parameter"}, array_shape(TYPE_INT, 2)}});
+    REQUIRE(inspect.valid());
+    REQUIRE(builder.enter_function(inspect));
+    const ir::StorageId parameter = builder.storage_for(SymbolRef{1, "parameter"});
+    REQUIRE(parameter.valid());
+    REQUIRE(builder.emit_load(parameter).valid());
+    const ir::ValueId procedure_zero = builder.emit_constant(scalar(TYPE_INT), 0);
+    const ir::ValueId procedure_check = builder.emit_check_index(parameter, procedure_zero);
+    const ir::ValueId procedure_element = builder.emit_element_load(parameter, procedure_check);
+    REQUIRE(procedure_zero.valid());
+    REQUIRE(procedure_check.valid());
+    REQUIRE(procedure_element.valid());
+    REQUIRE(builder.emit_return(procedure_element));
+    REQUIRE(builder.leave_function());
+
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::ValueId zero = builder.emit_constant(scalar(TYPE_INT), 0);
+    const ir::ValueId checked = builder.emit_check_index(source, zero);
+    REQUIRE(builder.emit_element_load(source, checked).valid());
+    const ir::ValueId snapshot = builder.emit_load(source);
+    const ir::ValueId converted = builder.emit_cast(ir::CastOp::IntToFloat, snapshot);
+    REQUIRE(snapshot.valid());
+    REQUIRE(converted.valid());
+    REQUIRE(builder.emit_store(floats, converted));
+    const ir::ValueId called = builder.emit_call(inspect, {snapshot});
+    REQUIRE(called.valid());
+    REQUIRE(builder.emit_store(scalar_result, called));
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    const ir::BlockId join_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(else_block));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(join_block));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 ir::Module ready_cfg_module()
 {
     ir::IRBuilder builder;
@@ -111,6 +178,116 @@ TEST_CASE("Stage 4A IDs and builtin catalog are strongly separated")
     CHECK(put_integer->return_shape == scalar(TYPE_BOOL));
     REQUIRE(put_integer->parameter_shapes.size() == 1);
     CHECK(put_integer->parameter_shapes[0] == scalar(TYPE_INT));
+}
+
+TEST_CASE("Stage 6D1 aggregate IR verifies shapes, exact calls, and linear checked indexes")
+{
+    CHECK(ir::is_ready_type(scalar(TYPE_INT)));
+    CHECK_FALSE(ir::is_ready_type(array_shape(TYPE_INT, 0)));
+    CHECK(ir::is_resolved_value_shape(scalar(TYPE_INT)));
+    CHECK(ir::is_resolved_value_shape(array_shape(TYPE_INT, 0)));
+    CHECK(ir::is_resolved_value_shape(array_shape(TYPE_STRING, 5)));
+    CHECK_FALSE(ir::is_resolved_value_shape(value_shape{TYPE_INT, false, 0}));
+    CHECK_FALSE(ir::is_resolved_value_shape(value_shape{TYPE_INT, true, -1}));
+
+    const ir::Module ready = ready_array_module();
+    REQUIRE(ir::verify_module(ready).valid);
+    REQUIRE(ready.functions[0].blocks[0].instructions.size() == 9);
+    REQUIRE(ready.functions.size() > 10);
+
+    ir::Module malformed_shape = ready;
+    malformed_shape.storages[0].type.array_upper_bound = -1;
+    CHECK_FALSE(ir::verify_module(malformed_shape).valid);
+
+    ir::Module array_constant = ready;
+    array_constant.functions[0].values[0].type = array_shape(TYPE_BOOL, 2);
+    CHECK_FALSE(ir::verify_module(array_constant).valid);
+
+    ir::Module array_condition = ready;
+    ir::BranchTerminator *branch = std::get_if<ir::BranchTerminator>(
+        &std::get<ir::Terminator>(array_condition.functions[0].blocks[0].terminator));
+    REQUIRE(branch != NULL);
+    branch->condition = ir::ValueId(ir::FunctionId(0), 4);
+    CHECK_FALSE(ir::verify_module(array_condition).valid);
+
+    ir::Module array_return = ready;
+    ir::ReturnTerminator *returned = std::get_if<ir::ReturnTerminator>(
+        &std::get<ir::Terminator>(array_return.functions[10].blocks[0].terminator));
+    REQUIRE(returned != NULL);
+    returned->value = ir::ValueId(ir::FunctionId(10), 0);
+    CHECK_FALSE(ir::verify_module(array_return).valid);
+
+    ir::Module call_bound_mismatch = ready;
+    call_bound_mismatch.functions[10].parameter_types[0] = array_shape(TYPE_INT, 1);
+    call_bound_mismatch.storages[4].type = array_shape(TYPE_INT, 1);
+    call_bound_mismatch.functions[10].values[0].type = array_shape(TYPE_INT, 1);
+    CHECK_FALSE(ir::verify_module(call_bound_mismatch).valid);
+
+    ir::Module wrong_check_type = ready;
+    ir::CheckIndex *typed_check = std::get_if<ir::CheckIndex>(
+        &wrong_check_type.functions[0].blocks[0].instructions[2]);
+    REQUIRE(typed_check != NULL);
+    typed_check->raw_index = ir::ValueId(ir::FunctionId(0), 0);
+    CHECK_FALSE(ir::verify_module(wrong_check_type).valid);
+
+    ir::Module wrong_checked_result = ready;
+    wrong_checked_result.functions[0].values[2].type = scalar(TYPE_BOOL);
+    CHECK_FALSE(ir::verify_module(wrong_checked_result).valid);
+
+    ir::Module wrong_element_result = ready;
+    wrong_element_result.functions[0].values[3].type = scalar(TYPE_FLOAT);
+    CHECK_FALSE(ir::verify_module(wrong_element_result).valid);
+
+    ir::Module raw_element_index = ready;
+    ir::ElementLoad *raw_load = std::get_if<ir::ElementLoad>(
+        &raw_element_index.functions[0].blocks[0].instructions[3]);
+    REQUIRE(raw_load != NULL);
+    raw_load->checked_index = ir::ValueId(ir::FunctionId(0), 1);
+    CHECK_FALSE(ir::verify_module(raw_element_index).valid);
+
+    ir::Module wrong_storage = ready;
+    ir::ElementLoad *other_load = std::get_if<ir::ElementLoad>(
+        &wrong_storage.functions[0].blocks[0].instructions[3]);
+    REQUIRE(other_load != NULL);
+    other_load->storage = ir::StorageId(1);
+    CHECK_FALSE(ir::verify_module(wrong_storage).valid);
+
+    ir::Module use_before_check = ready;
+    std::swap(use_before_check.functions[0].blocks[0].instructions[2],
+              use_before_check.functions[0].blocks[0].instructions[3]);
+    CHECK_FALSE(ir::verify_module(use_before_check).valid);
+
+    ir::Module duplicate_consumer = ready;
+    duplicate_consumer.functions[0].blocks[0].instructions.insert(
+        duplicate_consumer.functions[0].blocks[0].instructions.begin() + 4,
+        ir::ElementStore{ir::StorageId(0), ir::ValueId(ir::FunctionId(0), 2),
+                         ir::ValueId(ir::FunctionId(0), 3)});
+    CHECK_FALSE(ir::verify_module(duplicate_consumer).valid);
+
+    ir::Module unused_check = ready;
+    unused_check.functions[0].values[3].location = ir::ValueLocation::Constant;
+    unused_check.functions[0].blocks[0].instructions[3] =
+        ir::Constant{ir::ValueId(ir::FunctionId(0), 3), 1};
+    CHECK_FALSE(ir::verify_module(unused_check).valid);
+
+    ir::Module general_checked_use = ready;
+    ir::Store *ordinary_store = std::get_if<ir::Store>(
+        &general_checked_use.functions[0].blocks[0].instructions[8]);
+    REQUIRE(ordinary_store != NULL);
+    ordinary_store->value = ir::ValueId(ir::FunctionId(0), 2);
+    CHECK_FALSE(ir::verify_module(general_checked_use).valid);
+
+    ir::Module cross_block_consumer = ready;
+    const ir::Instruction moved = cross_block_consumer.functions[0].blocks[0].instructions[3];
+    cross_block_consumer.functions[0].blocks[0].instructions.erase(
+        cross_block_consumer.functions[0].blocks[0].instructions.begin() + 3);
+    cross_block_consumer.functions[0].blocks[1].instructions.insert(
+        cross_block_consumer.functions[0].blocks[1].instructions.begin(), moved);
+    CHECK_FALSE(ir::verify_module(cross_block_consumer).valid);
+
+    ir::Module aggregate_call_result = ready;
+    aggregate_call_result.functions[0].values[6].type = array_shape(TYPE_INT, 2);
+    CHECK_FALSE(ir::verify_module(aggregate_call_result).valid);
 }
 
 TEST_CASE("Stage 5A builder forms deterministic Program branch blocks")
@@ -707,15 +884,16 @@ TEST_CASE("Stage 4A canonical identities and invalid builder inputs are rejected
     cross_kind.finalize(true);
     CHECK(cross_kind.status() == ir::ModuleStatus::InvalidIR);
 
-    ir::IRBuilder unsupported_shape;
-    REQUIRE(unsupported_shape.register_program(SymbolRef{0, "shape_root"},
-                                               "shape_root").valid());
-    unsupported_shape.seed_external_builtins();
+    ir::IRBuilder resolved_array_shape;
+    REQUIRE(resolved_array_shape.register_program(SymbolRef{0, "shape_root"},
+                                                   "shape_root").valid());
+    resolved_array_shape.seed_external_builtins();
     value_shape array_type{TYPE_INT, true, 2};
-    CHECK_FALSE(unsupported_shape.register_storage(SymbolRef{0, "array"}, array_type,
-                                                    ir::StorageKind::Global).valid());
-    unsupported_shape.finalize(true);
-    CHECK(unsupported_shape.status() == ir::ModuleStatus::Unsupported);
+    CHECK(resolved_array_shape.register_storage(SymbolRef{0, "array"}, array_type,
+                                                 ir::StorageKind::Global).valid());
+    REQUIRE(resolved_array_shape.emit_halt());
+    resolved_array_shape.finalize(true);
+    CHECK(resolved_array_shape.status() == ir::ModuleStatus::Ready);
 
     ir::IRBuilder wrong_return;
     REQUIRE(wrong_return.register_program(SymbolRef{0, "return_root"}, "return_root").valid());

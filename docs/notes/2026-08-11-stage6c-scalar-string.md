@@ -50,5 +50,7 @@ only their own helper plus `stdio.h`.  A dead String procedure contributes no
 pool words, heap register, helper, frame, label, or link metadata.  String
 ordering and arithmetic are excluded from typed IR: source attempts are
 frontend errors, while malformed direct IR is InvalidIR.  Well-formed String
-arrays and noncanonical external calls remain Unsupported.  Production still
-emits C source only and never invokes a host compiler.
+arrays were outside this scalar milestone; Stage 6D1 subsequently represents
+them as spans of String handle words with checked indexing and whole copies.
+Noncanonical external calls remain Unsupported.  Production still emits C
+source only and never invokes a host compiler.
