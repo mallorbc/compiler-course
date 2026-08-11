@@ -432,7 +432,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync0_buggy.src.out",
       "stdout_bytes": 107,
-      "stdout_sha256": "0ee43c1465a88a30e0be0648661823da158f56253af4f12f9f7820a96672573d",
+      "stdout_sha256": "443dec0b27fc11d93dc5f82fa48355a7a3c842841ebf56e757e84bc20f20a65d",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync0_control.src": {
@@ -441,7 +441,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync0_control.src.out",
       "stdout_bytes": 99,
-      "stdout_sha256": "e620e5b084667477c0bd1c98b968ce87854a50d6fb3e60812847f14f3271da8f",
+      "stdout_sha256": "a003b8efc720277b44c61223b8f40d9999436e219efd7e1aeecdb8ca73adc8ff",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync12.src": {
@@ -467,8 +467,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync1_buggy.src.out",
-      "stdout_bytes": 203,
-      "stdout_sha256": "ecd95946af591e5d3c95bf07204e6b9efd0ac5e7f19174f193b4855835761470",
+      "stdout_bytes": 201,
+      "stdout_sha256": "df5c6b8f7e43e486627d4ddc97c1996329c222fffb4498ddc264c97df94e1208",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync1_control.src": {
@@ -477,7 +477,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync1_control.src.out",
       "stdout_bytes": 99,
-      "stdout_sha256": "19d0cb8acc2dfecbebb8add13bc83076bf31e49cb38a5e3c25e4d95b061ee277",
+      "stdout_sha256": "c05298b653d61e22750ac15d6bb62775fa34dc3eea41656cdc80e9bd4efe7b18",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync1_multi.src": {
@@ -486,7 +486,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync1_multi.src.out",
       "stdout_bytes": 203,
-      "stdout_sha256": "6117ef582a9ae83c892294c36f4d8cce756ee68c3d54f5639bef7579e0b48b85",
+      "stdout_sha256": "ecd95946af591e5d3c95bf07204e6b9efd0ac5e7f19174f193b4855835761470",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync1_multi_ctrl.src": {
@@ -495,7 +495,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync1_multi_ctrl.src.out",
       "stdout_bytes": 154,
-      "stdout_sha256": "6c396eb667dbf96aad704f699845f2ae930e7444594478f0ba49234d290ca2a5",
+      "stdout_sha256": "6c4512280297d42c03d22f844b7d9cd426ee196775d696a6ac2e29287b8367db",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync4_proc.src": {
@@ -567,7 +567,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync7b.src.out",
       "stdout_bytes": 251,
-      "stdout_sha256": "b74962bf5c5a4bc2892c9fc6ab2fbb3a756cd149e5b33d0225c3b692ad6f5487",
+      "stdout_sha256": "9878f1eed0f734a9e9a5666ec58691e6a8e50a501947fdcd897238b0bb8d842c",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_case.src": {
@@ -588,8 +588,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment1.src.out",
-      "stdout_bytes": 252,
-      "stdout_sha256": "da6b8338818115e2fd39097d008ab2c6310ea71530e1c24ef96369a9def591ee",
+      "stdout_bytes": 285,
+      "stdout_sha256": "819e3e613082dd20fde8616f1fe17b6543d263801beee21e70a81e32840123f3",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment2.src": {
@@ -606,8 +606,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment3.src.out",
-      "stdout_bytes": 347,
-      "stdout_sha256": "5bb62de92ac9015373f0b7d3a010f18bf5df3e754976b0c76990db8af6188d27",
+      "stdout_bytes": 285,
+      "stdout_sha256": "a155f3575d14d54222b3cb3ab6733b7d30e1b396a6a4f9e27500edc938a93ee1",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment_control.src": {
@@ -643,7 +643,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_frac_underscore.src.out",
       "stdout_bytes": 251,
-      "stdout_sha256": "b74962bf5c5a4bc2892c9fc6ab2fbb3a756cd149e5b33d0225c3b692ad6f5487",
+      "stdout_sha256": "9878f1eed0f734a9e9a5666ec58691e6a8e50a501947fdcd897238b0bb8d842c",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_highbyte.src": {
@@ -651,8 +651,17 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_highbyte.src.out",
-      "stdout_bytes": 355,
-      "stdout_sha256": "427ff5871e927206a389f5e117a66f9b2c37e063d1cdbffa5d51c103c9285a2f",
+      "stdout_bytes": 439,
+      "stdout_sha256": "0d0ba426023a17787ceab2c490727b370dcef1e1137f314fa59ecf721203a3be",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/scanner/t_illegal_char.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/scanner/t_illegal_char.src.out",
+      "stdout_bytes": 85,
+      "stdout_sha256": "1fdf809983b5d39040345649adb779ad5d0bf7dbc6149e27970d947084c9d5f5",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_line.src": {
@@ -679,7 +688,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_overflow.src.out",
       "stdout_bytes": 301,
-      "stdout_sha256": "f2ae1fa97e92e6c75957f939b19c08acf12ea17155e54dbb2e75bdb9cee10c81",
+      "stdout_sha256": "c673be584aaea5cc6502d400e003cb2277e0d99d8050ac3076b4980efc0e8e6f",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_simple.src": {
@@ -697,7 +706,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_underscore.src.out",
       "stdout_bytes": 251,
-      "stdout_sha256": "b74962bf5c5a4bc2892c9fc6ab2fbb3a756cd149e5b33d0225c3b692ad6f5487",
+      "stdout_sha256": "9878f1eed0f734a9e9a5666ec58691e6a8e50a501947fdcd897238b0bb8d842c",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_unterm_comment.src": {

@@ -3,8 +3,6 @@ Error on line 0: Expected keyword "Program" not found
 
 Error on line 0: Expected keywords "procedure","variable" "type", or "begin" not found
 
-Error on line 2: Missing ":" needed for assignment statement
-
 Error on line 3: Missing ":" needed for assignment statement
 
 Error on line 3: Missing "." to end the program

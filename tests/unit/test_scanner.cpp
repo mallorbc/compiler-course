@@ -2,10 +2,8 @@
 //that is stable enough to pin down with exact expectations, so what is asserted
 //here is meant to be its contract: it should survive the typechecker rebuild.
 //
-//Cases tagged KNOWN-BUG assert what the scanner does *today* (with the audit id
-//from docs/audit/AUDIT.md where one exists), not what it should do.  They are
-//documentation of the defect, and they are supposed to fail loudly when the
-//defect is finally fixed.
+//Scanner regressions cite their audit id where one exists.  The expectations
+//describe the repaired behavior rather than preserving known failures.
 #include "../vendor/doctest.h"
 #include "../../scanner.h"
 
@@ -62,9 +60,7 @@ std::vector<token> scan_all(const std::string &contents)
     temp_source_file fixture(contents);
     scanner lexer(fixture.name());
     std::vector<token> tokens;
-    //the bound only guards a fixture that never reaches EOF; note that a
-    //multi-decimal number (LX-3) spins inside Get_token itself and would hang
-    //regardless, which is why no fixture here contains one
+    //The bound only guards a fixture that never reaches EOF.
     while (tokens.size() < 128)
     {
         token scanned = lexer.Get_token();
@@ -83,10 +79,8 @@ struct scan_result
     std::vector<scanner_diagnostic> diagnostics;
 };
 
-scan_result scan_all_with_diagnostics(const std::string &contents)
+scan_result scan_all_with_diagnostics(scanner &lexer)
 {
-    temp_source_file fixture(contents);
-    scanner lexer(fixture.name());
     scan_result result;
     while (result.tokens.size() < 128)
     {
@@ -100,6 +94,13 @@ scan_result scan_all_with_diagnostics(const std::string &contents)
         }
     }
     return result;
+}
+
+scan_result scan_all_with_diagnostics(const std::string &contents)
+{
+    temp_source_file fixture(contents);
+    scanner lexer(fixture.name());
+    return scan_all_with_diagnostics(lexer);
 }
 
 } // namespace
@@ -133,6 +134,39 @@ TEST_CASE("scanner reads integer and float literals with their values")
     CHECK(tokens[8].type == T_FLOAT_VALUE);
     CHECK(tokens[8].floatValue == doctest::Approx(3.5));
     CHECK(tokens[8].line_found == 2);
+}
+
+TEST_CASE("scanner accepts the grammar's underscore number separators")
+{
+    scan_result result = scan_all_with_diagnostics("1_000 3.1_4 7_.__\n");
+
+    REQUIRE(result.tokens.size() == 4);
+    CHECK(result.tokens[0].type == T_INTEGER_VALUE);
+    CHECK(result.tokens[0].intValue == 1000);
+    CHECK(result.tokens[1].type == T_FLOAT_VALUE);
+    CHECK(result.tokens[1].floatValue == doctest::Approx(3.14));
+    //The recovered grammar permits underscores in both portions, including
+    //immediately before or after the decimal point.
+    CHECK(result.tokens[2].type == T_FLOAT_VALUE);
+    CHECK(result.tokens[2].floatValue == doctest::Approx(7.0));
+    CHECK(result.tokens[3].type == T_INVALID);
+    CHECK(result.diagnostics.empty());
+}
+
+TEST_CASE("scanner rejects a malformed underscored numeric run as one token")
+{
+    scan_result result = scan_all_with_diagnostics("1_2.3_4.5; after\n");
+
+    REQUIRE(result.tokens.size() == 4);
+    CHECK(result.tokens[0].type == T_FLOAT_VALUE);
+    CHECK(result.tokens[0].floatValue == doctest::Approx(0.0));
+    CHECK(result.tokens[1].type == T_SEMICOLON);
+    CHECK(result.tokens[2].stringValue == "after");
+    CHECK(result.tokens[3].type == T_INVALID);
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics[0].line_found == 1);
+    CHECK(result.diagnostics[0].message ==
+          "Malformed numeric literal: multiple decimal points");
 }
 
 TEST_CASE("scanner reports integer and float overflow and reaches EOF")
@@ -283,6 +317,76 @@ TEST_CASE("scanner skips block comments")
     }
 }
 
+TEST_CASE("scanner consumes comment contents before ordinary tokenization")
+{
+    SUBCASE("line comment contents are inert through the newline")
+    {
+        std::string source_text =
+            "// ignored_line 1.2.3 999999999999999999999999999999 \" @ /* */ ";
+        source_text += '\xff';
+        source_text += '\0';
+        source_text += "\nline_live\n";
+
+        temp_source_file fixture(source_text);
+        scanner lexer(fixture.name());
+        scan_result result = scan_all_with_diagnostics(lexer);
+
+        REQUIRE(result.tokens.size() == 2);
+        CHECK(result.tokens[0].stringValue == "line_live");
+        CHECK(result.tokens[0].line_found == 2);
+        CHECK(result.tokens[1].type == T_INVALID);
+        CHECK(result.diagnostics.empty());
+        CHECK(lexer.error_detected == false);
+        CHECK(lexer.symbol_table.map.find("ignored_line") == lexer.symbol_table.map.end());
+        CHECK(lexer.symbol_table.map.find("line_live") != lexer.symbol_table.map.end());
+    }
+
+    SUBCASE("block comment contents are inert except nested block delimiters")
+    {
+        std::string source_text =
+            "/* ignored_block 1.2.3 999999999999999999999999999999 \" @ // ";
+        source_text += '\xff';
+        source_text += '\0';
+        source_text += "\n/* ignored_nested \" @ // ";
+        source_text += '\xff';
+        source_text += '\0';
+        source_text += " */ still_ignored */\nblock_live\n";
+
+        temp_source_file fixture(source_text);
+        scanner lexer(fixture.name());
+        scan_result result = scan_all_with_diagnostics(lexer);
+
+        REQUIRE(result.tokens.size() == 2);
+        CHECK(result.tokens[0].stringValue == "block_live");
+        CHECK(result.tokens[0].line_found == 3);
+        CHECK(result.tokens[1].type == T_INVALID);
+        CHECK(result.diagnostics.empty());
+        CHECK(lexer.error_detected == false);
+        CHECK(lexer.symbol_table.map.find("ignored_block") == lexer.symbol_table.map.end());
+        CHECK(lexer.symbol_table.map.find("ignored_nested") == lexer.symbol_table.map.end());
+        CHECK(lexer.symbol_table.map.find("still_ignored") == lexer.symbol_table.map.end());
+        CHECK(lexer.symbol_table.map.find("block_live") != lexer.symbol_table.map.end());
+    }
+}
+
+TEST_CASE("scanner treats string contents as one literal")
+{
+    std::string source_text = "\"@ /* // */ ";
+    source_text += '\xff';
+    source_text += '\0';
+    source_text += "\" string_live\n";
+    const std::string expected_string = source_text.substr(0, source_text.find(" string_live"));
+
+    scan_result result = scan_all_with_diagnostics(source_text);
+
+    REQUIRE(result.tokens.size() == 3);
+    CHECK(result.tokens[0].type == T_STRING_VALUE);
+    CHECK(result.tokens[0].stringValue == expected_string);
+    CHECK(result.tokens[1].stringValue == "string_live");
+    CHECK(result.tokens[2].type == T_INVALID);
+    CHECK(result.diagnostics.empty());
+}
+
 TEST_CASE("scanner returns the T_INVALID sentinel at end of file, and keeps returning it")
 {
     SUBCASE("empty file")
@@ -338,51 +442,69 @@ TEST_CASE("scanner does not let an identifier start with an underscore")
     CHECK(tokens[2].stringValue == "a_1");
 }
 
-TEST_CASE("KNOWN-BUG LX-1: a /* inside a // comment swallows the rest of the file")
+TEST_CASE("scanner does not start a block comment inside a // comment (LX-1)")
 {
-    std::vector<token> tokens = scan_all("// note: /* not really a comment\nalpha\nbeta\n");
+    scan_result result = scan_all_with_diagnostics(
+        "// note: /* not really a comment\nalpha\nbeta\n");
 
-    //comment_handler runs even while a // comment is active, so the block
-    //comment counter is opened and never closed and everything after is lost
-    REQUIRE(tokens.size() == 1);
-    CHECK(tokens[0].type == T_INVALID);
+    REQUIRE(result.tokens.size() == 3);
+    CHECK(result.tokens[0].stringValue == "alpha");
+    CHECK(result.tokens[0].line_found == 2);
+    CHECK(result.tokens[1].stringValue == "beta");
+    CHECK(result.tokens[1].line_found == 3);
+    CHECK(result.tokens[2].type == T_INVALID);
+    CHECK(result.diagnostics.empty());
 }
 
-TEST_CASE("KNOWN-BUG LX-2: a stray */ makes a later nested comment leak tokens")
+TEST_CASE("scanner reports a stray */ and keeps later nested comments closed (LX-2)")
 {
-    std::vector<token> tokens = scan_all("a */ b\n/* outer /* inner */ leaked */ c\n");
+    scan_result result = scan_all_with_diagnostics(
+        "a */ b\n/* outer /* inner */ leaked */ c\n");
 
-    //the stray */ drives nested_comment_counter to -1 and it is never floored,
-    //so the inner */ closes the block one level early
-    REQUIRE(tokens.size() == 5);
-    CHECK(tokens[0].stringValue == "a");
-    CHECK(tokens[1].stringValue == "b");
-    CHECK(tokens[2].stringValue == "leaked");
-    CHECK(tokens[3].stringValue == "c");
+    REQUIRE(result.tokens.size() == 4);
+    CHECK(result.tokens[0].stringValue == "a");
+    CHECK(result.tokens[1].stringValue == "b");
+    CHECK(result.tokens[2].stringValue == "c");
+    CHECK(result.tokens[3].type == T_INVALID);
+    REQUIRE(result.diagnostics.size() == 1);
+    CHECK(result.diagnostics[0].line_found == 1);
+    CHECK(result.diagnostics[0].message == "Stray block comment terminator detected");
 }
 
-TEST_CASE("KNOWN-BUG LX-6: a number ending a line is reported one line late")
+TEST_CASE("scanner stamps a number with its opening line (LX-6)")
 {
-    std::vector<token> tokens = scan_all("5\n");
+    std::vector<token> tokens = scan_all("5\nafter\n");
 
-    REQUIRE(tokens.size() == 2);
+    REQUIRE(tokens.size() == 3);
     CHECK(tokens[0].type == T_INTEGER_VALUE);
     CHECK(tokens[0].intValue == 5);
-    //build_number_token counts the terminating newline before it stamps the
-    //token, so line_found is 2 where every other token type would report 1
-    CHECK(tokens[0].line_found == 2);
+    CHECK(tokens[0].line_found == 1);
+    CHECK(tokens[1].stringValue == "after");
+    CHECK(tokens[1].line_found == 2);
 }
 
-TEST_CASE("KNOWN-BUG SIL-8: error_detected is set even for a clean file")
+TEST_CASE("scanner handles an underscore-separated number at physical EOF")
+{
+    scan_result result = scan_all_with_diagnostics("1_000");
+
+    REQUIRE(result.tokens.size() == 2);
+    CHECK(result.tokens[0].type == T_INTEGER_VALUE);
+    CHECK(result.tokens[0].intValue == 1000);
+    CHECK(result.tokens[0].line_found == 1);
+    CHECK(result.tokens[1].type == T_INVALID);
+    CHECK(result.tokens[1].line_found == 1);
+    CHECK(result.diagnostics.empty());
+}
+
+TEST_CASE("scanner reports real illegal characters without a priming false-positive (SIL-8)")
 {
     SUBCASE("empty file")
     {
         temp_source_file fixture("");
         scanner lexer(fixture.name());
         CHECK(lexer.Get_token().type == T_INVALID);
-        //next_char is primed to '\0', which the first pass through Get_token
-        //classifies as an invalid character before any real input is read
-        CHECK(lexer.error_detected == true);
+        CHECK(lexer.error_detected == false);
+        CHECK(lexer.take_diagnostics().empty());
     }
 
     SUBCASE("well formed input")
@@ -392,6 +514,50 @@ TEST_CASE("KNOWN-BUG SIL-8: error_detected is set even for a clean file")
         while (lexer.Get_token().type != T_INVALID)
         {
         }
-        CHECK(lexer.error_detected == true);
+        CHECK(lexer.error_detected == false);
+        CHECK(lexer.take_diagnostics().empty());
+    }
+
+    SUBCASE("an actual illegal character")
+    {
+        scan_result result = scan_all_with_diagnostics("alpha @ beta\n");
+
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].stringValue == "alpha");
+        CHECK(result.tokens[1].stringValue == "beta");
+        CHECK(result.tokens[2].type == T_INVALID);
+        REQUIRE(result.diagnostics.size() == 1);
+        CHECK(result.diagnostics[0].line_found == 1);
+        CHECK(result.diagnostics[0].message == "Illegal character: '@'");
+    }
+
+    SUBCASE("a non-printable byte is rendered without invalid diagnostic text")
+    {
+        const std::string source_text("alpha \xff beta\n", 13);
+        scan_result result = scan_all_with_diagnostics(source_text);
+
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].stringValue == "alpha");
+        CHECK(result.tokens[1].stringValue == "beta");
+        CHECK(result.tokens[2].type == T_INVALID);
+        REQUIRE(result.diagnostics.size() == 1);
+        CHECK(result.diagnostics[0].line_found == 1);
+        CHECK(result.diagnostics[0].message == "Illegal character: 0xFF");
+    }
+
+    SUBCASE("an embedded NUL byte outside a comment is diagnosed")
+    {
+        std::string source_text = "before";
+        source_text += '\0';
+        source_text += "after\n";
+        scan_result result = scan_all_with_diagnostics(source_text);
+
+        REQUIRE(result.tokens.size() == 3);
+        CHECK(result.tokens[0].stringValue == "before");
+        CHECK(result.tokens[1].stringValue == "after");
+        CHECK(result.tokens[2].type == T_INVALID);
+        REQUIRE(result.diagnostics.size() == 1);
+        CHECK(result.diagnostics[0].line_found == 1);
+        CHECK(result.diagnostics[0].message == "Illegal character: 0x00");
     }
 }

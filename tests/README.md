@@ -1,6 +1,6 @@
 # Golden-file regression harness
 
-`tests/run_golden.py` runs `./compiler` over all 177 test programs in the repo
+`tests/run_golden.py` runs `./compiler` over all 178 test programs in the repo
 and compares what happens against a recorded baseline. It is the tripwire for
 "did my change alter compiler behaviour anywhere I did not intend?"
 
@@ -24,12 +24,15 @@ by status class. Full suite: ~2s wall at the default 8 workers (~12s serial).
 `--update` takes ~32s (it re-runs the four known hangs at the full 30s budget
 so a hang that starts terminating gets honestly re-recorded).
 
-Python 3.12, standard library only. No pytest, no third-party anything.
+The runner itself uses Python 3.12 and only the standard library. That is a
+small-harness implementation choice, not a ban on test-only libraries (the
+unit layer vendors doctest); the course constraint is that compiler-core logic
+such as the scanner and parser remains project-owned.
 
 ## What is covered
 
 Every `*.src` found recursively under `testPgms/` (14) and `docs/audit/probes/`
-(163) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
+(164) — new subdirectories are picked up automatically. `testPgms/UnitTests/`
 holds one stray non-`.src` file, which the `*.src` glob naturally excludes.
 
 **The baseline is only valid for the default build** (plain `make`: `-g`, no
@@ -92,7 +95,7 @@ Manifest entry, verbatim:
 | status    | meaning                                  | baseline count |
 | --------- | ---------------------------------------- | -------------- |
 | `OK`      | exited 0                                 | 89             |
-| `ERRORS`  | exited nonzero, terminated normally      | 84             |
+| `ERRORS`  | exited nonzero, terminated normally      | 85             |
 | `CRASH`   | killed by a signal (exit code is 128+n)  | 0              |
 | `TIMEOUT` | still running when the budget expired    | 4              |
 

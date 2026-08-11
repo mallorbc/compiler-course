@@ -131,7 +131,34 @@ def main() -> int:
                 f"unexpected {file_name} stderr: {numeric_failure.stderr!r}",
             )
 
-    print("PASS: CLI and numeric failure paths terminate promptly with exit 1")
+        separated_numbers = Path(temp_dir) / "separated-numbers.src"
+        separated_numbers.write_text(
+            "program separated_numbers is\n"
+            "    variable integer_value : integer;\n"
+            "    variable float_value : float;\n"
+            "begin\n"
+            "    integer_value := 1_000;\n"
+            "    float_value := 3.1_4;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        separated_numbers_result = run_compiler(str(separated_numbers))
+        check(
+            separated_numbers_result.returncode == 0,
+            "underscore-separated numeric literals should compile cleanly: "
+            f"{separated_numbers_result.stdout!r}",
+        )
+        check(
+            separated_numbers_result.stdout
+            == "The program parsed successfully with no errors\n",
+            f"unexpected separated-numbers stdout: {separated_numbers_result.stdout!r}",
+        )
+        check(
+            separated_numbers_result.stderr == "",
+            f"unexpected separated-numbers stderr: {separated_numbers_result.stderr!r}",
+        )
+
+    print("PASS: CLI and numeric paths terminate promptly with the expected result")
     return 0
 
 
