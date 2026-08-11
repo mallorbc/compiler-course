@@ -45,12 +45,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p11d_return_call.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p11d_return_call.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "e270464953126e6d64c791a019e743596b1739ca0f99e14f582933cce28761e3",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p12_simple_less.src": {
@@ -72,12 +72,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p13_two_procs.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p13_two_procs.src.out",
-      "stdout_bytes": 121,
-      "stdout_sha256": "90cfb9601bde137436e8da191035d2f59991e911e5dab14cf98e8f85c8c183d4",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p1_eq.src": {
@@ -112,17 +112,17 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p2_undeclared_var.src.out",
-      "stdout_bytes": 121,
-      "stdout_sha256": "87a7bc8f0a455a0453fb94b0b8d3e0c40aa904ee7a5ca6a9934f67493c8fd59b",
+      "stdout_bytes": 88,
+      "stdout_sha256": "e9169032d1d87ff36c8a77fc64b75bef5b1adcd408bb659c150a130fe1cc620a",
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p3_undeclared_proc.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p3_undeclared_proc.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 98,
+      "stdout_sha256": "d9098ba43ce5dc4d6772eb821a6e5d680bfb2c95b2dac6c236bd90ce398f5041",
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p4_wrong_argcount.src": {
@@ -202,17 +202,17 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p9_scope_reuse.src.out",
-      "stdout_bytes": 252,
-      "stdout_sha256": "5cbd9135eadff554d32504ba335f8afb6b753bb73eddc0bb87bdefaca626993c",
+      "stdout_bytes": 96,
+      "stdout_sha256": "b45b026a0c43b723d099933c3b833e532c9cd3c09f6c5a63b83a2918eca83f1b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/empirical/p9b_scope_reuse_clean.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/empirical/p9b_scope_reuse_clean.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 96,
+      "stdout_sha256": "b45b026a0c43b723d099933c3b833e532c9cd3c09f6c5a63b83a2918eca83f1b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/expressions/call1arg.src": {
@@ -342,12 +342,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/expressions/p6_proccall.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/expressions/p6_proccall.src.out",
-      "stdout_bytes": 120,
-      "stdout_sha256": "7d86450b20a7aea3f97c8d68836232a98c43a9a0c07768e64fa233933ac98b63",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/expressions/p7_addchain.src": {
@@ -427,8 +427,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/decls10.src.out",
-      "stdout_bytes": 165,
-      "stdout_sha256": "2a593558d141469bc23e1d28e391960653fa010d81c9c817d06e8c94ecc42a20",
+      "stdout_bytes": 105,
+      "stdout_sha256": "0cbd2b0a3457ba3e5e7e1b51b046c8e8d88328b801e4fd55ab13257190b0d43d",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/hang.src": {
@@ -436,8 +436,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/hang.src.out",
-      "stdout_bytes": 254,
-      "stdout_sha256": "8ae2bfbf1a3ff24951fdfce90dfcff9f0c7639d668123efdc62671ef17808b90",
+      "stdout_bytes": 298,
+      "stdout_sha256": "31d9688488efb60e94a6327c196c36abcf14a9376a995f68419dfad43e0f1163",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync0_buggy.src": {
@@ -571,8 +571,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/resync/resync7.src.out",
-      "stdout_bytes": 249,
-      "stdout_sha256": "3ee7f18244768e177753ee3323140c1b7e6b2d8c960d3aca18301581664bcd49",
+      "stdout_bytes": 300,
+      "stdout_sha256": "faca313af4f1fa32993a14cbe49373337db64ab9936aa8b891b1ef40bcb304dc",
       "stderr_nonempty": false
     },
     "docs/audit/probes/resync/resync7b.src": {
@@ -598,8 +598,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_colon_space.src.out",
-      "stdout_bytes": 223,
-      "stdout_sha256": "1baf691d212b536005ba6202fded5703f2c382f70395945f7c4cb17a3e616315",
+      "stdout_bytes": 267,
+      "stdout_sha256": "1c7228e56eef5d82393a4dbe3fa5f8002f122404fc0baf8aec28ce1aae4552b7",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment1.src": {
@@ -607,8 +607,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment1.src.out",
-      "stdout_bytes": 285,
-      "stdout_sha256": "4e70be981e0adf42b3fbad30bd19218d59ec60cad9be51a59a6bc488ea1abcda",
+      "stdout_bytes": 329,
+      "stdout_sha256": "b1a4df4bb2f251120be9b8679917947fe07aae7d0e01aa5bb156c69f85ee0b3e",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment2.src": {
@@ -616,8 +616,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment2.src.out",
-      "stdout_bytes": 285,
-      "stdout_sha256": "558d9c01f72ee849cdbd623e59f93c761b5c6bc3c20ce908b58e92609192b44a",
+      "stdout_bytes": 329,
+      "stdout_sha256": "2437f6b8bd665c996a668f2200cc30560e418c175b2e420b44be10109dbdcab7",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment3.src": {
@@ -625,8 +625,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment3.src.out",
-      "stdout_bytes": 285,
-      "stdout_sha256": "558d9c01f72ee849cdbd623e59f93c761b5c6bc3c20ce908b58e92609192b44a",
+      "stdout_bytes": 329,
+      "stdout_sha256": "2437f6b8bd665c996a668f2200cc30560e418c175b2e420b44be10109dbdcab7",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_comment_control.src": {
@@ -634,8 +634,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_comment_control.src.out",
-      "stdout_bytes": 285,
-      "stdout_sha256": "4e70be981e0adf42b3fbad30bd19218d59ec60cad9be51a59a6bc488ea1abcda",
+      "stdout_bytes": 329,
+      "stdout_sha256": "03485b2e8ce21a17c7d52a49a40ba332cea7c664f8cd42e731e18517dac02a92",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_eq.src": {
@@ -643,8 +643,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_eq.src.out",
-      "stdout_bytes": 347,
-      "stdout_sha256": "8d56338787412081200dcf2dfb260bfac7a0ed82fdbed5e35f9fdfd015b5ab54",
+      "stdout_bytes": 435,
+      "stdout_sha256": "4c8726a4cadb209172f4d9f74265b17d194ec7249ede0163cc28584f358024be",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_eq_space.src": {
@@ -652,8 +652,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_eq_space.src.out",
-      "stdout_bytes": 347,
-      "stdout_sha256": "8d56338787412081200dcf2dfb260bfac7a0ed82fdbed5e35f9fdfd015b5ab54",
+      "stdout_bytes": 435,
+      "stdout_sha256": "4c8726a4cadb209172f4d9f74265b17d194ec7249ede0163cc28584f358024be",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_frac_underscore.src": {
@@ -670,8 +670,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_highbyte.src.out",
-      "stdout_bytes": 439,
-      "stdout_sha256": "584aea190f4ba7ddf7721eed4ee8d230222d211a7e6ee07493f691916035ed5b",
+      "stdout_bytes": 529,
+      "stdout_sha256": "e9a50af7b3d0119bf27a3cea326ed6f8080543846dbe7db4fcdc87fc9804819d",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_illegal_char.src": {
@@ -688,8 +688,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_line.src.out",
-      "stdout_bytes": 497,
-      "stdout_sha256": "3905d22ea7c9f69f81ad2497ace6f5e4eafb0c87fc58c2d2772f2e8c313aabea",
+      "stdout_bytes": 629,
+      "stdout_sha256": "3aae3621e255d6b1f41939d2697aa636b38ddb1a8bfe8bd37c4d39cc832fcd3d",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_number.src": {
@@ -715,8 +715,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_simple.src.out",
-      "stdout_bytes": 223,
-      "stdout_sha256": "1baf691d212b536005ba6202fded5703f2c382f70395945f7c4cb17a3e616315",
+      "stdout_bytes": 267,
+      "stdout_sha256": "be29813640119cd311990a67a865a8a8e1d4fa2dbb65514b2f566879dc6f6cba",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scanner/t_underscore.src": {
@@ -742,8 +742,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scanner/t_unterm_string.src.out",
-      "stdout_bytes": 316,
-      "stdout_sha256": "827bf1bea49cdf050aa3287d20430f079ddf627392f8cc4f8e945f5004e48467",
+      "stdout_bytes": 360,
+      "stdout_sha256": "9f85dacf52e88d0418a47fddc1f0bb66c7924dcf34fbe8b5c7662d41fe426f29",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/arr_test.src": {
@@ -783,21 +783,21 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/dup_global_test.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/dup_global_test.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 92,
+      "stdout_sha256": "02af3d7f126aa72335dbc6272604b4669dc50b3d66f1d6c733c8006542b1687b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/dupglobal.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/dupglobal.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 92,
+      "stdout_sha256": "02af3d7f126aa72335dbc6272604b4669dc50b3d66f1d6c733c8006542b1687b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/empty_test.src": {
@@ -832,8 +832,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/global_proc_test.src.out",
-      "stdout_bytes": 209,
-      "stdout_sha256": "62a85c1d13177861b50750de40c25b68276c13afbd0e998df84fb829d8f504f0",
+      "stdout_bytes": 162,
+      "stdout_sha256": "14b01daf95c651d3be65ba334cbae6378f39f04e6b213c9fc3a485b036bf47ca",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/global_proc_test2.src": {
@@ -841,26 +841,26 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/global_proc_test2.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "4a4f169a102aade6bdbebe02dc799424dff5368bb18bbe06adced3dc775bae85",
+      "stdout_bytes": 95,
+      "stdout_sha256": "a1b39cb3cc4a55ba81730eb59c50fb1d8ac4cf0ef88d06681c0bd09dc41e25bd",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/global_proc_test3.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/global_proc_test3.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "4a4f169a102aade6bdbebe02dc799424dff5368bb18bbe06adced3dc775bae85",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/global_proc_test4.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/global_proc_test4.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "4a4f169a102aade6bdbebe02dc799424dff5368bb18bbe06adced3dc775bae85",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/globalarr.src": {
@@ -873,12 +873,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/globalproc.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/globalproc.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "892f98e142b3cc3a18030bab93136d60a1c7672838bc83fab1178f0bb72a405c",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/globalvar.src": {
@@ -900,12 +900,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/gp_minimal.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/gp_minimal.src.out",
-      "stdout_bytes": 147,
-      "stdout_sha256": "4a4f169a102aade6bdbebe02dc799424dff5368bb18bbe06adced3dc775bae85",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/gtype.src": {
@@ -949,8 +949,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/malformed_end_test.src.out",
-      "stdout_bytes": 254,
-      "stdout_sha256": "d7468b203c633f7f20b6dcee0425d93cb82e947896f79f8c02a9e320f1e12f4d",
+      "stdout_bytes": 298,
+      "stdout_sha256": "06f97b751fa5d780fa0384b5455f9f17aa9141caacd610b16f9a88ef6ccb136c",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/malformedend.src": {
@@ -967,8 +967,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/minimal_hang_test.src.out",
-      "stdout_bytes": 254,
-      "stdout_sha256": "8ae2bfbf1a3ff24951fdfce90dfcff9f0c7639d668123efdc62671ef17808b90",
+      "stdout_bytes": 298,
+      "stdout_sha256": "31d9688488efb60e94a6327c196c36abcf14a9376a995f68419dfad43e0f1163",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/noshadow.src": {
@@ -1003,6 +1003,33 @@
       "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/proc_test_noreturn.src.out",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/scopes/s2a_builtins.src": {
+      "status": "OK",
+      "exit_code": 0,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/scopes/s2a_builtins.src.out",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/scopes/s2a_forward_capture.src": {
+      "status": "ERRORS",
+      "exit_code": 1,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/scopes/s2a_forward_capture.src.out",
+      "stdout_bytes": 142,
+      "stdout_sha256": "58c702fb5c734eddb8600b2fd7553199ef7a3e67c5daf611eba22a75cc9e0d58",
+      "stderr_nonempty": false
+    },
+    "docs/audit/probes/scopes/s2a_globals_shadow.src": {
+      "status": "OK",
+      "exit_code": 0,
+      "timeout_sec": 30.0,
+      "golden": "tests/golden/docs/audit/probes/scopes/s2a_globals_shadow.src.out",
       "stdout_bytes": 47,
       "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
@@ -1044,21 +1071,21 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/sibling.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/sibling.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 94,
+      "stdout_sha256": "f308371a674ce7cf1d0b7347bb7bc2ca9b31c6d2278b18787b5cd16dee1dfa74",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/sibling2.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/sibling2.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 94,
+      "stdout_sha256": "f308371a674ce7cf1d0b7347bb7bc2ca9b31c6d2278b18787b5cd16dee1dfa74",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/strayend.src": {
@@ -1067,7 +1094,7 @@
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/strayend.src.out",
       "stdout_bytes": 599,
-      "stdout_sha256": "5095992b2af024e23d3fc332f0dcceb8f17dbfe53f7b70381a8a385f62c448ef",
+      "stdout_sha256": "90bf224b665dfd010217a4f58ff63d7a851739c5336a2ef802c646deefcf206b",
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/t_eq.src": {
@@ -1125,12 +1152,12 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/scopes/undeclared.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/scopes/undeclared.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 101,
+      "stdout_sha256": "0e00e41b6357ecd5e560c2a23b0c136dc80be586425a5e12a868ea8e9d1977c3",
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/amp_bool_literals.src": {
@@ -1206,21 +1233,21 @@
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c11_proc.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/typechecker/c11_proc.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 98,
+      "stdout_sha256": "88a1a522e15e0161f7b656784ee447c18431fef192e607572145f25cd36cc59d",
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c11_type.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/docs/audit/probes/typechecker/c11_type.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 96,
+      "stdout_sha256": "bf4cff5824fadb7b06c9651ee9961d5112300347c83493036385a6cc348299dd",
       "stderr_nonempty": false
     },
     "docs/audit/probes/typechecker/c12.src": {
@@ -1611,12 +1638,12 @@
       "stderr_nonempty": false
     },
     "testPgms/correct/test1.src": {
-      "status": "ERRORS",
-      "exit_code": 1,
+      "status": "OK",
+      "exit_code": 0,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/correct/test1.src.out",
-      "stdout_bytes": 121,
-      "stdout_sha256": "47cc24de095f07a2356ed3675a02001824344165fead4701e257fbdffde0404f",
+      "stdout_bytes": 47,
+      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
       "stderr_nonempty": false
     },
     "testPgms/correct/test1b.src": {
@@ -1624,8 +1651,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/correct/test1b.src.out",
-      "stdout_bytes": 158,
-      "stdout_sha256": "bd76472f2c82231568c9a922f93c79442aa4b5cda8ef133735a118a8c752978a",
+      "stdout_bytes": 81,
+      "stdout_sha256": "d759c441d260c155f9137bb8e9815015809d03d68ebb709f0054956d32709677",
       "stderr_nonempty": false
     },
     "testPgms/correct/test2.src": {
@@ -1656,12 +1683,12 @@
       "stderr_nonempty": false
     },
     "testPgms/custom/custom_math.src": {
-      "status": "OK",
-      "exit_code": 0,
+      "status": "ERRORS",
+      "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/custom/custom_math.src.out",
-      "stdout_bytes": 47,
-      "stdout_sha256": "167240b9fdf9921325f0febb377c3dd860dda751270a8600b80bae3cab52c099",
+      "stdout_bytes": 98,
+      "stdout_sha256": "e4c81a464164aa670d23485c9bfb340298fe7fd078115054f4a39ec2811586c3",
       "stderr_nonempty": false
     },
     "testPgms/fail/math_fail.src": {
@@ -1669,8 +1696,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/fail/math_fail.src.out",
-      "stdout_bytes": 220,
-      "stdout_sha256": "401e5cdc4d1a57c0db38258c35595a2da44ea7b130943ac28e3b2c3f0530571e",
+      "stdout_bytes": 734,
+      "stdout_sha256": "50d1584024af2597806a0388869c6a7211384017394ef6e45ad4ea5658c6f883",
       "stderr_nonempty": false
     },
     "testPgms/fail/test1_fail.src": {
@@ -1678,8 +1705,8 @@
       "exit_code": 1,
       "timeout_sec": 30.0,
       "golden": "tests/golden/testPgms/fail/test1_fail.src.out",
-      "stdout_bytes": 306,
-      "stdout_sha256": "5300357c6684d7308ca87463d941c44e35dfb15cbc11af5d707102335be40c61",
+      "stdout_bytes": 228,
+      "stdout_sha256": "e7daaf7f57c47acc35369af0607106bb53f733b210bea7d81bf6d3cfee62e132",
       "stderr_nonempty": false
     }
   }

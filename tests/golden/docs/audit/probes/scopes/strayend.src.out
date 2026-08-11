@@ -5,11 +5,11 @@ Error on line 3: Procedure must be named a valid identifier
 
 Error on line 3: Expected ":" before type mark declaration
 
-Error on line 4: Missing valid type mark
+Error on line 3: Missing valid type mark
 
 Error on line 3: Missing "(" needed to for procedure declaration
 
-Error on line 4: Expected keywords "procedure","variable" "type", or "begin" not found
+Error on line 3: Expected keywords "procedure","variable" "type", or "begin" not found
 
 Error on line 3: Missing keyword "begin" to begin procedure statements
 

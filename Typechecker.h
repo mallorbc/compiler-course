@@ -58,6 +58,7 @@ public:
     bool second_relation_token_chains(token token_to_check);
     token_and_status feed_in_tokens(token token_to_feed);
     bool clear_tokens(bool move_second_to_first);
+    void suppress_current_statement();
     token_and_status is_valid_operation();
 
     bool check_assignment_statement(token destination_token, token resolved_token);
@@ -81,6 +82,7 @@ public:
     parser *parser_parent;
 
     bool type_error_occured = false;
+    bool statement_suppressed = false;
     //Typechecker(parser *parent_test);
 };
 

@@ -93,24 +93,21 @@ public:
     bool parse_base_declaration();
     //for standard variables
     bool parse_variable_declaration(bool is_global);
-    //for procedure parameters in their declaration
-    bool parse_variable_declaration(bool is_global, std::string procedure_name);
     bool parse_type_declaration(bool is_global);
 
     //methods for parsing part of the procedures
-    bool parse_procedure_declaration(bool is_global, bool owns_scope);
-    bool parse_procedure_header(bool is_global);
+    bool parse_procedure_declaration(bool is_global);
+    bool parse_procedure_header(bool is_global, token &candidate,
+                                std::vector<token> &parameters,
+                                std::vector<token> &header_symbols);
     bool parse_procedure_body();
 
     //method for parsing type_mark which is used for type declarations
-    bool parse_type_mark();
-    //same as parse_type_mark but only for procedure variables and variables; 0 means procedure params, 1 means proc itself, 2 means vars
-    bool parse_type_mark(std::string procedure_name, int context);
-    //used to add context on what the valid inputs are for procedures, as well as what the variables in the procedure are
-    bool parse_type_mark(std::string procedure_name, std::string variable_name);
+    bool parse_declared_type(data_types &resolved_type, std::vector<token> &enum_symbols);
     //methods used for parsing one or more parameters in a procedure declaration
-    bool parse_parameter_list(std::string procedure_name);
-    bool parse_parameter(std::string procedure_name);
+    bool parse_parameter_list(std::vector<token> &parameters,
+                              std::vector<token> &header_symbols);
+    bool parse_parameter(token &parameter, std::vector<token> &header_symbols);
 
     //methods used for parsing statements
     bool parse_base_statement();
@@ -155,11 +152,18 @@ public:
     int current_scope_id = 0;
     //tracks the total number of scopes that have been made, will be used for the id
     int number_of_scopes = 0;
+    std::vector<int> active_scope_ids = {0};
+    int next_scope_id = 1;
 
     //section for Typechecker
     //token that is used for context
     token Context_token;
-    token update_context_token(token token_to_get_context);
+    bool resolve_identifier_use(const token &occurrence, token &resolved_token,
+                                const std::string &kind = "identifier");
+    bool resolve_procedure_use(const token &occurrence, token &resolved_token);
+    bool declaration_target(bool explicitly_global) const;
+    int declaration_scope(bool explicitly_global) const;
+    void report_duplicate_declaration(const token &occurrence);
 
     Typechecker *type_checker;
 };

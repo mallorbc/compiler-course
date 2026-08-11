@@ -189,11 +189,13 @@ bool parser::parse_program_header()
     }
     if (Current_parse_token_type == T_IDENTIFIER)
     {
-        //this identifier is a program name
         Current_parse_token.identifer_type = I_PROGRAM_NAME;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        valid_parse = true;
+        Current_parse_token.global_scope = true;
+        valid_parse = Lexer->symbol_table.declare_symbol(0, Current_parse_token);
+        if (!valid_parse)
+        {
+            report_duplicate_declaration(Current_parse_token);
+        }
         Current_parse_token = Get_Valid_Token();
     }
     else
@@ -423,9 +425,8 @@ bool parser::parse_base_declaration()
 
         if (Current_parse_token_type == T_PROCEDURE)
         {
-            update_scopes(true);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration(is_global_declaration, true);
+            valid_parse = parse_procedure_declaration(is_global_declaration);
         }
         else if (Current_parse_token_type == T_VARIABLE)
         {
@@ -452,10 +453,8 @@ bool parser::parse_base_declaration()
     {
         if (Current_parse_token_type == T_PROCEDURE)
         {
-            //increments the scope id
-            update_scopes(true);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_procedure_declaration(is_global_declaration, true);
+            valid_parse = parse_procedure_declaration(is_global_declaration);
         }
         else if (Current_parse_token_type == T_VARIABLE)
         {
@@ -482,67 +481,83 @@ bool parser::parse_base_declaration()
     return valid_parse;
 }
 
-bool parser::parse_procedure_declaration(bool is_global, bool owns_scope)
+bool parser::parse_procedure_declaration(bool is_global)
 {
-    //this tracks the state of the parser
-    int procedure_scope_id = current_scope_id;
-    bool header_valid = parse_procedure_header(is_global);
-    bool body_valid = parse_procedure_body();
-    parsing_statements = false;
+    const int parent_scope_id = current_scope_id;
+    const int target_scope_id = declaration_scope(is_global);
+    token candidate;
+    std::vector<token> parameters;
+    std::vector<token> header_symbols;
 
-    //parse_base_declaration enters the procedure scope.  Keep ownership here
-    //so every successful or recovered procedure exit balances that entry once.
-    if (owns_scope && current_scope_id == procedure_scope_id)
+    //A recovery/body scope is always created and later popped exactly once.
+    //It remains in SymbolTable for later code generation even after exit.
+    update_scopes(true);
+    const int body_scope_id = current_scope_id;
+    bool header_valid = parse_procedure_header(is_global, candidate, parameters,
+                                               header_symbols);
+    bool duplicate = false;
+    if (!candidate.stringValue.empty())
     {
-        update_scopes(false);
+        duplicate = Lexer->symbol_table.has_declared(target_scope_id,
+                                                      candidate.stringValue);
+        if (duplicate)
+        {
+            report_duplicate_declaration(candidate);
+            header_valid = false;
+        }
     }
+
+    if (header_valid && !duplicate)
+    {
+        std::vector<token> body_symbols = header_symbols;
+        body_symbols.insert(body_symbols.end(), parameters.begin(), parameters.end());
+        if (!Lexer->symbol_table.can_declare_all(body_scope_id, body_symbols))
+        {
+            generate_error_report("Duplicate declaration in procedure header",
+                                  candidate.line_found);
+            errors_occured = true;
+            header_valid = false;
+        }
+        else if (!Lexer->symbol_table.declare_symbol(target_scope_id, candidate))
+        {
+            report_duplicate_declaration(candidate);
+            header_valid = false;
+        }
+        else
+        {
+            const SymbolRef procedure_ref{target_scope_id, candidate.stringValue};
+            Lexer->symbol_table.set_scope_owner(body_scope_id, procedure_ref);
+            Lexer->symbol_table.declare_all(body_scope_id, body_symbols);
+        }
+    }
+
+    const bool body_valid = parse_procedure_body();
+    parsing_statements = false;
+    update_scopes(false);
+    (void)parent_scope_id;
     return header_valid && body_valid;
 }
 
-//ready to test
-//the token procedure is used to enter this function
-bool parser::parse_procedure_header(bool is_global)
+bool parser::parse_procedure_header(bool is_global, token &candidate,
+                                    std::vector<token> &parameters,
+                                    std::vector<token> &header_symbols)
 {
-    //this variable will hold the string of the procedure name, this will be used to later add the valid parameters of the procedure
-    std::string procedure_name = "";
-    //this tracks the state of the parser
-    bool valid_parse;
+    bool valid_parse = true;
     if (Current_parse_token_type == T_IDENTIFIER)
     {
-        procedure_name = Current_parse_token.stringValue;
-        if (is_global)
-        {
-            //checks to see if the token is already a global token
-            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
-            {
-                //makes the current parse token global since the previous token was global
-                Lexer->symbol_table.make_token_global(Current_parse_token);
-            }
-            //else it is global; can we redefine global?
-            else
-            {
-            }
-        }
-        //marks this identifier as a procedure
-        Current_parse_token.identifer_type = I_PROCEDURE;
-        //saves the procedure name
-        procedure_name = Current_parse_token.stringValue;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
+        candidate = Current_parse_token;
+        candidate.identifer_type = I_PROCEDURE;
+        candidate.global_scope = declaration_target(is_global);
+        candidate.scope_id = declaration_scope(is_global);
         Current_parse_token = Get_Valid_Token();
     }
     else
     {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_procedure_header()" << std::endl;
-        }
         generate_error_report("Procedure must be named a valid identifier");
         errors_occured = true;
-        Current_parse_token = Get_Valid_Token();
-        //valid_parse = resync_parser(state);
-        //return false;
+        valid_parse = false;
     }
+
     if (Current_parse_token_type == T_COLON)
     {
         Current_parse_token = Get_Valid_Token();
@@ -551,39 +566,39 @@ bool parser::parse_procedure_header(bool is_global)
     {
         generate_error_report_previous_token("Expected \":\" before type mark declaration");
         errors_occured = true;
+        valid_parse = false;
     }
-    valid_parse = parse_type_mark(procedure_name, 1);
-    //must have left and right paretheses, parameters are optional
-    if (Current_parse_token_type == T_LPARAM)
+
+    data_types return_type = TYPE_NONE;
+    std::vector<token> return_enum_symbols;
+    if (!parse_declared_type(return_type, return_enum_symbols))
     {
-        //If the procedure has no parameters
-        if (Next_parse_token_type == T_RPARAM)
-        {
-            //sets valid_parse to true to allow parsing of procedure body
-            valid_parse = true;
-            Current_parse_token = Get_Valid_Token();
-            Current_parse_token = Get_Valid_Token();
-        }
-        //else it is not a RPARAM, meaning there are parameters, meaning they need to be parsed. Or errors which will be detected later
-        else
-        {
-            Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_parameter_list(procedure_name);
-        }
+        valid_parse = false;
     }
-    //must have left and right paretheses, parameters are optional
-    else
+    candidate.identifier_data_type = return_type;
+    header_symbols.insert(header_symbols.end(), return_enum_symbols.begin(),
+                          return_enum_symbols.end());
+
+    if (Current_parse_token_type != T_LPARAM)
     {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_procedure_header()" << std::endl;
-        }
         generate_error_report_previous_token("Missing \"(\" needed to for procedure declaration");
         errors_occured = true;
         return false;
     }
-    //Current_parse_token = Get_Valid_Token();
-
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type == T_RPARAM)
+    {
+        Current_parse_token = Get_Valid_Token();
+        return valid_parse;
+    }
+    if (!parse_parameter_list(parameters, header_symbols))
+    {
+        return false;
+    }
+    for (const token &parameter : parameters)
+    {
+        candidate.procedure_params.push_back(parameter.identifier_data_type);
+    }
     return valid_parse;
 }
 
@@ -782,547 +797,156 @@ bool parser::parse_procedure_body()
     return valid_parse;
 }
 
-//ready to test
-//enum needs tested
-//write test prog for this
-bool parser::parse_type_mark()
+
+bool parser::parse_declared_type(data_types &resolved_type, std::vector<token> &enum_symbols)
 {
-    //this tracks the state of the parser
-    bool valid_parse;
-    //May need to do something once the type is determined
+    resolved_type = TYPE_NONE;
     if (Current_parse_token_type == T_INTEGER_TYPE)
     {
+        resolved_type = TYPE_INT;
         Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
+        return true;
     }
-    else if (Current_parse_token_type == T_FLOAT_TYPE)
+    if (Current_parse_token_type == T_FLOAT_TYPE)
     {
+        resolved_type = TYPE_FLOAT;
         Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
+        return true;
     }
-    else if (Current_parse_token_type == T_STRING_TYPE)
+    if (Current_parse_token_type == T_STRING_TYPE)
     {
+        resolved_type = TYPE_STRING;
         Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
+        return true;
     }
-    else if (Current_parse_token_type == T_BOOL_TYPE)
+    if (Current_parse_token_type == T_BOOL_TYPE)
     {
+        resolved_type = TYPE_BOOL;
         Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
+        return true;
     }
-    //I think this means that the this will be the same type as the identifier
-    else if (Current_parse_token_type == T_IDENTIFIER)
+    if (Current_parse_token_type == T_IDENTIFIER)
     {
-        //marks this identifier as a type
-        Current_parse_token.identifer_type = I_TYPE;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    else if (Current_parse_token_type == T_ENUM)
-    {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_LBRACE)
+        token type_symbol;
+        if (!Lexer->symbol_table.resolve_name(Current_parse_token.stringValue,
+                                              current_scope_id, type_symbol) ||
+            type_symbol.identifer_type != I_TYPE)
         {
+            generate_error_report("Expected declared type \"" +
+                                      Current_parse_token.stringValue + "\"",
+                                  Current_parse_token.line_found);
+            errors_occured = true;
             Current_parse_token = Get_Valid_Token();
-            // if(Current_parse_token_type == T_LBRACE){
-            //     Current_parse_token = Get_Valid_Token();
-            if (Current_parse_token_type != T_IDENTIFIER)
-            {
-                generate_error_report("Expected identifier as part of Enum");
-                errors_occured = true;
-                if (debugging)
-                {
-                    std::cout << "parser failed on parse_type_mark()" << std::endl;
-                }
-                return false;
-            }
-            else
-            {
-                //it is an enum which is a type mark
-                Current_parse_token.identifer_type = I_TYPE;
-                //updates the token in the symbol tables
-                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                Current_parse_token = Get_Valid_Token();
-                //end of enumeration, contains one identifier
-                if (Current_parse_token_type == T_RBRACE)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                    valid_parse = true;
-                }
-                //else at least 2 identifiers exist in the enum
-                else
-                {
-                    //the first token has to be a comma
-                    if (Current_parse_token_type == T_COMMA)
-                    {
-                        //The next token after a comma has to be an identifier
-                        if (Next_parse_token_type == T_IDENTIFIER)
-                        {
-                            while (true)
-                            {
-                                Current_parse_token = Get_Valid_Token();
-                                //Current token is an identifier in an enum
-                                Current_parse_token.identifer_type = I_TYPE;
-                                //updates the token in the symbol tables
-                                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                                //if the next token after the identifer is a RBRACE, it is valid and end of the parse
-                                if (Next_parse_token_type == T_RBRACE)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    Current_parse_token = Get_Valid_Token();
-                                    return true;
-                                }
-                                //else it better be a comma
-                                else if (Next_parse_token_type == T_COMMA)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    //The current token is now a comma, so the next token needs to be an identifier
-                                    if (Next_parse_token_type != T_IDENTIFIER)
-                                    {
-                                        if (debugging)
-                                        {
-                                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                        }
-                                        generate_error_report("Missing expected identifier after comma in enumeration list");
-                                        errors_occured = true;
-                                        return false;
-                                    }
-                                }
-                                //else it contains some other invalid token
-                                else
-                                {
-                                    if (debugging)
-                                    {
-                                        std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                    }
-                                    generate_error_report("Enumeration list must be either a comma or a identifier");
-                                    errors_occured = true;
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (debugging)
-                        {
-                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                        }
-                        generate_error_report("Missing expected comma for list of enumerations");
-                        errors_occured = true;
-                        return false;
-                    }
-                }
-            }
-            //}
+            return false;
         }
+        resolved_type = type_symbol.identifier_data_type;
+        Current_parse_token = Get_Valid_Token();
+        return true;
     }
-    else
+    if (Current_parse_token_type != T_ENUM)
     {
         generate_error_report("Missing valid type mark");
         errors_occured = true;
         return false;
     }
-    return valid_parse;
-}
 
-//parse_type_mark but for procedure headers
-bool parser::parse_type_mark(std::string identifier_name, int context)
-{
-    //this tracks the state of the parser
-    bool valid_parse;
-    //May need to do something once the type is determined
-    //the procedure takes a integer input
-    if (Current_parse_token_type == T_INTEGER_TYPE)
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type != T_LBRACE)
     {
-        if (context == 0)
-        {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_INT, current_scope_id);
-        }
-        if (context == 1)
-        {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_INT, current_scope_id);
-        }
-        if (context == 2)
-        {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_INT, current_scope_id);
-        }
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a float input
-    else if (Current_parse_token_type == T_FLOAT_TYPE)
-    {
-        if (context == 0)
-        {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_FLOAT, current_scope_id);
-        }
-        if (context == 1)
-        {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_FLOAT, current_scope_id);
-        }
-        if (context == 2)
-        {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_FLOAT, current_scope_id);
-        }
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a string input
-    else if (Current_parse_token_type == T_STRING_TYPE)
-    {
-        if (context == 0)
-        {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_STRING, current_scope_id);
-        }
-        if (context == 1)
-        {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_STRING, current_scope_id);
-        }
-        if (context == 2)
-        {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_STRING, current_scope_id);
-        }
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a bool input
-    else if (Current_parse_token_type == T_BOOL_TYPE)
-    {
-        if (context == 0)
-        {
-            Lexer->symbol_table.add_procedure_valid_inputs(identifier_name, TYPE_BOOL, current_scope_id);
-        }
-        if (context == 1)
-        {
-            Lexer->symbol_table.update_procedure_return_type(identifier_name, TYPE_BOOL, current_scope_id);
-        }
-        if (context == 2)
-        {
-            Lexer->symbol_table.update_identifier_data_type(identifier_name, TYPE_BOOL, current_scope_id);
-        }
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //I think this means that the this will be the same type as the identifier
-    //if the above comment is right, we need to look out the above scope and figure out what the type really is
-    else if (Current_parse_token_type == T_IDENTIFIER)
-    {
-        //marks this identifier as a type
-        Current_parse_token.identifer_type = I_TYPE;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //fuck this for now when it comes to type; COME BACK
-    else if (Current_parse_token_type == T_ENUM)
-    {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_LBRACE)
-        {
-            Current_parse_token = Get_Valid_Token();
-            // if(Current_parse_token_type == T_LBRACE){
-            //     Current_parse_token = Get_Valid_Token();
-            if (Current_parse_token_type != T_IDENTIFIER)
-            {
-                generate_error_report("Expected identifier as part of Enum");
-                errors_occured = true;
-                if (debugging)
-                {
-                    std::cout << "parser failed on parse_type_mark()" << std::endl;
-                }
-                return false;
-            }
-            else
-            {
-                //it is an enum which is a type mark
-                Current_parse_token.identifer_type = I_TYPE;
-                //updates the token in the symbol tables
-                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                Current_parse_token = Get_Valid_Token();
-                //end of enumeration, contains one identifier
-                if (Current_parse_token_type == T_RBRACE)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                    valid_parse = true;
-                }
-                //else at least 2 identifiers exist in the enum
-                else
-                {
-                    //the first token has to be a comma
-                    if (Current_parse_token_type == T_COMMA)
-                    {
-                        //The next token after a comma has to be an identifier
-                        if (Next_parse_token_type == T_IDENTIFIER)
-                        {
-                            while (true)
-                            {
-                                Current_parse_token = Get_Valid_Token();
-                                //Current token is an identifier in an enum
-                                Current_parse_token.identifer_type = I_TYPE;
-                                //updates the token in the symbol tables
-                                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                                //if the next token after the identifer is a RBRACE, it is valid and end of the parse
-                                if (Next_parse_token_type == T_RBRACE)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    Current_parse_token = Get_Valid_Token();
-                                    return true;
-                                }
-                                //else it better be a comma
-                                else if (Next_parse_token_type == T_COMMA)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    //The current token is now a comma, so the next token needs to be an identifier
-                                    if (Next_parse_token_type != T_IDENTIFIER)
-                                    {
-                                        if (debugging)
-                                        {
-                                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                        }
-                                        generate_error_report("Missing expected identifier after comma in enumeration list");
-                                        errors_occured = true;
-                                        return false;
-                                    }
-                                }
-                                //else it contains some other invalid token
-                                else
-                                {
-                                    if (debugging)
-                                    {
-                                        std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                    }
-                                    generate_error_report("Enumeration list must be either a comma or a identifier");
-                                    errors_occured = true;
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (debugging)
-                        {
-                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                        }
-                        generate_error_report("Missing expected comma for list of enumerations");
-                        errors_occured = true;
-                        return false;
-                    }
-                }
-            }
-            //}
-        }
-    }
-    else
-    {
-        generate_error_report("Missing valid type mark");
-        errors_occured = true;
-        return false;
-    }
-    return valid_parse;
-}
-
-//by calling this function, by definition we are parsing a parameter and need to add context to the var as well as the procedure
-bool parser::parse_type_mark(std::string procedure_name, std::string variable_name)
-{
-    //this tracks the state of the parser
-    bool valid_parse;
-    //May need to do something once the type is determined
-    //the procedure takes a integer input
-    if (Current_parse_token_type == T_INTEGER_TYPE)
-    {
-        //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_INT, current_scope_id);
-        //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_INT, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a float input
-    else if (Current_parse_token_type == T_FLOAT_TYPE)
-    {
-        //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_FLOAT, current_scope_id);
-        //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_FLOAT, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a string input
-    else if (Current_parse_token_type == T_STRING_TYPE)
-    {
-        //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_STRING, current_scope_id);
-        //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_STRING, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //the procedure takes a bool input
-    else if (Current_parse_token_type == T_BOOL_TYPE)
-    {
-        //records that the procedure_name takes one additional input of this type
-        Lexer->symbol_table.add_procedure_valid_inputs(procedure_name, TYPE_BOOL, current_scope_id);
-        //records what the data type of the variable is
-        Lexer->symbol_table.update_identifier_data_type(variable_name, TYPE_BOOL, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //I think this means that the this will be the same type as the identifier
-    //if the above comment is right, we need to look out the above scope and figure out what the type really is
-    else if (Current_parse_token_type == T_IDENTIFIER)
-    {
-        //marks this identifier as a type
-        Current_parse_token.identifer_type = I_TYPE;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = true;
-    }
-    //fuck this for now when it comes to type; COME BACK
-    else if (Current_parse_token_type == T_ENUM)
-    {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_LBRACE)
-        {
-            Current_parse_token = Get_Valid_Token();
-            // if(Current_parse_token_type == T_LBRACE){
-            //     Current_parse_token = Get_Valid_Token();
-            if (Current_parse_token_type != T_IDENTIFIER)
-            {
-                generate_error_report("Expected identifier as part of Enum");
-                errors_occured = true;
-                if (debugging)
-                {
-                    std::cout << "parser failed on parse_type_mark()" << std::endl;
-                }
-                return false;
-            }
-            else
-            {
-                //it is an enum which is a type mark
-                Current_parse_token.identifer_type = I_TYPE;
-                //updates the token in the symbol tables
-                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                Current_parse_token = Get_Valid_Token();
-                //end of enumeration, contains one identifier
-                if (Current_parse_token_type == T_RBRACE)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                    valid_parse = true;
-                }
-                //else at least 2 identifiers exist in the enum
-                else
-                {
-                    //the first token has to be a comma
-                    if (Current_parse_token_type == T_COMMA)
-                    {
-                        //The next token after a comma has to be an identifier
-                        if (Next_parse_token_type == T_IDENTIFIER)
-                        {
-                            while (true)
-                            {
-                                Current_parse_token = Get_Valid_Token();
-                                //Current token is an identifier in an enum
-                                Current_parse_token.identifer_type = I_TYPE;
-                                //updates the token in the symbol tables
-                                Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-                                //if the next token after the identifer is a RBRACE, it is valid and end of the parse
-                                if (Next_parse_token_type == T_RBRACE)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    Current_parse_token = Get_Valid_Token();
-                                    return true;
-                                }
-                                //else it better be a comma
-                                else if (Next_parse_token_type == T_COMMA)
-                                {
-                                    Current_parse_token = Get_Valid_Token();
-                                    //The current token is now a comma, so the next token needs to be an identifier
-                                    if (Next_parse_token_type != T_IDENTIFIER)
-                                    {
-                                        if (debugging)
-                                        {
-                                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                        }
-                                        generate_error_report("Missing expected identifier after comma in enumeration list");
-                                        errors_occured = true;
-                                        return false;
-                                    }
-                                }
-                                //else it contains some other invalid token
-                                else
-                                {
-                                    if (debugging)
-                                    {
-                                        std::cout << "parser failed on parse_type_mark()" << std::endl;
-                                    }
-                                    generate_error_report("Enumeration list must be either a comma or a identifier");
-                                    errors_occured = true;
-                                    return false;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (debugging)
-                        {
-                            std::cout << "parser failed on parse_type_mark()" << std::endl;
-                        }
-                        generate_error_report("Missing expected comma for list of enumerations");
-                        errors_occured = true;
-                        return false;
-                    }
-                }
-            }
-            //}
-        }
-    }
-    else
-    {
-        generate_error_report("Missing valid type mark");
-        errors_occured = true;
-        return false;
-    }
-    return valid_parse;
-}
-
-//ready to test
-//refactored 2 time
-//consumes variable token first
-//tracks the procedure name so that valid inputs of this procedure can be tracked
-bool parser::parse_parameter_list(std::string procedure_name)
-{
-    //this tracks the state of the parser
-    //The caller leaves the cursor on the `variable` keyword.  Parameters are
-    //stored using the ordinary variable-declaration parser, which expects the
-    //identifier after that keyword.
-    if (Current_parse_token_type != T_VARIABLE)
-    {
-        generate_error_report("Expected keyword \"variable\" in procedure parameter list");
+        generate_error_report_previous_token("Expected \"{\" to begin enumeration");
         errors_occured = true;
         return false;
     }
     Current_parse_token = Get_Valid_Token();
-    bool valid_parse = parse_parameter(procedure_name);
-
-    //Keep the closing ')' owned by this frame: recursive calls used to consume
-    //it and then every caller tried to consume it again.
-    while (valid_parse && Current_parse_token_type == T_COMMA)
+    bool expect_identifier = true;
+    while (Current_parse_token_type != T_RBRACE &&
+           Current_parse_token_type != T_INVALID)
     {
-        Current_parse_token = Get_Valid_Token();
-        if (Current_parse_token_type == T_RPARAM)
+        if (expect_identifier)
         {
-            generate_error_report("Missing parameter after comma in procedure parameter list");
+            if (Current_parse_token_type != T_IDENTIFIER)
+            {
+                generate_error_report("Expected identifier as part of Enum");
+                errors_occured = true;
+                return false;
+            }
+            token enumerator = Current_parse_token;
+            enumerator.identifer_type = I_TYPE;
+            enumerator.identifier_data_type = TYPE_NONE;
+            enum_symbols.push_back(enumerator);
+            Current_parse_token = Get_Valid_Token();
+            expect_identifier = false;
+        }
+        else if (Current_parse_token_type == T_COMMA)
+        {
+            Current_parse_token = Get_Valid_Token();
+            expect_identifier = true;
+        }
+        else
+        {
+            generate_error_report("Enumeration list must be either a comma or a identifier");
             errors_occured = true;
             return false;
         }
+    }
+    if (expect_identifier || Current_parse_token_type != T_RBRACE)
+    {
+        generate_error_report_previous_token("Missing expected identifier after comma in enumeration list");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    return true;
+}
 
+bool parser::parse_parameter(token &parameter, std::vector<token> &header_symbols)
+{
+    if (Current_parse_token_type != T_IDENTIFIER)
+    {
+        generate_error_report("Missing identifier for variable declaration");
+        errors_occured = true;
+        return false;
+    }
+    parameter = Current_parse_token;
+    parameter.identifer_type = I_VARIABLE;
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type != T_COLON)
+    {
+        generate_error_report_previous_token("Missing colon for delcaration of variable type");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    std::vector<token> enum_symbols;
+    if (!parse_declared_type(parameter.identifier_data_type, enum_symbols))
+    {
+        return false;
+    }
+    header_symbols.insert(header_symbols.end(), enum_symbols.begin(), enum_symbols.end());
+    if (Current_parse_token_type == T_LBRACKET)
+    {
+        parameter.is_array = true;
+        Current_parse_token = Get_Valid_Token();
+        if (!parse_bound())
+        {
+            return false;
+        }
+        if (Current_parse_token_type != T_RBRACKET)
+        {
+            generate_error_report_previous_token("Missing \"]\" to close the array declaration");
+            errors_occured = true;
+            return false;
+        }
+        Current_parse_token = Get_Valid_Token();
+    }
+    return true;
+}
+
+bool parser::parse_parameter_list(std::vector<token> &parameters,
+                                  std::vector<token> &header_symbols)
+{
+    while (true)
+    {
         if (Current_parse_token_type != T_VARIABLE)
         {
             generate_error_report("Expected keyword \"variable\" in procedure parameter list");
@@ -1330,264 +954,133 @@ bool parser::parse_parameter_list(std::string procedure_name)
             return false;
         }
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_parameter(procedure_name);
+        token parameter;
+        if (!parse_parameter(parameter, header_symbols))
+        {
+            return false;
+        }
+        parameters.push_back(parameter);
+        if (Current_parse_token_type != T_COMMA)
+        {
+            break;
+        }
+        Current_parse_token = Get_Valid_Token();
+        if (Current_parse_token_type == T_RPARAM)
+        {
+            generate_error_report("Missing parameter after comma in procedure parameter list");
+            errors_occured = true;
+            return false;
+        }
     }
+    if (Current_parse_token_type != T_RPARAM)
+    {
+        generate_error_report_previous_token("Missing \")\" to close procedure parameter list");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    return true;
+}
 
-    if (!valid_parse)
+bool parser::parse_variable_declaration(bool is_global)
+{
+    if (Current_parse_token_type != T_IDENTIFIER)
+    {
+        generate_error_report("Missing identifier for variable declaration");
+        errors_occured = true;
+        return false;
+    }
+    token candidate = Current_parse_token;
+    candidate.identifer_type = I_VARIABLE;
+    candidate.global_scope = declaration_target(is_global);
+    const int target_scope_id = declaration_scope(is_global);
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type != T_COLON)
+    {
+        generate_error_report_previous_token("Missing colon for delcaration of variable type");
+        errors_occured = true;
+        return false;
+    }
+    Current_parse_token = Get_Valid_Token();
+    std::vector<token> enum_symbols;
+    if (!parse_declared_type(candidate.identifier_data_type, enum_symbols))
     {
         return false;
     }
+    if (Current_parse_token_type == T_LBRACKET)
+    {
+        candidate.is_array = true;
+        Current_parse_token = Get_Valid_Token();
+        if (!parse_bound())
+        {
+            return false;
+        }
+        if (Current_parse_token_type != T_RBRACKET)
+        {
+            generate_error_report_previous_token("Missing \"]\" to close the array declaration");
+            errors_occured = true;
+            return false;
+        }
+        Current_parse_token = Get_Valid_Token();
+    }
+    std::vector<token> symbols;
+    symbols.push_back(candidate);
+    symbols.insert(symbols.end(), enum_symbols.begin(), enum_symbols.end());
+    if (!Lexer->symbol_table.declare_all(target_scope_id, symbols))
+    {
+        report_duplicate_declaration(candidate);
+        return false;
+    }
+    return true;
+}
 
-    if (Current_parse_token_type == T_RPARAM)
+bool parser::parse_bound()
+{
+    if (Current_parse_token_type == T_INTEGER_VALUE ||
+        Current_parse_token_type == T_FLOAT_VALUE)
     {
         Current_parse_token = Get_Valid_Token();
         return true;
     }
-
-    if (debugging)
-    {
-        std::cout << "parser failed on parse_parameter_list()" << std::endl;
-    }
-    generate_error_report_previous_token("Missing \")\" to close procedure parameter list");
+    generate_error_report("Missing expected number");
     errors_occured = true;
     return false;
 }
 
-//variable token is consumed to enter this function
-//ready to test
-//refactored 1 time
-bool parser::parse_variable_declaration(bool is_global)
-{
-    //this tracks the name of the variable
-    std::string variable_name = "";
-    //this tracks the state of the parser
-    bool valid_parse;
-    if (Current_parse_token_type == T_IDENTIFIER)
-    {
-        if (is_global)
-        {
-            //checks to see if the token is already a global token
-            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
-            {
-                //makes the current parse token global since the previous token was global
-                Lexer->symbol_table.make_token_global(Current_parse_token);
-            }
-            //else it is global; can we redefine global?
-            else
-            {
-            }
-        }
-        //this means that the identifer is a variable
-        Current_parse_token.identifer_type = I_VARIABLE;
-        //stores the variable name
-        variable_name = Current_parse_token.stringValue;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report("Missing identifier for variable declaration");
-        errors_occured = true;
-        return false;
-    }
-    if (Current_parse_token_type == T_COLON)
-    {
-        Current_parse_token = Get_Valid_Token();
-        //passes the variable name to later add context of what the variable is in the symbol table
-        valid_parse = parse_type_mark(variable_name, 2);
-        if (valid_parse)
-        {
-            //checks for optional bracket to declare an array
-            if (Current_parse_token_type == T_LBRACKET)
-            {
-                Current_parse_token = Get_Valid_Token();
-                valid_parse = parse_bound();
-                if (Current_parse_token_type == T_RBRACKET)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                }
-                //must have closing right bracket
-                else
-                {
-                    generate_error_report_previous_token("Missing \"]\" to close the array declaration");
-                    errors_occured = true;
-                    return false;
-                }
-            }
-        }
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report_previous_token("Missing colon for delcaration of variable type");
-        errors_occured = true;
-        return false;
-    }
-
-    return valid_parse;
-}
-
-//this is the same as the regular parse_variable_declaration, though it allows tracking of the procedure name
-bool parser::parse_variable_declaration(bool is_global, std::string procedure_name)
-{
-    std::string identifier_name = "";
-    //this tracks the state of the parser
-    bool valid_parse;
-    if (Current_parse_token_type == T_IDENTIFIER)
-    {
-        if (is_global)
-        {
-            //checks to see if the token is already a global token
-            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
-            {
-                //makes the current parse token global since the previous token was global
-                Lexer->symbol_table.make_token_global(Current_parse_token);
-            }
-            //else it is global; can we redefine global?
-            else
-            {
-            }
-        }
-        //this means that the identifer is a variable
-        Current_parse_token.identifer_type = I_VARIABLE;
-        //stores the name of the variable
-        identifier_name = Current_parse_token.stringValue;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report("Missing identifier for variable declaration");
-        errors_occured = true;
-        return false;
-    }
-    if (Current_parse_token_type == T_COLON)
-    {
-        Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_type_mark(procedure_name, identifier_name);
-        if (valid_parse)
-        {
-            //checks for optional bracket to declare an array
-            if (Current_parse_token_type == T_LBRACKET)
-            {
-                Current_parse_token = Get_Valid_Token();
-                valid_parse = parse_bound();
-                if (Current_parse_token_type == T_RBRACKET)
-                {
-                    Current_parse_token = Get_Valid_Token();
-                }
-                //must have closing right bracket
-                else
-                {
-                    generate_error_report_previous_token("Missing \"]\" to close the array declaration");
-                    errors_occured = true;
-                    return false;
-                }
-            }
-        }
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_variable_declaration()" << std::endl;
-        }
-        generate_error_report_previous_token("Missing colon for delcaration of variable type");
-        errors_occured = true;
-        return false;
-    }
-
-    return valid_parse;
-}
-
-//ready to test
-//refactored 1 time
-bool parser::parse_bound()
-{
-    //this tracks the state of the parser
-    bool valid_parse;
-    valid_parse = parse_number();
-    if (!valid_parse)
-    {
-        generate_error_report("Missing expected number");
-        errors_occured = true;
-    }
-    return valid_parse;
-}
-
-//token type is consumed to enter this function
-//ready test
-//write test prog for
 bool parser::parse_type_declaration(bool is_global)
 {
-    //tracks the name of the identifier token
-    std::string identifier_name = "";
-    //this tracks the state of the parser
-    bool valid_parse;
-    //T_TYPE has already been parsed;  May need changed in the future
-    if (Current_parse_token_type == T_IDENTIFIER)
+    if (Current_parse_token_type != T_IDENTIFIER)
     {
-        if (is_global)
-        {
-            //checks to see if the token is already a global token
-            if (!Lexer->symbol_table.is_global_token(Current_parse_token))
-            {
-                //makes the current parse token global since the previous token was global
-                Lexer->symbol_table.make_token_global(Current_parse_token);
-            }
-            //else it is global; can we redefine global?
-            else
-            {
-            }
-        }
-        //this identifier is a type
-        Current_parse_token.identifer_type = I_TYPE;
-        identifier_name = Current_parse_token.stringValue;
-        //updates the token in the symbol tables
-        Lexer->symbol_table.update_identifier_type(Current_parse_token, current_scope_id);
-        Current_parse_token = Get_Valid_Token();
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_type_declaration()" << std::endl;
-        }
         generate_error_report("Missing required identifier for type declaration");
         errors_occured = true;
         return false;
     }
-    if (Current_parse_token_type == T_IS)
+    token candidate = Current_parse_token;
+    candidate.identifer_type = I_TYPE;
+    candidate.global_scope = declaration_target(is_global);
+    const int target_scope_id = declaration_scope(is_global);
+    Current_parse_token = Get_Valid_Token();
+    if (Current_parse_token_type != T_IS)
     {
-        Current_parse_token = Get_Valid_Token();
-    }
-    else
-    {
-        if (debugging)
-        {
-            std::cout << "parser failed on parse_type_declaration()" << std::endl;
-        }
         generate_error_report_previous_token("Missing required \"is\" for type declaration");
         errors_occured = true;
         return false;
     }
-    //COME BACK
-    valid_parse = parse_type_mark(identifier_name, 2);
-
-    return valid_parse;
+    Current_parse_token = Get_Valid_Token();
+    std::vector<token> enum_symbols;
+    if (!parse_declared_type(candidate.identifier_data_type, enum_symbols))
+    {
+        return false;
+    }
+    std::vector<token> symbols;
+    symbols.push_back(candidate);
+    symbols.insert(symbols.end(), enum_symbols.begin(), enum_symbols.end());
+    if (!Lexer->symbol_table.declare_all(target_scope_id, symbols))
+    {
+        report_duplicate_declaration(candidate);
+        return false;
+    }
+    return true;
 }
 
 //ready to test
@@ -1599,11 +1092,14 @@ bool parser::parse_base_statement()
     //an identifier means it will be an assignment statement
     if (Current_parse_token_type == T_IDENTIFIER)
     {
-        type_checker->set_statement_type(Current_parse_token);
-        Context_token = update_context_token(Current_parse_token);
-        //       type_checker->feed_in_tokens(Context_token);
+        const token destination_occurrence = Current_parse_token;
+        type_checker->set_statement_type(destination_occurrence);
+        token destination;
+        const bool destination_resolved = resolve_identifier_use(destination_occurrence,
+                                                                 destination);
         Current_parse_token = Get_Valid_Token();
-        valid_parse = parse_assignment_statement(Context_token);
+        valid_parse = parse_assignment_statement(destination_resolved ? destination :
+                                                                       destination_occurrence);
     }
     else if (Current_parse_token_type == T_IF)
     {
@@ -1637,18 +1133,6 @@ bool parser::parse_base_statement()
         return false;
     }
 
-    return valid_parse;
-}
-
-//ready to test
-bool parser::parse_parameter(std::string procedure_name)
-{
-    //pretty sure need to track the name of the variables
-    std::string variable_name = "";
-    variable_name = Current_parse_token.stringValue;
-    //this tracks the state of the parser
-    bool valid_parse;
-    valid_parse = parse_variable_declaration(false, procedure_name);
     return valid_parse;
 }
 
@@ -1730,12 +1214,6 @@ bool parser::parse_assignment_statement(token destination_token)
         }
     }
     //not a valid parse from parse assignment_destination
-    else
-    {
-        std::cout << "parser failed on parse_assignment_destination()" << std::endl;
-        return valid_parse;
-    }
-
     return valid_parse;
 }
 
@@ -1754,11 +1232,6 @@ bool parser::parse_if_statement()
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         updated_token = expression_parse.resolved_token;
-        if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
-        {
-            Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
-            updated_token = Context_token;
-        }
         if (!type_checker->type_error_occured)
         {
             type_checker->check_if_statement(updated_token);
@@ -1905,21 +1378,19 @@ bool parser::parse_loop_statement()
         Current_parse_token = Get_Valid_Token();
         if (Current_parse_token_type == T_IDENTIFIER)
         {
-            //COME BACK
-            Context_token = update_context_token(Current_parse_token);
+            const token destination_occurrence = Current_parse_token;
+            token destination;
+            const bool destination_resolved = resolve_identifier_use(destination_occurrence,
+                                                                     destination);
             Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_assignment_statement(Context_token);
+            valid_parse = parse_assignment_statement(destination_resolved ? destination :
+                                                                            destination_occurrence);
             if (Current_parse_token_type == T_SEMICOLON)
             {
                 Current_parse_token = Get_Valid_Token();
                 //COME BACK
                 expression_parse = parse_expression();
                 updated_token = expression_parse.resolved_token;
-                if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
-                {
-                    Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
-                    updated_token = Context_token;
-                }
                 if (!type_checker->type_error_occured)
                 {
                     type_checker->check_if_statement(updated_token);
@@ -2044,14 +1515,13 @@ bool parser::parse_return_statement()
     bool valid_parse;
     expression_parse = parse_expression();
     updated_token = expression_parse.resolved_token;
-    if (Lexer->symbol_table.scope_table[current_scope_id].is_in_table(expression_parse.resolved_token.stringValue))
-    {
-        Context_token = update_context_token(Lexer->symbol_table.scope_table[current_scope_id].scope_map[expression_parse.resolved_token.stringValue]);
-        updated_token = Context_token;
-    }
     if (!type_checker->type_error_occured)
     {
-        type_checker->check_return_statement(updated_token, Lexer->symbol_table.scope_table[current_scope_id].procedure_token);
+        token owner;
+        if (Lexer->symbol_table.lookup_scope_owner(current_scope_id, owner))
+        {
+            type_checker->check_return_statement(updated_token, owner);
+        }
     }
     else
     {
@@ -2073,9 +1543,8 @@ token_and_status parser::parse_assignment_destination(token destination_token)
     //this means that the optional bracketed expression should exist
     if (Current_parse_token_type == T_LBRACKET)
     {
-        //since there is a bracket, that means that this is an array and we need to mark it as such
-        destination_token.is_array = true;
-        Lexer->symbol_table.update_identifier_type(destination_token, current_scope_id);
+        //Indexed uses are occurrences, not declarations.  Array declaration
+        //metadata remains canonical and is not mutated by an expression use.
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         //COME BACK will need to check that the resolved token is an integer
@@ -2178,7 +1647,7 @@ token_and_status parser::parse_expression()
             valid_parse = arithop_parse.valid_parse;
         }
     }
-    else
+    else if (!type_checker->statement_suppressed)
     {
         generate_error_report("Error in expression");
         errors_occured = true;
@@ -2552,7 +2021,18 @@ token_and_status parser::parse_factor()
         //this means that it is a procedure call
         if (Next_parse_token_type == T_LPARAM)
         {
-            type_checker->feed_in_tokens(Current_parse_token);
+            const token callee_occurrence = Current_parse_token;
+            token callee;
+            const bool resolved = resolve_procedure_use(callee_occurrence, callee);
+            if (resolved)
+            {
+                type_checker->feed_in_tokens(callee);
+                factor_parse.resolved_token = callee;
+            }
+            else
+            {
+                factor_parse.resolved_token = callee_occurrence;
+            }
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_procedure_call();
         }
@@ -2565,6 +2045,10 @@ token_and_status parser::parse_factor()
             factor_parse.resolved_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name(identifier_token);
+            if (valid_parse)
+            {
+                factor_parse.resolved_token = Context_token;
+            }
         }
     }
     //this means that it must be either a name or a number
@@ -2588,6 +2072,10 @@ token_and_status parser::parse_factor()
             identifier_token = Current_parse_token;
             Current_parse_token = Get_Valid_Token();
             valid_parse = parse_name(identifier_token);
+            if (valid_parse)
+            {
+                factor_parse.resolved_token = Context_token;
+            }
         }
         //else it had a negative sign, it isn't a number, and it isn't a name
         else
@@ -2679,14 +2167,23 @@ bool parser::parse_name(token identifier_token)
     token_and_status expression_parse;
     //this tracks the state of the parser
     bool valid_parse;
-    if (Current_parse_token_type == T_LBRACKET)
+    token resolved_identifier;
+    //A semantic miss must not leave a prior name's semantic token available to
+    //the enclosing expression.  Keep this occurrence as the safe structural
+    //result unless resolution succeeds below.
+    Context_token = identifier_token;
+    const bool resolved = resolve_identifier_use(identifier_token, resolved_identifier);
+    if (resolved)
     {
-        identifier_token.is_array = true;
-        //marks the token as an array
-        Lexer->symbol_table.update_identifier_type(identifier_token, current_scope_id);
-        //COME BACK
-        Context_token = update_context_token(identifier_token);
-        type_checker->feed_in_tokens(Context_token);
+        Context_token = resolved_identifier;
+    }
+    const bool indexed = Current_parse_token_type == T_LBRACKET;
+    if (indexed)
+    {
+        if (resolved)
+        {
+            type_checker->feed_in_tokens(resolved_identifier);
+        }
         Current_parse_token = Get_Valid_Token();
         expression_parse = parse_expression();
         valid_parse = expression_parse.valid_parse;
@@ -2713,8 +2210,10 @@ bool parser::parse_name(token identifier_token)
         //Current_parse_token = Get_Valid_Token();
         valid_parse = true;
     }
-    Context_token = update_context_token(identifier_token);
-    type_checker->feed_in_tokens(Context_token);
+    if (resolved && !indexed)
+    {
+        type_checker->feed_in_tokens(resolved_identifier);
+    }
 
     return valid_parse;
 }
@@ -2724,17 +2223,14 @@ bool parser::parse_name(token identifier_token)
 bool parser::parse_argument_list()
 {
     token_and_status expression_parse;
-    //this tracks the state of the parser
-    bool valid_parse;
+    bool valid_parse = true;
     expression_parse = parse_expression();
     valid_parse = expression_parse.valid_parse;
-    if (valid_parse)
+    while (Current_parse_token_type == T_COMMA)
     {
-        if (Current_parse_token_type == T_COMMA)
-        {
-            Current_parse_token = Get_Valid_Token();
-            valid_parse = parse_argument_list();
-        }
+        Current_parse_token = Get_Valid_Token();
+        expression_parse = parse_expression();
+        valid_parse = expression_parse.valid_parse && valid_parse;
     }
 
     return valid_parse;
@@ -3283,7 +2779,7 @@ bool parser::resync_parser(parser_state state)
 
     //5
     case S_PROCEDURE_DECLARATION:
-        return_state = parse_procedure_declaration(false, false);
+        return_state = parse_procedure_declaration(false);
         if (return_state)
         {
             if (Current_parse_token_type == T_SEMICOLON)
@@ -3314,7 +2810,11 @@ bool parser::resync_parser(parser_state state)
     //7
     case S_PARAMETER_LIST:
         //THESE USED STILL?
-        return_state = parse_parameter_list("ERROR");
+    {
+        std::vector<token> recovered_parameters;
+        std::vector<token> recovered_header_symbols;
+        return_state = parse_parameter_list(recovered_parameters, recovered_header_symbols);
+    }
         return_state = parse_procedure_body();
 
         break;
@@ -3484,42 +2984,89 @@ void parser::update_scopes(bool increment_scope_id)
 {
     if (increment_scope_id)
     {
-        current_scope_id = number_of_scopes + 1;
-        number_of_scopes++;
+        const int parent_scope_id = active_scope_ids.empty() ? 0 : active_scope_ids.back();
+        const int new_scope_id = next_scope_id++;
+        if (!Lexer->symbol_table.create_scope(new_scope_id, parent_scope_id, true))
+        {
+            generate_error_report("Unable to create a unique procedure scope");
+            errors_occured = true;
+            return;
+        }
+        active_scope_ids.push_back(new_scope_id);
     }
-    else
+    else if (active_scope_ids.size() > 1)
     {
-        Lexer->symbol_table.remove_scope(current_scope_id);
-        //scope -1 is the reserved global pseudo-scope, do not let the ids underflow past 0
-        if (current_scope_id > 0)
-        {
-            current_scope_id--;
-        }
-        else
-        {
-            current_scope_id = 0;
-        }
-        if (number_of_scopes > 0)
-        {
-            number_of_scopes--;
-        }
-        else
-        {
-            number_of_scopes = 0;
-        }
+        active_scope_ids.pop_back();
     }
+    current_scope_id = active_scope_ids.empty() ? 0 : active_scope_ids.back();
+    number_of_scopes = active_scope_ids.empty() ? 0 :
+                                             static_cast<int>(active_scope_ids.size()) - 1;
 }
 
-token parser::update_context_token(token token_to_get_context)
+bool parser::declaration_target(bool explicitly_global) const
 {
-    if (!token_to_get_context.global_scope)
-    {
-        Context_token = Lexer->symbol_table.scope_table[current_scope_id].scope_map[token_to_get_context.stringValue];
-    }
-    else
-    {
-        Context_token = Lexer->symbol_table.scope_table[-1].scope_map[token_to_get_context.stringValue];
-    }
+    return explicitly_global || current_scope_id == 0;
+}
 
-    return Context_token;
+int parser::declaration_scope(bool explicitly_global) const
+{
+    return declaration_target(explicitly_global) ? 0 : current_scope_id;
+}
+
+void parser::report_duplicate_declaration(const token &occurrence)
+{
+    generate_error_report("Duplicate declaration for \"" + occurrence.stringValue + "\"",
+                          occurrence.line_found);
+    errors_occured = true;
+}
+
+bool parser::resolve_identifier_use(const token &occurrence, token &resolved_token,
+                                    const std::string &kind)
+{
+    if (!Lexer->symbol_table.resolve_name(occurrence.stringValue, current_scope_id,
+                                          resolved_token))
+    {
+        generate_error_report("Undeclared " + kind + " \"" + occurrence.stringValue + "\"",
+                              occurrence.line_found);
+        errors_occured = true;
+        type_checker->suppress_current_statement();
+        return false;
+    }
+    if (resolved_token.identifer_type != I_VARIABLE)
+    {
+        generate_error_report("Identifier \"" + occurrence.stringValue +
+                                  "\" is not a variable",
+                              occurrence.line_found);
+        errors_occured = true;
+        type_checker->suppress_current_statement();
+        return false;
+    }
+    resolved_token.line_found = occurrence.line_found;
+    resolved_token.column_found = occurrence.column_found;
+    return true;
+}
+
+bool parser::resolve_procedure_use(const token &occurrence, token &resolved_token)
+{
+    if (!Lexer->symbol_table.resolve_name(occurrence.stringValue, current_scope_id,
+                                          resolved_token))
+    {
+        generate_error_report("Undeclared procedure \"" + occurrence.stringValue + "\"",
+                              occurrence.line_found);
+        errors_occured = true;
+        type_checker->suppress_current_statement();
+        return false;
+    }
+    if (resolved_token.identifer_type != I_PROCEDURE)
+    {
+        generate_error_report("Identifier \"" + occurrence.stringValue +
+                                  "\" is not a procedure",
+                              occurrence.line_found);
+        errors_occured = true;
+        type_checker->suppress_current_statement();
+        return false;
+    }
+    resolved_token.line_found = occurrence.line_found;
+    resolved_token.column_found = occurrence.column_found;
+    return true;
 }

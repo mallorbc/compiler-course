@@ -3,43 +3,30 @@
 ScopeTable::ScopeTable()
 {
 }
-ScopeTable::ScopeTable(int scope_id)
+
+ScopeTable::ScopeTable(int scope_id, int parent_id, bool has_parent_scope)
+    : table_scope_id(scope_id), parent_scope_id(parent_id), has_parent(has_parent_scope)
 {
-    table_scope_id = scope_id;
 }
 
-bool ScopeTable::insert_stringValue(std::string stringValue, token_type type_of_token)
+bool ScopeTable::declare_token(const token &new_token)
 {
-    //stores
-    token *new_token;
-    new_token = new token;
-    new_token->type = type_of_token;
-    new_token->stringValue = stringValue;
-    insert_string_token(*new_token);
-
-    return 1;
+    return scope_map.emplace(new_token.stringValue, new_token).second;
 }
 
-bool ScopeTable::insert_string_token(token new_token)
+bool ScopeTable::is_in_table(const std::string &test_string) const
 {
-    //adds only identifers as we only care about them
-    if (new_token.type == T_IDENTIFIER)
-    {
-        std::string key_value = new_token.stringValue;
-        scope_map[key_value] = new_token;
-    }
-
-    return 1;
+    return scope_map.find(test_string) != scope_map.end();
 }
 
-bool ScopeTable::is_in_table(std::string test_string)
+const token *ScopeTable::find_token(const std::string &name) const
 {
-    if (scope_map.find(test_string) == scope_map.end())
-    {
-        return 0;
-    }
-    else
-    {
-        return 1;
-    }
+    std::unordered_map<std::string, token>::const_iterator found = scope_map.find(name);
+    return found == scope_map.end() ? NULL : &found->second;
+}
+
+token *ScopeTable::find_token_mut(const std::string &name)
+{
+    std::unordered_map<std::string, token>::iterator found = scope_map.find(name);
+    return found == scope_map.end() ? NULL : &found->second;
 }

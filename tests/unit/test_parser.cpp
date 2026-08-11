@@ -9,6 +9,7 @@
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 namespace
@@ -65,6 +66,11 @@ public:
             std::cout.rdbuf(previous);
             previous = NULL;
         }
+    }
+
+    std::string str() const
+    {
+        return output.str();
     }
 
 private:
@@ -260,7 +266,7 @@ TEST_CASE("missing nested-procedure semicolon retains the enclosing scope")
     CHECK(parsed.error_count() == 1);
 }
 
-TEST_CASE("recovery-dispatched procedure parsing does not own an enclosing scope")
+TEST_CASE("recovery-dispatched procedure parsing balances its own recovery scope")
 {
     temp_source_file fixture(
         "program test is\n"
@@ -272,7 +278,7 @@ TEST_CASE("recovery-dispatched procedure parsing does not own an enclosing scope
     parsed.update_scopes(true);
     int enclosing_scope = parsed.current_scope_id;
 
-    parsed.parse_procedure_declaration(false, false);
+    parsed.parse_procedure_declaration(false);
 
     CHECK(parsed.current_scope_id == enclosing_scope);
     CHECK(parsed.number_of_scopes == 1);
@@ -381,10 +387,14 @@ TEST_CASE("procedure parameter lists own one closing parenthesis")
         CHECK(parsed.error_count() == 0);
         CHECK(parsed.current_scope_id == 0);
         CHECK(parsed.number_of_scopes == 0);
-        CHECK(parsed.Lexer->symbol_table.scope_table[0].is_in_table(procedure_names[i]));
-        CHECK(parsed.Lexer->symbol_table.scope_table[0]
-                  .scope_map[procedure_names[i]]
-                  .procedure_params == expected_parameters[i]);
+        std::unordered_map<int, ScopeTable>::const_iterator root_scope =
+            parsed.Lexer->symbol_table.scope_table.find(0);
+        REQUIRE(root_scope != parsed.Lexer->symbol_table.scope_table.end());
+        CHECK(root_scope->second.is_in_table(procedure_names[i]));
+        std::unordered_map<std::string, token>::const_iterator procedure =
+            root_scope->second.scope_map.find(procedure_names[i]);
+        REQUIRE(procedure != root_scope->second.scope_map.end());
+        CHECK(procedure->second.procedure_params == expected_parameters[i]);
     }
 }
 
@@ -592,4 +602,274 @@ TEST_CASE("unterminated strings retain earlier parser diagnostics")
     CHECK(has_error(parsed, "Error on line 7: quotation left open"));
     CHECK(has_error(parsed, "Error on line 9: Missing \";\" to end program statement"));
     CHECK(has_error(parsed, "Error on line 9: Missing \".\" to end the program"));
+}
+
+TEST_CASE("Stage 2A retains canonical scopes and resolves local before root")
+{
+    temp_source_file fixture(
+        "program scopes is\n"
+        "variable shared : integer;\n"
+        "procedure outer : integer(variable shared : bool)\n"
+        "variable local : integer;\n"
+        "procedure inner : integer()\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure sibling : integer(variable shared : float)\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+    CHECK(parsed.Lexer->symbol_table.has_scope(0));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_scope(-1));
+    CHECK(parsed.current_scope_id == 0);
+    CHECK(parsed.number_of_scopes == 0);
+    CHECK(parsed.active_scope_ids.size() == 1);
+    CHECK(parsed.Lexer->symbol_table.has_scope(1));
+    CHECK(parsed.Lexer->symbol_table.has_scope(2));
+    CHECK(parsed.Lexer->symbol_table.has_scope(3));
+    CHECK(parsed.Lexer->symbol_table.scope_table.find(1)->second.parent_scope_id == 0);
+    CHECK(parsed.Lexer->symbol_table.scope_table.find(2)->second.parent_scope_id == 1);
+    CHECK(parsed.Lexer->symbol_table.scope_table.find(3)->second.parent_scope_id == 0);
+    CHECK(parsed.Lexer->symbol_table.scope_table.find(1)->second.has_owner_procedure);
+    CHECK(parsed.Lexer->symbol_table.scope_table.find(1)->second.owner_procedure.name == "outer");
+
+    token resolved;
+    CHECK(parsed.Lexer->symbol_table.resolve_name("shared", 1, resolved));
+    CHECK(resolved.identifier_data_type == TYPE_BOOL);
+    CHECK(parsed.Lexer->symbol_table.resolve_name("shared", 0, resolved));
+    CHECK(resolved.identifier_data_type == TYPE_INT);
+    CHECK(parsed.Lexer->symbol_table.resolve_name("shared", 3, resolved));
+    CHECK(resolved.identifier_data_type == TYPE_FLOAT);
+}
+
+TEST_CASE("Stage 2A declarations are transactional and retain the first signature")
+{
+    temp_source_file fixture(
+        "program declarations is\n"
+        "variable broken : ;\n"
+        "procedure keep : integer(variable first : integer)\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "procedure keep : integer(variable second : bool)\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(has_error(parsed, "Missing valid type mark"));
+    CHECK(has_error(parsed, "Duplicate declaration for \"keep\""));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "broken"));
+    token keep;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "keep"}, keep));
+    REQUIRE(keep.procedure_params.size() == 1);
+    CHECK(keep.procedure_params[0] == TYPE_INT);
+}
+
+TEST_CASE("Stage 2A prevents undeclared-use autovivification and type cascades")
+{
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"missing := 1;", "Undeclared identifier \"missing\""},
+        {"known := missing + 1;", "Undeclared identifier \"missing\""},
+        {"known := missing();", "Undeclared procedure \"missing\""}};
+    for (const std::pair<std::string, std::string> &test_case : cases)
+    {
+        temp_source_file fixture(
+            "program uses is\n"
+            "variable known : integer;\n"
+            "begin\n"
+            "    " + test_case.first + "\n"
+            "end program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_reports.size() == 1);
+        CHECK(has_error(parsed, test_case.second));
+        CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "missing"));
+        CHECK(parsed.Lexer->symbol_table.scope_table.size() == 1);
+    }
+}
+
+TEST_CASE("Stage 2A reports wrong-kind names without a typechecker cascade")
+{
+    temp_source_file fixture(
+        "program kinds is\n"
+        "procedure callable : integer()\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "    callable := 1;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_reports.size() == 1);
+    CHECK(has_error(parsed, "Identifier \"callable\" is not a variable"));
+    CHECK(parsed.Lexer->symbol_table.has_declared(0, "callable"));
+}
+
+TEST_CASE("Stage 2A semantic lookup failures preserve expression grammar")
+{
+    const std::vector<std::pair<std::string, std::string>> cases = {
+        {"if (missing == 0) then\nend if;",
+         "Undeclared identifier \"missing\""},
+        {"a := (missing + 1);", "Undeclared identifier \"missing\""},
+        {"a[missing + 1] := 1;", "Undeclared identifier \"missing\""},
+        {"a[missing] := 1;", "Undeclared identifier \"missing\""},
+        {"if (q == 0) then\nend if;",
+         "Identifier \"q\" is not a variable"},
+        {"a[q] := 1;", "Identifier \"q\" is not a variable"},
+        {"a := q(missing, 1);", "Undeclared identifier \"missing\""},
+        {"a := absent(1, 2);", "Undeclared procedure \"absent\""}};
+    for (const std::pair<std::string, std::string> &test_case : cases)
+    {
+        temp_source_file fixture(
+            "program syntax is\n"
+            "variable a : integer;\n"
+            "procedure q : integer(variable first : integer, variable second : integer)\n"
+            "begin\n"
+            "    return 0;\n"
+            "end procedure;\n"
+            "begin\n" + test_case.first + "\nend program.\n");
+        captured_stdout capture;
+        parser parsed(fixture.name());
+        capture.restore();
+
+        CHECK(parsed.error_reports.size() == 1);
+        CHECK(has_error(parsed, test_case.second));
+        CHECK_FALSE(has_error(parsed, "Missing \")\""));
+        CHECK_FALSE(has_error(parsed, "Missing expected keyword \"then\""));
+        CHECK(capture.str().find("parser failed on parse_assignment_destination") ==
+              std::string::npos);
+    }
+}
+
+TEST_CASE("Stage 2A suppression ends with its statement")
+{
+    temp_source_file fixture(
+        "program reset is\n"
+        "variable a : integer;\n"
+        "begin\n"
+        "    a := missing;\n"
+        "    a := \"string\" + 1;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(has_error(parsed, "Undeclared identifier \"missing\""));
+    CHECK(has_error(parsed, "Arithmetic operations must be between floats and integers"));
+    CHECK(parsed.error_reports.size() == 2);
+}
+
+TEST_CASE("Stage 2A separates lexical cache, builtins, aliases, and enum declarations")
+{
+    temp_source_file fixture(
+        "program metadata is\n"
+        "type amount is integer;\n"
+        "type color is enum{red, green};\n"
+        "variable value : amount;\n"
+        "begin\n"
+        "value := getInteger();\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+    token amount;
+    token get_integer;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "amount"}, amount));
+    CHECK(amount.identifer_type == I_TYPE);
+    CHECK(amount.identifier_data_type == TYPE_INT);
+    CHECK(parsed.Lexer->symbol_table.has_declared(0, "red"));
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "getinteger"}, get_integer));
+    CHECK(get_integer.identifer_type == I_PROCEDURE);
+    CHECK(get_integer.identifier_data_type == TYPE_INT);
+    const std::vector<std::tuple<std::string, data_types, std::size_t>> builtins = {
+        {"getbool", TYPE_BOOL, 0}, {"getinteger", TYPE_INT, 0},
+        {"getfloat", TYPE_FLOAT, 0}, {"getstring", TYPE_STRING, 0},
+        {"putbool", TYPE_BOOL, 1}, {"putinteger", TYPE_BOOL, 1},
+        {"putfloat", TYPE_BOOL, 1}, {"putstring", TYPE_BOOL, 1},
+        {"sqrt", TYPE_FLOAT, 1}};
+    for (const std::tuple<std::string, data_types, std::size_t> &builtin : builtins)
+    {
+        token builtin_symbol;
+        CHECK(parsed.Lexer->symbol_table.lookup_declared({0, std::get<0>(builtin)},
+                                                          builtin_symbol));
+        CHECK(builtin_symbol.identifer_type == I_PROCEDURE);
+        CHECK(builtin_symbol.identifier_data_type == std::get<1>(builtin));
+        CHECK(builtin_symbol.procedure_params.size() == std::get<2>(builtin));
+    }
+    CHECK(parsed.Lexer->symbol_table.map.find("amount") !=
+          parsed.Lexer->symbol_table.map.end());
+    CHECK(parsed.Lexer->symbol_table.map.find("amount")->second.identifer_type == I_NONE);
+}
+
+TEST_CASE("Stage 2A rejects every same-scope duplicate without partial publication")
+{
+    temp_source_file fixture(
+        "program duplicates is\n"
+        "variable taken : integer;\n"
+        "type taken is integer;\n"
+        "type repeated is enum{first, first};\n"
+        "procedure duplicate_param : integer(variable value : integer, variable value : bool)\n"
+        "begin\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(has_error(parsed, "Duplicate declaration for \"taken\""));
+    CHECK(has_error(parsed, "Duplicate declaration in procedure header"));
+    CHECK(parsed.Lexer->symbol_table.has_declared(0, "taken"));
+    token taken;
+    CHECK(parsed.Lexer->symbol_table.lookup_declared({0, "taken"}, taken));
+    CHECK(taken.identifer_type == I_VARIABLE);
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "repeated"));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "first"));
+    CHECK_FALSE(parsed.Lexer->symbol_table.has_declared(0, "duplicate_param"));
+}
+
+TEST_CASE("Stage 2A local declarations shadow builtin procedures")
+{
+    temp_source_file fixture(
+        "program shadowbuiltin is\n"
+        "procedure local : integer()\n"
+        "variable getinteger : integer;\n"
+        "begin\n"
+        "    return getinteger;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    CHECK(parsed.error_count() == 0);
+    token local_get_integer;
+    CHECK(parsed.Lexer->symbol_table.resolve_name("getinteger", 1,
+                                                  local_get_integer));
+    CHECK(local_get_integer.identifer_type == I_VARIABLE);
+    CHECK(local_get_integer.identifier_data_type == TYPE_INT);
 }

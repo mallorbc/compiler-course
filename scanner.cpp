@@ -540,14 +540,14 @@ void scanner::build_string_token()
     //checks to see whether the built string is either a reserved word or already in the symbol table
     if (symbol_table.is_in_table(build_string))
     {
-        *Current_token = symbol_table.map[build_string];
+        symbol_table.lookup_lexeme(build_string, *Current_token);
         Current_token->line_found = current_line;
     }
     //if not in the symbol table it inserts the indentifier
     else
     {
         symbol_table.insert_stringValue(build_string, T_IDENTIFIER);
-        *Current_token = symbol_table.map[build_string];
+        symbol_table.lookup_lexeme(build_string, *Current_token);
         Current_token->line_found = current_line;
     }
     if (debug)

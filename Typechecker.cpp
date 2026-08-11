@@ -65,6 +65,8 @@ bool Typechecker::second_to_first()
 bool Typechecker::set_statement_type(token key_token)
 {
     statement_key_token = key_token;
+    statement_suppressed = false;
+    type_error_occured = false;
     //assingment statements start with identifiers
     if (key_token.type == T_IDENTIFIER)
     {
@@ -90,6 +92,11 @@ bool Typechecker::set_statement_type(token key_token)
 token_and_status Typechecker::feed_in_tokens(token token_to_feed)
 {
     token_and_status return_object;
+    if (statement_suppressed)
+    {
+        return_object.valid_parse = false;
+        return return_object;
+    }
     bool return_value = false;
     // if (current_statement_type == STATEMENT_ASSIGN)
     // {
@@ -163,6 +170,13 @@ token_and_status Typechecker::feed_in_tokens(token token_to_feed)
         clear_tokens(true);
     }
     return return_object;
+}
+
+void Typechecker::suppress_current_statement()
+{
+    clear_tokens(false);
+    statement_suppressed = true;
+    type_error_occured = true;
 }
 
 bool Typechecker::token_is_relationship(token token_to_check)
