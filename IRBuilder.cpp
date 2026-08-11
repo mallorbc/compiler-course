@@ -136,6 +136,7 @@ FunctionId IRBuilder::register_program(const SymbolRef &symbol, const std::strin
     program_id = function.id;
     functions_by_symbol.emplace(symbol, function.id);
     function_context.push_back(function.id);
+    block_context.push_back(BlockId(function.id, 0));
     return function.id;
 }
 
@@ -247,6 +248,7 @@ bool IRBuilder::enter_function(FunctionId function)
         return false;
     }
     function_context.push_back(function);
+    block_context.push_back(BlockId(function, 0));
     return true;
 }
 
@@ -260,6 +262,10 @@ bool IRBuilder::leave_function()
         if (function_context.size() > 1)
         {
             function_context.pop_back();
+            if (!block_context.empty())
+            {
+                block_context.pop_back();
+            }
             return true;
         }
         return false;
@@ -270,6 +276,7 @@ bool IRBuilder::leave_function()
         return false;
     }
     function_context.pop_back();
+    block_context.pop_back();
     return true;
 }
 
@@ -288,6 +295,91 @@ FunctionId IRBuilder::function_for(const SymbolRef &symbol) const
     std::unordered_map<SymbolRef, FunctionId, SymbolRefHash>::const_iterator found =
         functions_by_symbol.find(symbol);
     return found == functions_by_symbol.end() ? FunctionId() : found->second;
+}
+
+BlockId IRBuilder::create_block()
+{
+    if (!emission_enabled())
+    {
+        return BlockId();
+    }
+    Function *function = current_function_mut();
+    if (function == NULL || function->blocks.size() >= invalid_index)
+    {
+        mark_invalid("cannot allocate an IR basic block");
+        return BlockId();
+    }
+    const BlockId id(function->id, static_cast<std::uint32_t>(function->blocks.size()));
+    BasicBlock block;
+    block.id = id;
+    function->blocks.push_back(block);
+    return id;
+}
+
+bool IRBuilder::select_block(BlockId block)
+{
+    if (!emission_enabled())
+    {
+        return false;
+    }
+    Function *function = current_function_mut();
+    BasicBlock *current = current_block_mut();
+    if (function == NULL || current == NULL || block.function != function->id ||
+        block.index >= function->blocks.size() ||
+        !std::holds_alternative<std::monostate>(function->blocks[block.index].terminator) ||
+        std::holds_alternative<std::monostate>(current->terminator))
+    {
+        mark_invalid("IR block selection does not cross a sealed block boundary");
+        return false;
+    }
+    block_context.back() = block;
+    return true;
+}
+
+BlockId IRBuilder::current_block() const noexcept
+{
+    return block_context.empty() ? BlockId() : block_context.back();
+}
+
+bool IRBuilder::emit_jump(BlockId target)
+{
+    if (!emission_enabled())
+    {
+        return false;
+    }
+    Function *function = current_function_mut();
+    BasicBlock *block = current_block_mut();
+    if (function == NULL || block == NULL || target.function != function->id ||
+        target.index >= function->blocks.size() ||
+        !std::holds_alternative<std::monostate>(block->terminator))
+    {
+        mark_invalid("IR jump has invalid source or target block");
+        return false;
+    }
+    block->terminator = Terminator(JumpTerminator{target});
+    return true;
+}
+
+bool IRBuilder::emit_branch(ValueId condition, BlockId when_true, BlockId when_false)
+{
+    if (!emission_enabled())
+    {
+        return false;
+    }
+    Function *function = current_function_mut();
+    BasicBlock *block = current_block_mut();
+    const Value *value = value_for_id(condition);
+    if (function == NULL || block == NULL || value == NULL ||
+        condition.function != function->id || value->type != value_shape{TYPE_BOOL, false, -1} ||
+        when_true.function != function->id || when_false.function != function->id ||
+        when_true.index >= function->blocks.size() || when_false.index >= function->blocks.size() ||
+        when_true == when_false || !std::holds_alternative<std::monostate>(block->terminator))
+    {
+        mark_invalid("IR branch has invalid condition or targets");
+        return false;
+    }
+    block->terminator = Terminator(BranchTerminator{condition, when_true, when_false});
+    return true;
 }
 
 StorageId IRBuilder::register_storage(const SymbolRef &symbol, const value_shape &type,
@@ -655,7 +747,8 @@ void IRBuilder::finalize(bool top_level_parse_success)
             break;
         }
     }
-    if (function_context.size() != 1 || function_context.front() != program_id)
+    if (function_context.size() != 1 || block_context.size() != 1 ||
+        function_context.front() != program_id || block_context.front().function != program_id)
     {
         mark_invalid("IR function context is not restored to the program root");
     }
@@ -767,25 +860,34 @@ ValueId IRBuilder::append_value(const value_shape &type, ValueLocation location)
 BasicBlock *IRBuilder::current_block_mut()
 {
     Function *function = current_function_mut();
-    if (function == NULL || function->blocks.size() != 1)
+    if (function == NULL || block_context.empty())
     {
         return NULL;
     }
-    return &function->blocks[0];
+    const BlockId id = block_context.back();
+    if (id.function != function->id || id.index >= function->blocks.size() ||
+        function->blocks[id.index].id != id)
+    {
+        return NULL;
+    }
+    return &function->blocks[id.index];
 }
 
 bool IRBuilder::can_emit_value(const value_shape &type)
 {
-    if (!emission_enabled() || !is_ready_type(type) || current_function_mut() == NULL ||
-        current_block_mut() == NULL)
+    if (!emission_enabled())
     {
-        mark_unsupported("value needs a supported scalar straight-line context");
+        return false;
+    }
+    if (!is_ready_type(type) || current_function_mut() == NULL || current_block_mut() == NULL)
+    {
+        mark_invalid("value has no valid active basic block or scalar type");
         return false;
     }
     BasicBlock *block = current_block_mut();
     if (block == NULL || !std::holds_alternative<std::monostate>(block->terminator))
     {
-        mark_unsupported("post-return statements need control-flow lowering");
+        mark_unsupported("post-terminator statements need control-flow lowering");
         return false;
     }
     return true;
@@ -796,6 +898,7 @@ void IRBuilder::discard_if_not_ready()
     scratch_module = Module();
     final_module = Module();
     function_context.clear();
+    block_context.clear();
     functions_by_symbol.clear();
     storages_by_symbol.clear();
 }

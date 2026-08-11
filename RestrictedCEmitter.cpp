@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <functional>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -123,11 +124,14 @@ struct RuntimeRequirements
 
 bool make_register_layout(const ir::Function &program, RegisterLayout &layout)
 {
-    for (const ir::Instruction &instruction : program.blocks[0].instructions)
+    for (const ir::BasicBlock &block : program.blocks)
     {
-        const ir::Binary *binary = std::get_if<ir::Binary>(&instruction);
-        layout.has_division = layout.has_division ||
-                              (binary != NULL && binary->operation == ir::BinaryOp::Divide);
+        for (const ir::Instruction &instruction : block.instructions)
+        {
+            const ir::Binary *binary = std::get_if<ir::Binary>(&instruction);
+            layout.has_division = layout.has_division ||
+                                  (binary != NULL && binary->operation == ir::BinaryOp::Divide);
+        }
     }
     const std::size_t extra = layout.has_division ? 3U : 1U;
     const std::size_t reserved = 2U;
@@ -172,15 +176,11 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
     {
         return failure(RestrictedCStatus::InvalidIR, verified.reason);
     }
-    const ir::Terminator *program_terminator =
-        module.functions.empty() || module.functions[0].blocks.size() != 1 ? NULL :
-            std::get_if<ir::Terminator>(&module.functions[0].blocks[0].terminator);
     if (module.functions.empty() || module.functions[0].kind != ir::FunctionKind::Program ||
-        module.functions[0].id != ir::FunctionId(0) || program_terminator == NULL ||
-        !std::holds_alternative<ir::HaltTerminator>(*program_terminator))
+        module.functions[0].id != ir::FunctionId(0) || module.functions[0].blocks.empty())
     {
         return failure(RestrictedCStatus::Unsupported,
-                       "restricted C requires Program function f0 with one Halt block");
+                       "restricted C requires a verified Program function f0");
     }
     program = &module.functions[0];
     if (!RestrictedCEmitter::storage_count_fits_memory(module.storages.size()))
@@ -200,11 +200,47 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                            "restricted C does not yet lower procedures");
         }
         if (function.id != program->id || !function.parameters.empty() || !function.locals.empty() ||
-            !function.parameter_types.empty() || function.blocks.size() != 1)
+            !function.parameter_types.empty())
         {
             return failure(RestrictedCStatus::Unsupported,
-                           "restricted C only supports a parameterless Program block");
+                           "restricted C only supports a parameterless Program");
         }
+    }
+    //The IR verifier permits cycles with an exit so future loop lowering can
+    //reuse the CFG representation.  This restricted-C slice intentionally
+    //accepts only acyclic Program flow produced by if/else lowering.
+    std::vector<unsigned char> visit_state(program->blocks.size(), 0U);
+    const std::function<bool(std::size_t)> has_cycle =
+        [&program, &visit_state, &has_cycle](std::size_t block_index) -> bool {
+            visit_state[block_index] = 1U;
+            const ir::Terminator &terminator =
+                std::get<ir::Terminator>(program->blocks[block_index].terminator);
+            std::vector<std::size_t> targets;
+            if (const ir::JumpTerminator *jump = std::get_if<ir::JumpTerminator>(&terminator))
+            {
+                targets.push_back(jump->target.index);
+            }
+            else if (const ir::BranchTerminator *branch =
+                         std::get_if<ir::BranchTerminator>(&terminator))
+            {
+                targets.push_back(branch->when_true.index);
+                targets.push_back(branch->when_false.index);
+            }
+            for (std::size_t target : targets)
+            {
+                if (visit_state[target] == 1U ||
+                    (visit_state[target] == 0U && has_cycle(target)))
+                {
+                    return true;
+                }
+            }
+            visit_state[block_index] = 2U;
+            return false;
+        };
+    if (has_cycle(0))
+    {
+        return failure(RestrictedCStatus::Unsupported,
+                       "restricted C does not yet lower cyclic control flow");
     }
     for (const ir::Storage &storage : module.storages)
     {
@@ -223,8 +259,10 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
                            "restricted C supports scalar Integer and Bool values only");
         }
     }
-    for (const ir::Instruction &instruction : program->blocks[0].instructions)
+    for (const ir::BasicBlock &block : program->blocks)
     {
+        for (const ir::Instruction &instruction : block.instructions)
+        {
         if (const ir::Constant *constant = std::get_if<ir::Constant>(&instruction))
         {
             const ir::Value *result = value_for(*program, constant->result);
@@ -353,6 +391,7 @@ RestrictedCResult preflight(const ir::Module &module, const ir::Function *&progr
         {
             return failure(RestrictedCStatus::Unsupported,
                            "restricted C encountered an unknown instruction");
+        }
         }
     }
     RegisterLayout layout;
@@ -507,13 +546,15 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
         output << "}\n\n";
     }
     output << "int main(void)\n{\n";
-    output << "    goto L_f0_b0;\n";
-    output << "L_f0_b0:\n";
     output << "    " << register_slot(layout.exit) << " = INT32_C(0);\n";
+    output << "    goto L_f0_b0;\n";
 
     std::size_t division_number = 0;
-    for (const ir::Instruction &instruction : program->blocks[0].instructions)
+    for (const ir::BasicBlock &block : program->blocks)
     {
+        output << "L_f0_b" << block.id.index << ":\n";
+        for (const ir::Instruction &instruction : block.instructions)
+        {
         if (const ir::Constant *constant = std::get_if<ir::Constant>(&instruction))
         {
             const ir::Value &result = program->values[constant->result.index];
@@ -563,11 +604,10 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
             const data_types type = program->values[binary->left.index].type.element_type;
             if (binary->operation == ir::BinaryOp::Divide)
             {
-                const std::size_t first_label = 2U + division_number * 3U;
-                const std::string zero_label = "L_f0_b" + std::to_string(first_label);
-                const std::string overflow_label = "L_f0_b" +
-                                                   std::to_string(first_label + 1U);
-                const std::string done_label = "L_f0_b" + std::to_string(first_label + 2U);
+                const std::string label_prefix = "L_f0_d" + std::to_string(division_number) + "_";
+                const std::string zero_label = label_prefix + "0";
+                const std::string overflow_label = label_prefix + "1";
+                const std::string done_label = label_prefix + "2";
                 output << "    " << register_slot(layout.division_zero) << " = ("
                        << value_register(binary->right)
                        << " == INT32_C(0)) ? INT32_C(1) : INT32_C(0);\n";
@@ -584,7 +624,7 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
                 output << "    goto " << done_label << ";\n";
                 output << zero_label << ":\n";
                 output << "    " << register_slot(layout.exit) << " = INT32_C(1);\n";
-                output << "    goto L_f0_b1;\n";
+                output << "    goto L_f0_x0;\n";
                 output << overflow_label << ":\n";
                 output << "    " << value_register(binary->result) << " = INT32_MIN;\n";
                 output << done_label << ":\n";
@@ -615,9 +655,25 @@ RestrictedCResult RestrictedCEmitter::emit(const ir::Module &module) const
             output << "    " << value_register(call->result) << " = R_put_i32("
                    << value_register(call->arguments[0]) << ");\n";
         }
+        }
+        const ir::Terminator &terminator = std::get<ir::Terminator>(block.terminator);
+        if (const ir::JumpTerminator *jump = std::get_if<ir::JumpTerminator>(&terminator))
+        {
+            output << "    goto L_f0_b" << jump->target.index << ";\n";
+        }
+        else if (const ir::BranchTerminator *branch =
+                     std::get_if<ir::BranchTerminator>(&terminator))
+        {
+            output << "    if (" << value_register(branch->condition) << ") goto L_f0_b"
+                   << branch->when_true.index << ";\n";
+            output << "    goto L_f0_b" << branch->when_false.index << ";\n";
+        }
+        else if (std::holds_alternative<ir::HaltTerminator>(terminator))
+        {
+            output << "    goto L_f0_x0;\n";
+        }
     }
-    output << "    goto L_f0_b1;\n";
-    output << "L_f0_b1:\n";
+    output << "L_f0_x0:\n";
     output << "    return " << register_slot(layout.exit) << ";\n}\n";
     checked.text = output.str();
     return checked;

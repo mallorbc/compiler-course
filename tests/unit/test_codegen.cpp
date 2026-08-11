@@ -126,6 +126,74 @@ ir::Module put_integer_module()
     return builder.module();
 }
 
+ir::Module branch_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "branch_program"}, "branch_program").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId answer = builder.register_storage(
+        SymbolRef{0, "branch_answer"}, scalar(TYPE_INT), ir::StorageKind::Global);
+    REQUIRE(answer.valid());
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    const ir::BlockId join_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    const ir::ValueId forty_two = builder.emit_constant(scalar(TYPE_INT), 42);
+    REQUIRE(builder.emit_store(answer, forty_two));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(else_block));
+    const ir::ValueId zero = builder.emit_constant(scalar(TYPE_INT), 0);
+    REQUIRE(builder.emit_store(answer, zero));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(join_block));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
+ir::Module cyclic_branch_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "cycle_program"}, "cycle_program").valid());
+    builder.seed_external_builtins();
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId loop_block = builder.create_block();
+    const ir::BlockId halt_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, loop_block, halt_block));
+    REQUIRE(builder.select_block(loop_block));
+    REQUIRE(builder.emit_branch(condition, loop_block, halt_block));
+    REQUIRE(builder.select_block(halt_block));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
+ir::Module branch_local_float_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "branch_float"}, "branch_float").valid());
+    builder.seed_external_builtins();
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    const ir::BlockId join_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    REQUIRE(builder.emit_constant(scalar(TYPE_FLOAT), 1.0F).valid());
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(else_block));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(join_block));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 } // namespace
 
 TEST_CASE("Stage 4B restricted C emits deterministic numeric-only straight-line C")
@@ -160,11 +228,11 @@ TEST_CASE("Stage 4B restricted C emits deterministic numeric-only straight-line 
     CHECK(first.text.find("#define REGISTER_COUNT " + std::to_string(expected_register_count) + "u") !=
           std::string::npos);
     CHECK(first.text.find("if (Reg[") != std::string::npos);
-    CHECK(first.text.find("goto L_f0_b2;") != std::string::npos);
-    CHECK(first.text.find("L_f0_b2:") != std::string::npos);
-    CHECK(first.text.find("L_f0_b3:") != std::string::npos);
-    CHECK(first.text.find("L_f0_b4:") != std::string::npos);
-    CHECK(first.text.find("L_f0_b5:") != std::string::npos);
+    CHECK(first.text.find("goto L_f0_d0_0;") != std::string::npos);
+    CHECK(first.text.find("L_f0_d0_0:") != std::string::npos);
+    CHECK(first.text.find("L_f0_d0_1:") != std::string::npos);
+    CHECK(first.text.find("L_f0_d0_2:") != std::string::npos);
+    CHECK(first.text.find("goto L_f0_x0;") != std::string::npos);
     CHECK(first.text.find("(-INT32_C(1))") != std::string::npos);
     CHECK(first.text.find("Reg[12u] = Reg[8u] / Reg[3u];") != std::string::npos);
     const std::size_t exit_register = module.functions[0].values.size() + 2U;
@@ -179,6 +247,58 @@ TEST_CASE("Stage 4B restricted C emits deterministic numeric-only straight-line 
     CHECK(first.text.find("hidden_boolean") == std::string::npos);
     CHECK(first.text.find("R_put_i32") == std::string::npos);
     CHECK(first.text.find("<stdio.h>") == std::string::npos);
+}
+
+TEST_CASE("Stage 5A restricted C emits flat numeric branch blocks")
+{
+    RestrictedCEmitter emitter;
+    const RestrictedCResult result = emitter.emit(branch_module());
+    REQUIRE(result.succeeded());
+    CHECK(result.text.find("L_f0_b0:") != std::string::npos);
+    CHECK(result.text.find("L_f0_b1:") != std::string::npos);
+    CHECK(result.text.find("L_f0_b2:") != std::string::npos);
+    CHECK(result.text.find("L_f0_b3:") != std::string::npos);
+    CHECK(result.text.find("if (Reg[") != std::string::npos);
+    CHECK(result.text.find("goto L_f0_b1;") != std::string::npos);
+    CHECK(result.text.find("goto L_f0_b2;") != std::string::npos);
+    CHECK(result.text.find("goto L_f0_b3;") != std::string::npos);
+    CHECK(result.text.find("L_f0_x0:") != std::string::npos);
+    CHECK(result.text.find("else") == std::string::npos);
+    CHECK(result.text.find("branch_program") == std::string::npos);
+    CHECK(result.text.find("branch_answer") == std::string::npos);
+}
+
+TEST_CASE("Stage 5A restricted C rejects verifier-valid cyclic Program flow")
+{
+    const ir::Module module = cyclic_branch_module();
+    CHECK(ir::verify_module(module).valid);
+    RestrictedCEmitter emitter;
+    const RestrictedCResult result = emitter.emit(module);
+    CHECK(result.status == RestrictedCStatus::Unsupported);
+    CHECK(result.text.empty());
+    CHECK(result.diagnostic.find("cyclic") != std::string::npos);
+}
+
+TEST_CASE("Stage 5A restricted C preflights every branch atomically")
+{
+    RestrictedCEmitter emitter;
+    const ir::Module float_in_then = branch_local_float_module();
+    REQUIRE(ir::verify_module(float_in_then).valid);
+    REQUIRE(float_in_then.functions[0].blocks.size() == 4);
+    REQUIRE(float_in_then.functions[0].blocks[0].instructions.size() == 1);
+    const RestrictedCResult unsupported = emitter.emit(float_in_then);
+    CHECK(unsupported.status == RestrictedCStatus::Unsupported);
+    CHECK(unsupported.text.empty());
+    CHECK(unsupported.diagnostic.find("Integer and Bool") != std::string::npos);
+
+    ir::Module malformed = branch_module();
+    ir::BranchTerminator &branch = std::get<ir::BranchTerminator>(
+        std::get<ir::Terminator>(malformed.functions[0].blocks[0].terminator));
+    branch.when_false = ir::BlockId(ir::FunctionId(0), 99);
+    CHECK_FALSE(ir::verify_module(malformed).valid);
+    const RestrictedCResult invalid = emitter.emit(malformed);
+    CHECK(invalid.status == RestrictedCStatus::InvalidIR);
+    CHECK(invalid.text.empty());
 }
 
 TEST_CASE("Stage 4C restricted C lowers only canonical putInteger calls")

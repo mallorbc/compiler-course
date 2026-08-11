@@ -2,6 +2,7 @@
 
 #include "BuiltinCatalog.h"
 
+#include <algorithm>
 #include <set>
 #include <unordered_set>
 
@@ -171,11 +172,27 @@ VerificationResult verify_module(const Module &module)
                 return failure("external builtin does not match catalog");
             }
         }
+        else if (function.kind == FunctionKind::Procedure)
+        {
+            if (function.blocks.size() != 1 ||
+                function.blocks[0].id != BlockId(function.id, 0))
+            {
+                return failure("procedure does not have exactly one owned block");
+            }
+        }
         else
         {
-            if (function.blocks.size() != 1 || function.blocks[0].id != BlockId(function.id, 0))
+            if (function.blocks.empty())
             {
-                return failure("defined function does not have exactly one owned block");
+                return failure("program has no entry block");
+            }
+            for (std::size_t block_index = 0; block_index < function.blocks.size(); block_index++)
+            {
+                if (function.blocks[block_index].id !=
+                    BlockId(function.id, static_cast<std::uint32_t>(block_index)))
+                {
+                    return failure("program block id does not match function order");
+                }
             }
         }
     }
@@ -261,20 +278,161 @@ VerificationResult verify_module(const Module &module)
             continue;
         }
 
-        const BasicBlock &block = function.blocks[0];
-        std::vector<bool> defined(function.values.size(), false);
-        const auto value_for = [&function, &defined](ValueId id) -> const Value * {
-            if (!id.valid() || id.function != function.id || id.index >= function.values.size() ||
-                !defined[id.index])
+        const std::size_t block_count = function.blocks.size();
+        std::vector<std::vector<std::size_t>> predecessors(block_count);
+        std::vector<std::vector<std::size_t>> successors(block_count);
+        std::size_t halt_count = 0;
+        std::size_t halt_block = block_count;
+        const auto add_target = [&function, &successors, &predecessors](std::size_t source,
+                                                                          BlockId target) -> bool {
+            if (!target.valid() || target.function != function.id ||
+                target.index >= function.blocks.size() ||
+                function.blocks[target.index].id != target)
             {
-                return NULL;
+                return false;
             }
-            const Value &value = function.values[id.index];
-            return value.id == id ? &value : NULL;
+            successors[source].push_back(target.index);
+            predecessors[target.index].push_back(source);
+            return true;
         };
-        const auto define = [&function, &defined](ValueId id, ValueLocation location) -> bool {
+
+        for (std::size_t block_index = 0; block_index < block_count; block_index++)
+        {
+            const BasicBlock &block = function.blocks[block_index];
+            if (std::holds_alternative<std::monostate>(block.terminator))
+            {
+                return failure("defined function has no terminator");
+            }
+            const Terminator &terminator = std::get<Terminator>(block.terminator);
+            if (function.kind == FunctionKind::Program)
+            {
+                if (std::holds_alternative<HaltTerminator>(terminator))
+                {
+                    halt_count++;
+                    halt_block = block_index;
+                }
+                else if (const JumpTerminator *jump = std::get_if<JumpTerminator>(&terminator))
+                {
+                    if (!add_target(block_index, jump->target))
+                    {
+                        return failure("program jump has an invalid target");
+                    }
+                }
+                else if (const BranchTerminator *branch =
+                             std::get_if<BranchTerminator>(&terminator))
+                {
+                    if (branch->when_true == branch->when_false ||
+                        !add_target(block_index, branch->when_true) ||
+                        !add_target(block_index, branch->when_false))
+                    {
+                        return failure("program branch has invalid targets");
+                    }
+                }
+                else
+                {
+                    return failure("program may not return a value");
+                }
+            }
+            else
+            {
+                if (!std::holds_alternative<ReturnTerminator>(terminator))
+                {
+                    return failure("procedure control flow is not supported");
+                }
+            }
+        }
+        if (function.kind == FunctionKind::Program && halt_count != 1)
+        {
+            return failure("program must have exactly one halt block");
+        }
+
+        std::vector<bool> reachable(block_count, false);
+        std::vector<std::size_t> work;
+        work.push_back(0);
+        reachable[0] = true;
+        while (!work.empty())
+        {
+            const std::size_t current = work.back();
+            work.pop_back();
+            for (std::size_t target : successors[current])
+            {
+                if (!reachable[target])
+                {
+                    reachable[target] = true;
+                    work.push_back(target);
+                }
+            }
+        }
+        if (std::find(reachable.begin(), reachable.end(), false) != reachable.end())
+        {
+            return failure("defined function has an unreachable block");
+        }
+        if (function.kind == FunctionKind::Program)
+        {
+            std::vector<bool> reaches_halt(block_count, false);
+            work.push_back(halt_block);
+            reaches_halt[halt_block] = true;
+            while (!work.empty())
+            {
+                const std::size_t current = work.back();
+                work.pop_back();
+                for (std::size_t predecessor : predecessors[current])
+                {
+                    if (!reaches_halt[predecessor])
+                    {
+                        reaches_halt[predecessor] = true;
+                        work.push_back(predecessor);
+                    }
+                }
+            }
+            if (std::find(reaches_halt.begin(), reaches_halt.end(), false) != reaches_halt.end())
+            {
+                return failure("program block cannot reach halt");
+            }
+        }
+
+        std::vector<std::vector<bool>> dominates(block_count,
+                                                  std::vector<bool>(block_count, true));
+        for (std::size_t index = 0; index < block_count; index++)
+        {
+            dominates[0][index] = false;
+        }
+        dominates[0][0] = true;
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (std::size_t block_index = 1; block_index < block_count; block_index++)
+            {
+                std::vector<bool> next(block_count, true);
+                for (std::size_t predecessor : predecessors[block_index])
+                {
+                    for (std::size_t index = 0; index < block_count; index++)
+                    {
+                        next[index] = next[index] && dominates[predecessor][index];
+                    }
+                }
+                next[block_index] = true;
+                if (next != dominates[block_index])
+                {
+                    dominates[block_index] = next;
+                    changed = true;
+                }
+            }
+        }
+
+        struct Definition
+        {
+            bool present = false;
+            std::size_t block = 0;
+            std::size_t instruction = 0;
+        };
+        std::vector<Definition> definitions(function.values.size());
+        const auto define = [&function, &definitions](ValueId id, ValueLocation location,
+                                                       std::size_t block,
+                                                       std::size_t instruction) -> bool {
             if (!id.valid() || id.function != function.id || id.index >= function.values.size() ||
-                defined[id.index])
+                definitions[id.index].present)
             {
                 return false;
             }
@@ -283,132 +441,194 @@ VerificationResult verify_module(const Module &module)
             {
                 return false;
             }
-            defined[id.index] = true;
+            definitions[id.index] = Definition{true, block, instruction};
             return true;
         };
-
-        for (const Instruction &instruction : block.instructions)
+        for (std::size_t block_index = 0; block_index < block_count; block_index++)
         {
-            if (const Constant *constant = std::get_if<Constant>(&instruction))
+            const std::vector<Instruction> &instructions = function.blocks[block_index].instructions;
+            for (std::size_t instruction_index = 0; instruction_index < instructions.size();
+                 instruction_index++)
             {
-                if (!define(constant->result, ValueLocation::Constant))
+                const Instruction &instruction = instructions[instruction_index];
+                bool result_valid = false;
+                if (const Constant *constant = std::get_if<Constant>(&instruction))
                 {
-                    return failure("invalid constant result");
+                    result_valid = define(constant->result, ValueLocation::Constant, block_index,
+                                          instruction_index);
                 }
-                const value_shape type = function.values[constant->result.index].type;
-                if ((type.element_type == TYPE_INT && !std::holds_alternative<int>(constant->payload)) ||
-                    (type.element_type == TYPE_FLOAT && !std::holds_alternative<float>(constant->payload)) ||
-                    (type.element_type == TYPE_BOOL && !std::holds_alternative<bool>(constant->payload)) ||
-                    (type.element_type == TYPE_STRING && !std::holds_alternative<std::string>(constant->payload)))
+                else if (const Load *load = std::get_if<Load>(&instruction))
                 {
-                    return failure("constant payload does not match value type");
+                    result_valid = define(load->result, ValueLocation::Load, block_index,
+                                          instruction_index);
+                }
+                else if (const Unary *unary = std::get_if<Unary>(&instruction))
+                {
+                    result_valid = define(unary->result, ValueLocation::Unary, block_index,
+                                          instruction_index);
+                }
+                else if (const Binary *binary = std::get_if<Binary>(&instruction))
+                {
+                    result_valid = define(binary->result, ValueLocation::Binary, block_index,
+                                          instruction_index);
+                }
+                else if (const Cast *cast = std::get_if<Cast>(&instruction))
+                {
+                    result_valid = define(cast->result, ValueLocation::Cast, block_index,
+                                          instruction_index);
+                }
+                else if (const Call *call = std::get_if<Call>(&instruction))
+                {
+                    result_valid = define(call->result, ValueLocation::Call, block_index,
+                                          instruction_index);
+                }
+                else
+                {
+                    result_valid = true; //Store has no result.
+                }
+                if (!result_valid)
+                {
+                    return failure("instruction result is missing, duplicated, or ill typed");
                 }
             }
-            else if (const Load *load = std::get_if<Load>(&instruction))
+        }
+        if (std::find_if(definitions.begin(), definitions.end(),
+                         [](const Definition &definition) { return !definition.present; }) !=
+            definitions.end())
+        {
+            return failure("value table contains an undefined value");
+        }
+
+        const auto value_for = [&function, &definitions, &dominates](ValueId id,
+                                                                       std::size_t block,
+                                                                       std::size_t instruction) -> const Value * {
+            if (!id.valid() || id.function != function.id || id.index >= function.values.size() ||
+                !definitions[id.index].present)
             {
-                const Storage *storage = find_storage(module, load->source);
-                if (!define(load->result, ValueLocation::Load) || storage == NULL ||
-                    !is_visible_storage(*storage, function.id, program_id) ||
-                    function.values[load->result.index].type != storage->type)
-                {
-                    return failure("invalid load");
-                }
+                return NULL;
             }
-            else if (const Store *store = std::get_if<Store>(&instruction))
+            const Definition &definition = definitions[id.index];
+            if ((definition.block == block && definition.instruction >= instruction) ||
+                (definition.block != block && !dominates[block][definition.block]))
             {
-                const Storage *storage = find_storage(module, store->destination);
-                const Value *value = value_for(store->value);
-                if (storage == NULL || value == NULL ||
-                    !is_visible_storage(*storage, function.id, program_id) ||
-                    storage->type != value->type)
-                {
-                    return failure("invalid store");
-                }
+                return NULL;
             }
-            else if (const Unary *unary = std::get_if<Unary>(&instruction))
+            const Value &value = function.values[id.index];
+            return value.id == id ? &value : NULL;
+        };
+
+        for (std::size_t block_index = 0; block_index < block_count; block_index++)
+        {
+            const BasicBlock &block = function.blocks[block_index];
+            for (std::size_t instruction_index = 0; instruction_index < block.instructions.size();
+                 instruction_index++)
             {
-                const Value *operand = value_for(unary->operand);
-                if (!define(unary->result, ValueLocation::Unary) || operand == NULL ||
-                    function.values[unary->result.index].type != operand->type ||
-                    !valid_unary(unary->operation, operand->type.element_type))
+                const Instruction &instruction = block.instructions[instruction_index];
+                if (const Constant *constant = std::get_if<Constant>(&instruction))
                 {
-                    return failure("invalid unary instruction");
-                }
-            }
-            else if (const Binary *binary = std::get_if<Binary>(&instruction))
-            {
-                const Value *left = value_for(binary->left);
-                const Value *right = value_for(binary->right);
-                const value_shape expected_result = left == NULL ? value_shape() :
-                    (binary_returns_bool(binary->operation) ?
-                         value_shape{TYPE_BOOL, false, -1} : left->type);
-                if (!define(binary->result, ValueLocation::Binary) || left == NULL || right == NULL ||
-                    left->type != right->type ||
-                    function.values[binary->result.index].type != expected_result ||
-                    !valid_binary(binary->operation, left->type.element_type))
-                {
-                    return failure("invalid binary instruction");
-                }
-            }
-            else if (const Cast *cast = std::get_if<Cast>(&instruction))
-            {
-                const Value *operand = value_for(cast->operand);
-                if (!define(cast->result, ValueLocation::Cast) || operand == NULL ||
-                    !matches_cast(cast->operation, operand->type,
-                                  function.values[cast->result.index].type))
-                {
-                    return failure("invalid cast instruction");
-                }
-            }
-            else if (const Call *call = std::get_if<Call>(&instruction))
-            {
-                const Function *callee = find_function(module, call->callee);
-                if (!define(call->result, ValueLocation::Call) || callee == NULL ||
-                    (callee->kind != FunctionKind::Procedure &&
-                     callee->kind != FunctionKind::ExternalBuiltin) ||
-                    callee->parameter_types.size() != call->arguments.size() ||
-                    function.values[call->result.index].type != callee->return_type)
-                {
-                    return failure("invalid call result or signature");
-                }
-                for (std::size_t i = 0; i < call->arguments.size(); i++)
-                {
-                    const Value *argument = value_for(call->arguments[i]);
-                    if (argument == NULL || argument->type != callee->parameter_types[i])
+                    const value_shape type = function.values[constant->result.index].type;
+                    if ((type.element_type == TYPE_INT && !std::holds_alternative<int>(constant->payload)) ||
+                        (type.element_type == TYPE_FLOAT && !std::holds_alternative<float>(constant->payload)) ||
+                        (type.element_type == TYPE_BOOL && !std::holds_alternative<bool>(constant->payload)) ||
+                        (type.element_type == TYPE_STRING && !std::holds_alternative<std::string>(constant->payload)))
                     {
-                        return failure("invalid call argument");
+                        return failure("constant payload does not match value type");
+                    }
+                }
+                else if (const Load *load = std::get_if<Load>(&instruction))
+                {
+                    const Storage *storage = find_storage(module, load->source);
+                    if (storage == NULL || !is_visible_storage(*storage, function.id, program_id) ||
+                        function.values[load->result.index].type != storage->type)
+                    {
+                        return failure("invalid load");
+                    }
+                }
+                else if (const Store *store = std::get_if<Store>(&instruction))
+                {
+                    const Storage *storage = find_storage(module, store->destination);
+                    const Value *value = value_for(store->value, block_index, instruction_index);
+                    if (storage == NULL || value == NULL ||
+                        !is_visible_storage(*storage, function.id, program_id) ||
+                        storage->type != value->type)
+                    {
+                        return failure("invalid store");
+                    }
+                }
+                else if (const Unary *unary = std::get_if<Unary>(&instruction))
+                {
+                    const Value *operand = value_for(unary->operand, block_index, instruction_index);
+                    if (operand == NULL || function.values[unary->result.index].type != operand->type ||
+                        !valid_unary(unary->operation, operand->type.element_type))
+                    {
+                        return failure("invalid unary instruction");
+                    }
+                }
+                else if (const Binary *binary = std::get_if<Binary>(&instruction))
+                {
+                    const Value *left = value_for(binary->left, block_index, instruction_index);
+                    const Value *right = value_for(binary->right, block_index, instruction_index);
+                    const value_shape expected_result = left == NULL ? value_shape() :
+                        (binary_returns_bool(binary->operation) ?
+                             value_shape{TYPE_BOOL, false, -1} : left->type);
+                    if (left == NULL || right == NULL || left->type != right->type ||
+                        function.values[binary->result.index].type != expected_result ||
+                        !valid_binary(binary->operation, left->type.element_type))
+                    {
+                        return failure("invalid binary instruction");
+                    }
+                }
+                else if (const Cast *cast = std::get_if<Cast>(&instruction))
+                {
+                    const Value *operand = value_for(cast->operand, block_index, instruction_index);
+                    if (operand == NULL || !matches_cast(cast->operation, operand->type,
+                                                         function.values[cast->result.index].type))
+                    {
+                        return failure("invalid cast instruction");
+                    }
+                }
+                else if (const Call *call = std::get_if<Call>(&instruction))
+                {
+                    const Function *callee = find_function(module, call->callee);
+                    if (callee == NULL ||
+                        (callee->kind != FunctionKind::Procedure &&
+                         callee->kind != FunctionKind::ExternalBuiltin) ||
+                        callee->parameter_types.size() != call->arguments.size() ||
+                        function.values[call->result.index].type != callee->return_type)
+                    {
+                        return failure("invalid call result or signature");
+                    }
+                    for (std::size_t i = 0; i < call->arguments.size(); i++)
+                    {
+                        const Value *argument = value_for(call->arguments[i], block_index,
+                                                          instruction_index);
+                        if (argument == NULL || argument->type != callee->parameter_types[i])
+                        {
+                            return failure("invalid call argument");
+                        }
                     }
                 }
             }
-        }
-
-        for (bool was_defined : defined)
-        {
-            if (!was_defined)
+            const Terminator &terminator = std::get<Terminator>(block.terminator);
+            if (const BranchTerminator *branch = std::get_if<BranchTerminator>(&terminator))
             {
-                return failure("value table contains an undefined value");
+                const Value *condition = value_for(branch->condition, block_index,
+                                                   block.instructions.size());
+                if (condition == NULL ||
+                    condition->type != value_shape{TYPE_BOOL, false, -1})
+                {
+                    return failure("program branch condition must be a visible scalar bool");
+                }
             }
-        }
-
-        if (std::holds_alternative<std::monostate>(block.terminator))
-        {
-            return failure("defined function has no terminator");
-        }
-        const Terminator &terminator = std::get<Terminator>(block.terminator);
-        if (function.kind == FunctionKind::Program)
-        {
-            if (!std::holds_alternative<HaltTerminator>(terminator))
+            if (const ReturnTerminator *returned = std::get_if<ReturnTerminator>(&terminator))
             {
-                return failure("program must halt");
-            }
-        }
-        else
-        {
-            const ReturnTerminator *returned = std::get_if<ReturnTerminator>(&terminator);
-            const Value *value = returned == NULL ? NULL : value_for(returned->value);
-            if (value == NULL || value->type != function.return_type)
-            {
-                return failure("procedure must return an exact typed value");
+                const Value *value = value_for(returned->value, block_index,
+                                               block.instructions.size());
+                if (function.kind != FunctionKind::Procedure || value == NULL ||
+                    value->type != function.return_type)
+                {
+                    return failure("procedure must return an exact typed value");
+                }
             }
         }
     }

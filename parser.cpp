@@ -1342,10 +1342,6 @@ bool parser::parse_base_statement()
     }
     else if (Current_parse_token_type == T_IF)
     {
-        if (ir_builder != NULL)
-        {
-            ir_builder->mark_unsupported("if statements require multiple basic blocks");
-        }
         //sets the typchecker up to handle if statements
         const token if_token = Current_parse_token;
         type_checker->set_statement_type(if_token);
@@ -1484,7 +1480,18 @@ bool parser::parse_assignment_statement(token destination_token)
 //refactored 1 time
 bool parser::parse_if_statement(const token &if_token)
 {
+    struct IfBlocks
+    {
+        ir::BlockId then_block;
+        ir::BlockId else_block;
+        ir::BlockId join_block;
+        bool active = false;
+    } blocks;
+
     const bool has_left_parenthesis = Current_parse_token_type == T_LPARAM;
+    bool consumed_right_parenthesis = false;
+    bool consumed_then = false;
+    conversion_plan condition_plan;
     if (has_left_parenthesis)
     {
         Current_parse_token = Get_Valid_Token();
@@ -1513,12 +1520,12 @@ bool parser::parse_if_statement(const token &if_token)
     else if (Current_parse_token_type == T_RPARAM)
     {
         Current_parse_token = Get_Valid_Token();
+        consumed_right_parenthesis = true;
         if (has_left_parenthesis && condition.semantics.semantic_valid &&
             !type_checker->statement_suppressed)
         {
-            const conversion_plan condition_plan = type_checker->check_condition_statement(
+            condition_plan = type_checker->check_condition_statement(
                 condition.semantics, if_token, condition_context::If);
-            (void)condition_plan;
         }
     }
     else if (has_left_parenthesis)
@@ -1540,6 +1547,48 @@ bool parser::parse_if_statement(const token &if_token)
     else
     {
         Current_parse_token = Get_Valid_Token();
+        consumed_then = true;
+    }
+
+    //Only a fully recognized, semantically valid header opens CFG blocks.
+    //Malformed/recovered headers still use the handwritten branch parser below
+    //and are discarded atomically through the frontend-error status.
+    if (has_left_parenthesis && consumed_right_parenthesis && consumed_then &&
+        condition.semantics.valid_parse && condition.semantics.semantic_valid &&
+        condition_plan.valid && !type_checker->statement_suppressed && ir_builder != NULL &&
+        ir_builder->emission_enabled() && condition.value.valid())
+    {
+        if (ir_builder->current_function() != ir_builder->program_function())
+        {
+            ir_builder->mark_unsupported(
+                "if statements in procedures require procedure control-flow lowering");
+        }
+        else
+        {
+            ir::ValueId condition_value = condition.value;
+            if (condition_plan.requires_conversion)
+            {
+                ir::CastOp cast;
+                if (ir_cast_operation(condition_plan.kind, cast))
+                {
+                    condition_value = ir_builder->emit_cast(cast, condition_value);
+                }
+            }
+            if (ir_builder->emission_enabled() && condition_value.valid())
+            {
+                blocks.then_block = ir_builder->create_block();
+                blocks.else_block = ir_builder->create_block();
+                blocks.join_block = ir_builder->create_block();
+                if (blocks.then_block.valid() && blocks.else_block.valid() &&
+                    blocks.join_block.valid() &&
+                    ir_builder->emit_branch(condition_value, blocks.then_block,
+                                            blocks.else_block) &&
+                    ir_builder->select_block(blocks.then_block))
+                {
+                    blocks.active = true;
+                }
+            }
+        }
     }
 
     const auto parse_branch = [this]() -> bool {
@@ -1595,10 +1644,15 @@ bool parser::parse_if_statement(const token &if_token)
     {
         return false;
     }
+    if (blocks.active && ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        (void)ir_builder->emit_jump(blocks.join_block);
+    }
     bool consumed_optional_else = false;
     bool reported_repeated_else = false;
     while (Current_parse_token_type == T_ELSE)
     {
+        const bool first_else = !consumed_optional_else;
         if (consumed_optional_else && !reported_repeated_else)
         {
             generate_error_report("Unexpected repeated \"else\" in if statement");
@@ -1606,10 +1660,26 @@ bool parser::parse_if_statement(const token &if_token)
             reported_repeated_else = true;
         }
         consumed_optional_else = true;
+        if (blocks.active && first_else && ir_builder != NULL && ir_builder->emission_enabled())
+        {
+            (void)ir_builder->select_block(blocks.else_block);
+        }
         Current_parse_token = Get_Valid_Token();
         if (!parse_branch())
         {
             return false;
+        }
+        if (blocks.active && first_else && ir_builder != NULL && ir_builder->emission_enabled())
+        {
+            (void)ir_builder->emit_jump(blocks.join_block);
+        }
+    }
+    if (blocks.active && !consumed_optional_else && ir_builder != NULL &&
+        ir_builder->emission_enabled())
+    {
+        if (ir_builder->select_block(blocks.else_block))
+        {
+            (void)ir_builder->emit_jump(blocks.join_block);
         }
     }
 
@@ -1627,6 +1697,10 @@ bool parser::parse_if_statement(const token &if_token)
         return false;
     }
     Current_parse_token = Get_Valid_Token();
+    if (blocks.active && ir_builder != NULL && ir_builder->emission_enabled())
+    {
+        (void)ir_builder->select_block(blocks.join_block);
+    }
     return true;
 }
 

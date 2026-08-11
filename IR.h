@@ -209,7 +209,20 @@ struct HaltTerminator
 {
 };
 
-using Terminator = std::variant<ReturnTerminator, HaltTerminator>;
+struct JumpTerminator
+{
+    BlockId target;
+};
+
+struct BranchTerminator
+{
+    ValueId condition;
+    BlockId when_true;
+    BlockId when_false;
+};
+
+using Terminator = std::variant<ReturnTerminator, HaltTerminator, JumpTerminator,
+                                BranchTerminator>;
 
 struct BasicBlock
 {

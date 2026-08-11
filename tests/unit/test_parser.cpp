@@ -1731,9 +1731,8 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     valid_capture.restore();
     CHECK(valid.error_reports.empty());
     CHECK(valid.frontend_valid());
-    CHECK_FALSE(valid.can_generate_code()); // if lowering is intentionally Stage 4B.
-    CAPTURE(valid.ir_reason());
-    CHECK(valid.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(valid.can_generate_code());
+    CHECK(valid.ir_status() == ir::ModuleStatus::Ready);
 
     temp_source_file recovered_rparam(
         "program branches is\n"
@@ -1749,6 +1748,9 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     CHECK(rparam.error_reports.size() == 1);
     CHECK(has_error(rparam, "Missing \")\" expected for if statment"));
     CHECK_FALSE(has_error(rparam, "Missing expected keyword \"then\" for if statements"));
+    CHECK(rparam.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(rparam.ir_module().functions.empty());
+    CHECK(rparam.ir_module().storages.empty());
 
     temp_source_file delimiter_recovery(
         "program branches is\n"
@@ -1788,6 +1790,25 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     CHECK(count_errors(repeated, "Unexpected repeated \"else\" in if statement") == 1);
     CHECK(has_error(repeated,
                     "Assignment target type \"integer\" is not compatible with expression type \"string\""));
+    CHECK(repeated.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(repeated.ir_module().functions.empty());
+    CHECK(repeated.ir_module().storages.empty());
+
+    temp_source_file semantic_condition(
+        "program branches is\n"
+        "begin\n"
+        "    if (\"not-a-condition\") then\n"
+        "    end if;\n"
+        "end program.\n");
+    captured_stdout semantic_condition_capture;
+    parser semantic_invalid(semantic_condition.name());
+    semantic_condition_capture.restore();
+    CHECK(semantic_invalid.error_reports.size() == 1);
+    CHECK(has_error(semantic_invalid,
+                    "If statements must resolve to either type Bool or Integer"));
+    CHECK(semantic_invalid.ir_status() == ir::ModuleStatus::FrontendError);
+    CHECK(semantic_invalid.ir_module().functions.empty());
+    CHECK(semantic_invalid.ir_module().storages.empty());
 
     temp_source_file missing_then(
         "program branches is\n"
@@ -1835,6 +1856,94 @@ TEST_CASE("Stage 2F if phases keep branch delimiters and recover once")
     parser child(syntax_child.name());
     child_capture.restore();
     CHECK_FALSE(has_error(child, "Missing \";\" to end statement in if statement"));
+}
+
+TEST_CASE("Stage 5A parser lowers Program if headers and restores nested joins")
+{
+    temp_source_file fixture(
+        "program control is\n"
+        "variable value : integer;\n"
+        "begin\n"
+        "    value := 1;\n"
+        "    if (value) then\n"
+        "        if (true) then\n"
+        "            value := 2;\n"
+        "        end if;\n"
+        "    else\n"
+        "        value := 3;\n"
+        "    end if;\n"
+        "    value := 4;\n"
+        "end program.\n");
+    captured_stdout capture;
+    parser parsed(fixture.name());
+    capture.restore();
+
+    REQUIRE(parsed.error_reports.empty());
+    REQUIRE(parsed.can_generate_code());
+    REQUIRE(parsed.ir_status() == ir::ModuleStatus::Ready);
+    const ir::Function &program = parsed.ir_module().functions[0];
+    REQUIRE(program.blocks.size() == 7);
+    const ir::BranchTerminator *outer =
+        std::get_if<ir::BranchTerminator>(&std::get<ir::Terminator>(program.blocks[0].terminator));
+    REQUIRE(outer != NULL);
+    CHECK(outer->when_true == ir::BlockId(program.id, 1));
+    CHECK(outer->when_false == ir::BlockId(program.id, 2));
+    CHECK(std::holds_alternative<ir::BranchTerminator>(
+        std::get<ir::Terminator>(program.blocks[1].terminator)));
+    CHECK(std::holds_alternative<ir::JumpTerminator>(
+        std::get<ir::Terminator>(program.blocks[6].terminator)));
+    CHECK(std::holds_alternative<ir::HaltTerminator>(
+        std::get<ir::Terminator>(program.blocks[3].terminator)));
+
+    bool saw_integer_condition_cast = false;
+    for (const ir::Instruction &instruction : program.blocks[0].instructions)
+    {
+        const ir::Cast *cast = std::get_if<ir::Cast>(&instruction);
+        saw_integer_condition_cast = saw_integer_condition_cast ||
+                                     (cast != NULL &&
+                                      cast->operation == ir::CastOp::IntToBool);
+    }
+    CHECK(saw_integer_condition_cast);
+    const ir::JumpTerminator *nested_join =
+        std::get_if<ir::JumpTerminator>(&std::get<ir::Terminator>(program.blocks[6].terminator));
+    REQUIRE(nested_join != NULL);
+    CHECK(nested_join->target == ir::BlockId(program.id, 3));
+    CHECK(ir::verify_module(parsed.ir_module()).valid);
+}
+
+TEST_CASE("Stage 5A keeps procedure if and loop lowering unsupported")
+{
+    temp_source_file procedure_fixture(
+        "program procedure_control is\n"
+        "procedure choose : integer()\n"
+        "begin\n"
+        "    if (true) then\n"
+        "        return 1;\n"
+        "    end if;\n"
+        "    return 0;\n"
+        "end procedure;\n"
+        "begin\n"
+        "end program.\n");
+    captured_stdout procedure_capture;
+    parser procedure(procedure_fixture.name());
+    procedure_capture.restore();
+    CHECK(procedure.frontend_valid());
+    CHECK(procedure.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(procedure.ir_module().functions.empty());
+
+    temp_source_file loop_fixture(
+        "program loop_control is\n"
+        "variable i : integer;\n"
+        "begin\n"
+        "    for (i := 0; true)\n"
+        "    end for;\n"
+        "end program.\n");
+    captured_stdout loop_capture;
+    parser loop(loop_fixture.name());
+    loop_capture.restore();
+    CHECK(loop.frontend_valid());
+    CHECK(loop.ir_status() == ir::ModuleStatus::Unsupported);
+    CHECK(loop.ir_module().functions.empty());
 }
 
 TEST_CASE("Stage 4A parser publishes scalar straight-line IR without changing frontend validity")
@@ -2054,10 +2163,9 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     parser conditional(if_fixture.name());
     if_capture.restore();
     CHECK(conditional.frontend_valid());
-    CHECK_FALSE(conditional.can_generate_code());
-    CHECK(conditional.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(conditional.ir_module().functions.empty());
-    CHECK(conditional.ir_module().storages.empty());
+    CHECK(conditional.can_generate_code());
+    CHECK(conditional.ir_status() == ir::ModuleStatus::Ready);
+    CHECK_FALSE(conditional.ir_module().functions.empty());
 
     temp_source_file array_fixture(
         "program arrays is\n"
@@ -2118,8 +2226,8 @@ TEST_CASE("Stage 4A unsupported frontend features never expose partial IR")
     parser if_call(if_call_fixture.name());
     if_call_capture.restore();
     CHECK(if_call.frontend_valid());
-    CHECK(if_call.ir_status() == ir::ModuleStatus::Unsupported);
-    CHECK(if_call.ir_module().functions.empty());
+    CHECK(if_call.ir_status() == ir::ModuleStatus::Ready);
+    CHECK_FALSE(if_call.ir_module().functions.empty());
 }
 
 TEST_CASE("Stage 2F code-generation readiness follows recorded diagnostics")

@@ -72,7 +72,9 @@ def strict_c11_syntax_check(generated: Path) -> None:
     )
 
 
-def strict_c11_compile_and_run(generated: Path, expected_stdout: str) -> None:
+def strict_c11_compile_and_run(
+    generated: Path, expected_stdout: str, expected_returncode: int = 0
+) -> None:
     c_compiler = next(
         (candidate for candidate in ("cc", "gcc", "clang") if shutil.which(candidate)), None
     )
@@ -114,7 +116,10 @@ def strict_c11_compile_and_run(generated: Path, expected_stdout: str) -> None:
         timeout=TIMEOUT_SEC,
         check=False,
     )
-    check(execution.returncode == 0, f"Gate4 executable exit was {execution.returncode}")
+    check(
+        execution.returncode == expected_returncode,
+        f"native executable exit was {execution.returncode}, expected {expected_returncode}",
+    )
     check(execution.stdout == expected_stdout, f"native stdout was {execution.stdout!r}")
     check(execution.stderr == "", f"Gate4 stderr was {execution.stderr!r}")
 
@@ -154,7 +159,8 @@ def main() -> int:
             check(source_identifier not in generated, f"source name leaked into C: {source_identifier}")
         check("==" in generated and "=" in generated, "equality/load/store structure is missing")
         check("(uint32_t)" in generated, "integer arithmetic is not widened through uint32_t")
-        check("if (Reg[" in generated and "goto L_f0_b2;" in generated, "division is not flat-lowered")
+        check("if (Reg[" in generated and "goto L_f0_d0_0;" in generated,
+              "division is not flat-lowered")
         check("else" not in generated and "return 1;" not in generated, "division has inline control flow")
         check_no_temp_debris(root)
 
@@ -184,6 +190,143 @@ def main() -> int:
         for source_identifier in ("Gate4", "answer", "printed", "putInteger"):
             check(source_identifier not in gate4_c, f"Gate4 source name leaked: {source_identifier}")
         strict_c11_compile_and_run(gate4_output, "42\n")
+
+        gate5_source = root / "gate5-if.src"
+        gate5_output = root / "gate5-if.c"
+        gate5_source.write_text(
+            "program Gate5 is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    answer := 6 * 7;\n"
+            "    if (answer) then\n"
+            "        printed := putInteger(answer);\n"
+            "    else\n"
+            "        printed := putInteger(0);\n"
+            "    end if;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        gate5 = run_compiler("--emit-c", str(gate5_output), str(gate5_source))
+        check(gate5.returncode == 0, f"Gate5 if emit failed: {gate5.stderr!r}")
+        gate5_c = gate5_output.read_text(encoding="utf-8")
+        for label in ("L_f0_b0:", "L_f0_b1:", "L_f0_b2:", "L_f0_b3:"):
+            check(label in gate5_c, f"Gate5 missing CFG label {label}")
+        check("L_f0_x0:" in gate5_c, "Gate5 missing common exit label")
+        check("else" not in gate5_c, "Gate5 used structured C else")
+        strict_c11_compile_and_run(gate5_output, "42\n")
+
+        gate5_false_source = root / "gate5-false.src"
+        gate5_false_output = root / "gate5-false.c"
+        gate5_false_source.write_text(
+            "program Gate5False is\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    if (0) then\n"
+            "        printed := putInteger(1);\n"
+            "    else\n"
+            "        printed := putInteger(7);\n"
+            "    end if;\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        gate5_false = run_compiler("--emit-c", str(gate5_false_output), str(gate5_false_source))
+        check(gate5_false.returncode == 0, f"Gate5 false emit failed: {gate5_false.stderr!r}")
+        strict_c11_compile_and_run(gate5_false_output, "7\n")
+
+        side_effect_source = root / "gate5-condition-call.src"
+        side_effect_output = root / "gate5-condition-call.c"
+        side_effect_source.write_text(
+            "program Gate5ConditionCall is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    if (putInteger(7)) then\n"
+            "        answer := 42;\n"
+            "    else\n"
+            "        answer := 0;\n"
+            "    end if;\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        side_effect = run_compiler(
+            "--emit-c", str(side_effect_output), str(side_effect_source)
+        )
+        check(side_effect.returncode == 0, f"condition-call emit failed: {side_effect.stderr!r}")
+        strict_c11_compile_and_run(side_effect_output, "7\n42\n")
+
+        empty_nested_source = root / "gate5-empty-nested.src"
+        empty_nested_output = root / "gate5-empty-nested.c"
+        empty_nested_source.write_text(
+            "program Gate5EmptyNested is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    if (0) then\n"
+            "    end if;\n"
+            "    if (-7) then\n"
+            "        if (false) then\n"
+            "            answer := 0;\n"
+            "        else\n"
+            "            answer := 42;\n"
+            "        end if;\n"
+            "    else\n"
+            "        answer := 1;\n"
+            "    end if;\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        empty_nested = run_compiler(
+            "--emit-c", str(empty_nested_output), str(empty_nested_source)
+        )
+        check(empty_nested.returncode == 0, f"empty/nested emit failed: {empty_nested.stderr!r}")
+        strict_c11_compile_and_run(empty_nested_output, "42\n")
+
+        dead_divide_source = root / "gate5-dead-divide.src"
+        dead_divide_output = root / "gate5-dead-divide.c"
+        dead_divide_source.write_text(
+            "program Gate5DeadDivide is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    if (false) then\n"
+            "        answer := 1 / 0;\n"
+            "    else\n"
+            "        answer := 42;\n"
+            "    end if;\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        dead_divide = run_compiler(
+            "--emit-c", str(dead_divide_output), str(dead_divide_source)
+        )
+        check(dead_divide.returncode == 0, f"dead-branch divide emit failed: {dead_divide.stderr!r}")
+        strict_c11_compile_and_run(dead_divide_output, "42\n")
+
+        taken_divide_source = root / "gate5-taken-divide.src"
+        taken_divide_output = root / "gate5-taken-divide.c"
+        taken_divide_source.write_text(
+            "program Gate5TakenDivide is\n"
+            "variable answer : integer;\n"
+            "variable printed : bool;\n"
+            "begin\n"
+            "    if (true) then\n"
+            "        answer := 1 / 0;\n"
+            "    else\n"
+            "        answer := 42;\n"
+            "    end if;\n"
+            "    printed := putInteger(answer);\n"
+            "end program.\n",
+            encoding="utf-8",
+        )
+        taken_divide = run_compiler(
+            "--emit-c", str(taken_divide_output), str(taken_divide_source)
+        )
+        check(taken_divide.returncode == 0, f"taken-branch divide emit failed: {taken_divide.stderr!r}")
+        strict_c11_compile_and_run(taken_divide_output, "", expected_returncode=1)
 
         runtime_edges_source = root / "runtime-edges.src"
         runtime_edges_output = root / "runtime-edges.c"
@@ -232,9 +375,8 @@ def main() -> int:
         unsupported_source = root / "unsupported.src"
         unsupported_source.write_text(
             "program unsupported_source is\n"
+            "variable values : integer[0];\n"
             "begin\n"
-            "    if (true) then\n"
-            "    end if;\n"
             "end program.\n",
             encoding="utf-8",
         )

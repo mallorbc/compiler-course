@@ -34,6 +34,12 @@ public:
     FunctionId program_function() const noexcept;
     FunctionId function_for(const SymbolRef &symbol) const;
 
+    BlockId create_block();
+    bool select_block(BlockId block);
+    BlockId current_block() const noexcept;
+    bool emit_jump(BlockId target);
+    bool emit_branch(ValueId condition, BlockId when_true, BlockId when_false);
+
     StorageId register_storage(const SymbolRef &symbol, const value_shape &type,
                                StorageKind kind);
     StorageId storage_for(const SymbolRef &symbol) const;
@@ -75,6 +81,7 @@ private:
     std::string invalid_reason;
     FunctionId program_id;
     std::vector<FunctionId> function_context;
+    std::vector<BlockId> block_context;
     std::unordered_map<SymbolRef, FunctionId, SymbolRefHash> functions_by_symbol;
     std::unordered_map<SymbolRef, StorageId, SymbolRefHash> storages_by_symbol;
 };

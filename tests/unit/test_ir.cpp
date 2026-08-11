@@ -14,6 +14,34 @@ value_shape scalar(data_types type)
     return shape;
 }
 
+ir::Module ready_cfg_module()
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "cfg_fixture"}, "cfg_fixture").valid());
+    builder.seed_external_builtins();
+    const ir::StorageId storage = builder.register_storage(SymbolRef{0, "value"}, scalar(TYPE_INT),
+                                                           ir::StorageKind::Global);
+    REQUIRE(storage.valid());
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::ValueId value = builder.emit_constant(scalar(TYPE_INT), 1);
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    const ir::BlockId join_block = builder.create_block();
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    REQUIRE(builder.select_block(then_block));
+    REQUIRE(builder.emit_store(storage, value));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(else_block));
+    REQUIRE(builder.emit_store(storage, value));
+    REQUIRE(builder.emit_jump(join_block));
+    REQUIRE(builder.select_block(join_block));
+    REQUIRE(builder.emit_load(storage).valid());
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    return builder.module();
+}
+
 } // namespace
 
 TEST_CASE("Stage 4A IDs and builtin catalog are strongly separated")
@@ -31,6 +59,303 @@ TEST_CASE("Stage 4A IDs and builtin catalog are strongly separated")
     CHECK(put_integer->return_shape == scalar(TYPE_BOOL));
     REQUIRE(put_integer->parameter_shapes.size() == 1);
     CHECK(put_integer->parameter_shapes[0] == scalar(TYPE_INT));
+}
+
+TEST_CASE("Stage 5A builder forms deterministic Program branch blocks")
+{
+    ir::IRBuilder builder;
+    REQUIRE(builder.register_program(SymbolRef{0, "cfg_root"}, "cfg_root").valid());
+    builder.seed_external_builtins();
+    const ir::ValueId condition = builder.emit_constant(scalar(TYPE_BOOL), true);
+    REQUIRE(condition.valid());
+    const ir::BlockId then_block = builder.create_block();
+    const ir::BlockId else_block = builder.create_block();
+    const ir::BlockId join_block = builder.create_block();
+    CHECK(then_block == ir::BlockId(builder.program_function(), 1));
+    CHECK(else_block == ir::BlockId(builder.program_function(), 2));
+    CHECK(join_block == ir::BlockId(builder.program_function(), 3));
+    REQUIRE(builder.emit_branch(condition, then_block, else_block));
+    CHECK(builder.select_block(then_block));
+    REQUIRE(builder.emit_jump(join_block));
+    CHECK(builder.select_block(else_block));
+    REQUIRE(builder.emit_jump(join_block));
+    CHECK(builder.select_block(join_block));
+    REQUIRE(builder.emit_halt());
+    builder.finalize(true);
+
+    REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+    const ir::Function &program = builder.module().functions[0];
+    REQUIRE(program.blocks.size() == 4);
+    const ir::BranchTerminator *branch =
+        std::get_if<ir::BranchTerminator>(&std::get<ir::Terminator>(program.blocks[0].terminator));
+    REQUIRE(branch != NULL);
+    CHECK(branch->condition == condition);
+    CHECK(branch->when_true == then_block);
+    CHECK(branch->when_false == else_block);
+    CHECK(std::holds_alternative<ir::JumpTerminator>(
+        std::get<ir::Terminator>(program.blocks[1].terminator)));
+    CHECK(std::holds_alternative<ir::HaltTerminator>(
+        std::get<ir::Terminator>(program.blocks[3].terminator)));
+    CHECK(ir::verify_module(builder.module()).valid);
+}
+
+TEST_CASE("Stage 5A verifier enforces branch visibility while allowing dominating values")
+{
+    ir::IRBuilder valid;
+    REQUIRE(valid.register_program(SymbolRef{0, "dominates"}, "dominates").valid());
+    valid.seed_external_builtins();
+    const ir::StorageId global = valid.register_storage(SymbolRef{0, "value"}, scalar(TYPE_INT),
+                                                        ir::StorageKind::Global);
+    REQUIRE(global.valid());
+    const ir::ValueId condition = valid.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::ValueId entry_value = valid.emit_constant(scalar(TYPE_INT), 9);
+    const ir::BlockId then_block = valid.create_block();
+    const ir::BlockId else_block = valid.create_block();
+    const ir::BlockId join_block = valid.create_block();
+    REQUIRE(valid.emit_branch(condition, then_block, else_block));
+    REQUIRE(valid.select_block(then_block));
+    REQUIRE(valid.emit_store(global, entry_value));
+    REQUIRE(valid.emit_jump(join_block));
+    REQUIRE(valid.select_block(else_block));
+    REQUIRE(valid.emit_store(global, entry_value));
+    REQUIRE(valid.emit_jump(join_block));
+    REQUIRE(valid.select_block(join_block));
+    CHECK(valid.emit_load(global).valid());
+    REQUIRE(valid.emit_halt());
+    valid.finalize(true);
+    REQUIRE(valid.status() == ir::ModuleStatus::Ready);
+    CHECK(ir::verify_module(valid.module()).valid);
+
+    ir::Module sibling_leak = valid.module();
+    sibling_leak.functions[0].blocks[2].instructions.push_back(
+        ir::Store{global, entry_value});
+    //The added Store is after the valid one in a sibling branch but remains
+    //valid because entry_value dominates both arms.  Use a then-only value
+    //instead to pin the actual cross-branch rejection.
+    sibling_leak.functions[0].values.push_back(
+        ir::Value{ir::ValueId(ir::FunctionId(0),
+                              static_cast<std::uint32_t>(sibling_leak.functions[0].values.size())),
+                  scalar(TYPE_INT), ir::ValueLocation::Constant});
+    const ir::ValueId then_only = sibling_leak.functions[0].values.back().id;
+    sibling_leak.functions[0].blocks[1].instructions.insert(
+        sibling_leak.functions[0].blocks[1].instructions.begin(),
+        ir::Constant{then_only, 3});
+    sibling_leak.functions[0].blocks[2].instructions.back() = ir::Store{global, then_only};
+    CHECK_FALSE(ir::verify_module(sibling_leak).valid);
+}
+
+TEST_CASE("Stage 5A CFG APIs and verifier reject malformed control flow")
+{
+    ir::IRBuilder non_bool;
+    REQUIRE(non_bool.register_program(SymbolRef{0, "non_bool"}, "non_bool").valid());
+    non_bool.seed_external_builtins();
+    const ir::ValueId integer = non_bool.emit_constant(scalar(TYPE_INT), 1);
+    const ir::BlockId true_block = non_bool.create_block();
+    const ir::BlockId false_block = non_bool.create_block();
+    CHECK_FALSE(non_bool.emit_branch(integer, true_block, false_block));
+    non_bool.finalize(true);
+    CHECK(non_bool.status() == ir::ModuleStatus::InvalidIR);
+
+    ir::IRBuilder unsealed;
+    REQUIRE(unsealed.register_program(SymbolRef{0, "unsealed"}, "unsealed").valid());
+    unsealed.seed_external_builtins();
+    const ir::BlockId alternate = unsealed.create_block();
+    CHECK_FALSE(unsealed.select_block(alternate));
+    unsealed.finalize(true);
+    CHECK(unsealed.status() == ir::ModuleStatus::InvalidIR);
+
+    ir::IRBuilder cross_target;
+    REQUIRE(cross_target.register_program(SymbolRef{0, "cross_target"}, "cross_target").valid());
+    cross_target.seed_external_builtins();
+    const ir::ValueId truth = cross_target.emit_constant(scalar(TYPE_BOOL), true);
+    const ir::BlockId local = cross_target.create_block();
+    CHECK_FALSE(cross_target.emit_branch(truth, local, ir::BlockId(ir::FunctionId(99), 0)));
+    cross_target.finalize(true);
+    CHECK(cross_target.status() == ir::ModuleStatus::InvalidIR);
+
+    ir::IRBuilder program_return;
+    REQUIRE(program_return.register_program(SymbolRef{0, "program_return"}, "program_return").valid());
+    program_return.seed_external_builtins();
+    const ir::ValueId result = program_return.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(program_return.emit_halt());
+    program_return.finalize(true);
+    REQUIRE(program_return.status() == ir::ModuleStatus::Ready);
+    ir::Module return_module = program_return.module();
+    return_module.functions[0].blocks[0].terminator = ir::Terminator(ir::ReturnTerminator{result});
+    CHECK_FALSE(ir::verify_module(return_module).valid);
+
+    ir::Module missing_halt = program_return.module();
+    missing_halt.functions[0].blocks[0].terminator =
+        ir::Terminator(ir::JumpTerminator{ir::BlockId(ir::FunctionId(0), 0)});
+    CHECK_FALSE(ir::verify_module(missing_halt).valid);
+}
+
+TEST_CASE("Stage 5A verifier independently rejects malformed CFG invariants")
+{
+    const ir::Module ready = ready_cfg_module();
+    REQUIRE(ir::verify_module(ready).valid);
+
+    ir::Module unreachable = ready;
+    ir::BasicBlock orphan;
+    orphan.id = ir::BlockId(ir::FunctionId(0), 4);
+    orphan.terminator = ir::Terminator(ir::JumpTerminator{ir::BlockId(ir::FunctionId(0), 3)});
+    unreachable.functions[0].blocks.push_back(orphan);
+    const ir::VerificationResult unreachable_result = ir::verify_module(unreachable);
+    CAPTURE(unreachable_result.reason);
+    CHECK_FALSE(unreachable_result.valid);
+    CHECK(unreachable_result.reason.find("unreachable") != std::string::npos);
+
+    ir::Module two_halts = ready;
+    two_halts.functions[0].blocks[1].terminator = ir::Terminator(ir::HaltTerminator{});
+    const ir::VerificationResult two_halts_result = ir::verify_module(two_halts);
+    CAPTURE(two_halts_result.reason);
+    CHECK_FALSE(two_halts_result.valid);
+    CHECK(two_halts_result.reason.find("exactly one halt") != std::string::npos);
+
+    ir::Module cycle_without_exit = ready;
+    cycle_without_exit.functions[0].blocks[1].terminator =
+        ir::Terminator(ir::JumpTerminator{ir::BlockId(ir::FunctionId(0), 1)});
+    const ir::VerificationResult cycle_without_exit_result = ir::verify_module(cycle_without_exit);
+    CAPTURE(cycle_without_exit_result.reason);
+    CHECK_FALSE(cycle_without_exit_result.valid);
+    CHECK(cycle_without_exit_result.reason.find("cannot reach halt") != std::string::npos);
+
+    ir::Module use_before_definition;
+    {
+        ir::IRBuilder builder;
+        REQUIRE(builder.register_program(SymbolRef{0, "use_before"}, "use_before").valid());
+        builder.seed_external_builtins();
+        const ir::StorageId storage = builder.register_storage(SymbolRef{0, "value"}, scalar(TYPE_INT),
+                                                               ir::StorageKind::Global);
+        const ir::ValueId value = builder.emit_constant(scalar(TYPE_INT), 1);
+        REQUIRE(builder.emit_store(storage, value));
+        REQUIRE(builder.emit_halt());
+        builder.finalize(true);
+        REQUIRE(builder.status() == ir::ModuleStatus::Ready);
+        use_before_definition = builder.module();
+    }
+    std::swap(use_before_definition.functions[0].blocks[0].instructions[0],
+              use_before_definition.functions[0].blocks[0].instructions[1]);
+    const ir::VerificationResult use_before_definition_result =
+        ir::verify_module(use_before_definition);
+    CAPTURE(use_before_definition_result.reason);
+    CHECK_FALSE(use_before_definition_result.valid);
+    CHECK(use_before_definition_result.reason.find("invalid store") != std::string::npos);
+
+    const auto add_branch_local_and_use_at_join = [&ready](std::size_t source_block) {
+        ir::Module module = ready;
+        ir::Function &program = module.functions[0];
+        const ir::ValueId local(program.id, static_cast<std::uint32_t>(program.values.size()));
+        program.values.push_back(ir::Value{local, scalar(TYPE_INT), ir::ValueLocation::Constant});
+        program.blocks[source_block].instructions.push_back(ir::Constant{local, 7});
+        program.blocks[3].instructions.insert(program.blocks[3].instructions.begin(),
+                                              ir::Store{ir::StorageId(0), local});
+        return module;
+    };
+    const ir::VerificationResult then_merge_result =
+        ir::verify_module(add_branch_local_and_use_at_join(1));
+    CAPTURE(then_merge_result.reason);
+    CHECK_FALSE(then_merge_result.valid);
+    CHECK(then_merge_result.reason.find("invalid store") != std::string::npos);
+    const ir::VerificationResult sibling_merge_result =
+        ir::verify_module(add_branch_local_and_use_at_join(2));
+    CAPTURE(sibling_merge_result.reason);
+    CHECK_FALSE(sibling_merge_result.valid);
+    CHECK(sibling_merge_result.reason.find("invalid store") != std::string::npos);
+
+    ir::Module out_of_range_target = ready;
+    ir::BranchTerminator &out_of_range_branch =
+        std::get<ir::BranchTerminator>(
+            std::get<ir::Terminator>(out_of_range_target.functions[0].blocks[0].terminator));
+    out_of_range_branch.when_true = ir::BlockId(ir::FunctionId(0), 99);
+    const ir::VerificationResult out_of_range_result = ir::verify_module(out_of_range_target);
+    CAPTURE(out_of_range_result.reason);
+    CHECK_FALSE(out_of_range_result.valid);
+    CHECK(out_of_range_result.reason.find("invalid targets") != std::string::npos);
+
+    ir::Module wrong_function_target = ready;
+    ir::BranchTerminator &wrong_function_branch =
+        std::get<ir::BranchTerminator>(
+            std::get<ir::Terminator>(wrong_function_target.functions[0].blocks[0].terminator));
+    wrong_function_branch.when_false = ir::BlockId(ir::FunctionId(9), 0);
+    const ir::VerificationResult wrong_function_result = ir::verify_module(wrong_function_target);
+    CAPTURE(wrong_function_result.reason);
+    CHECK_FALSE(wrong_function_result.valid);
+    CHECK(wrong_function_result.reason.find("invalid targets") != std::string::npos);
+
+    ir::IRBuilder procedure_builder;
+    REQUIRE(procedure_builder.register_program(SymbolRef{0, "procedure_blocks"},
+                                               "procedure_blocks").valid());
+    procedure_builder.seed_external_builtins();
+    const ir::FunctionId procedure = procedure_builder.register_procedure(
+        SymbolRef{0, "identity"}, "identity", scalar(TYPE_INT), {});
+    REQUIRE(procedure.valid());
+    REQUIRE(procedure_builder.enter_function(procedure));
+    const ir::ValueId returned = procedure_builder.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(procedure_builder.emit_return(returned));
+    REQUIRE(procedure_builder.leave_function());
+    REQUIRE(procedure_builder.emit_halt());
+    procedure_builder.finalize(true);
+    REQUIRE(procedure_builder.status() == ir::ModuleStatus::Ready);
+    ir::Module multi_block_procedure = procedure_builder.module();
+    ir::BasicBlock extra_procedure_block;
+    extra_procedure_block.id = ir::BlockId(procedure, 1);
+    extra_procedure_block.terminator = ir::Terminator(ir::ReturnTerminator{returned});
+    multi_block_procedure.functions[procedure.index].blocks.push_back(extra_procedure_block);
+    const ir::VerificationResult procedure_blocks_result = ir::verify_module(multi_block_procedure);
+    CAPTURE(procedure_blocks_result.reason);
+    CHECK_FALSE(procedure_blocks_result.valid);
+    CHECK(procedure_blocks_result.reason.find("exactly one") != std::string::npos);
+}
+
+TEST_CASE("Stage 5A builder rejects unfinished and procedure multi-block states atomically")
+{
+    ir::IRBuilder post_terminator;
+    REQUIRE(post_terminator.register_program(SymbolRef{0, "post_terminator"},
+                                             "post_terminator").valid());
+    post_terminator.seed_external_builtins();
+    REQUIRE(post_terminator.emit_halt());
+    CHECK_FALSE(post_terminator.emit_constant(scalar(TYPE_INT), 1).valid());
+    post_terminator.finalize(true);
+    CHECK(post_terminator.status() == ir::ModuleStatus::Unsupported);
+    CHECK(post_terminator.module().functions.empty());
+
+    ir::IRBuilder orphan_block;
+    REQUIRE(orphan_block.register_program(SymbolRef{0, "orphan_block"}, "orphan_block").valid());
+    orphan_block.seed_external_builtins();
+    REQUIRE(orphan_block.create_block().valid());
+    REQUIRE(orphan_block.emit_halt());
+    orphan_block.finalize(true);
+    CHECK(orphan_block.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(orphan_block.module().functions.empty());
+
+    ir::IRBuilder duplicate_halt;
+    REQUIRE(duplicate_halt.register_program(SymbolRef{0, "duplicate_halt"},
+                                            "duplicate_halt").valid());
+    duplicate_halt.seed_external_builtins();
+    const ir::BlockId second_halt_block = duplicate_halt.create_block();
+    REQUIRE(duplicate_halt.emit_halt());
+    REQUIRE(duplicate_halt.select_block(second_halt_block));
+    REQUIRE(duplicate_halt.emit_halt());
+    duplicate_halt.finalize(true);
+    CHECK(duplicate_halt.status() == ir::ModuleStatus::InvalidIR);
+    CHECK(duplicate_halt.module().functions.empty());
+
+    ir::IRBuilder procedure_blocks;
+    REQUIRE(procedure_blocks.register_program(SymbolRef{0, "builder_procedure"},
+                                              "builder_procedure").valid());
+    procedure_blocks.seed_external_builtins();
+    const ir::FunctionId procedure = procedure_blocks.register_procedure(
+        SymbolRef{0, "procedure"}, "procedure", scalar(TYPE_INT), {});
+    REQUIRE(procedure_blocks.enter_function(procedure));
+    REQUIRE(procedure_blocks.create_block().valid());
+    const ir::ValueId returned = procedure_blocks.emit_constant(scalar(TYPE_INT), 1);
+    REQUIRE(procedure_blocks.emit_return(returned));
+    REQUIRE(procedure_blocks.leave_function());
+    REQUIRE(procedure_blocks.emit_halt());
+    procedure_blocks.finalize(true);
+    CHECK(procedure_blocks.status() == ir::ModuleStatus::Unsupported);
+    CHECK(procedure_blocks.module().functions.empty());
 }
 
 TEST_CASE("Stage 4A builder publishes one typed scalar straight-line module")
