@@ -1,0 +1,4 @@
+program illegal_char is
+begin
+@
+end program.

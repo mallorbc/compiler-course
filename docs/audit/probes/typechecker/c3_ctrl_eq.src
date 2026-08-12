@@ -1,0 +1,7 @@
+program p is
+variable a : bool;
+variable c : string;
+variable d : bool;
+begin
+d := a == c;
+end program.

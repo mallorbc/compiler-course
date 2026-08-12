@@ -1,0 +1,7 @@
+program test is
+procedure myproc : integer ()
+begin
+    return 0;
+end procedure;
+begin
+end program.

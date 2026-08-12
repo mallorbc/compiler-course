@@ -1,0 +1,15 @@
+The program parsed successfully with errors
+Error on line 13: Assignment target type "bool" is not compatible with expression type "float"
+
+Error on line 14: Assignment target type "float" is not compatible with expression type "bool"
+
+Error on line 15: Assignment target type "string" is not compatible with expression type "integer"
+
+Error on line 16: Assignment target type "integer" is not compatible with expression type "string"
+
+Error on line 17: Identifier "c" has no resolved type
+
+Error on line 18: Identifier "c" has no resolved type
+
+Error on line 19: Assignment target type "integer" is not compatible with expression type "string"
+

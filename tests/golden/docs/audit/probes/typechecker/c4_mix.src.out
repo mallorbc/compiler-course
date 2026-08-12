@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 7: Bitwise and logical "&" operations require two integers or two bools
+

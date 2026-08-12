@@ -1,0 +1,1 @@
+global procedure myproc : integer () variable q : integer; begin q := 1; end procedure; begin end program.

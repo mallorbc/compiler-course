@@ -1,0 +1,7 @@
+program p is
+variable a : integer;
+variable b : integer;
+variable c : integer;
+begin
+c := a & b;
+end program.

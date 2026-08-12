@@ -1,0 +1,90 @@
+{
+ "verdicts": [
+  {
+   "id": "parser-exprs.2",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:2550-2567: parse_argument_list detects T_COMMA at 2560 and recurses at 2562 with NO `Current_parse_token = Get_Valid_Token();` in between. Built scratch copy (verify-A/compiler). probes/call3arg.src ('x := foo(1, 2, 3);' with foo declared) -> 'The program parsed successfully with errors / Error on line 8: Invalid token for factor discovered / Error in expression / Missing required \")\" for the end of a procedure call / Error in expression'. Baseline probes/call1arg.src ('foo(1)') -> 'no errors'. Comma is left in the stream, flows into parse_expression->...->parse_factor which rejects ','.",
+   "notes": "Mechanism exactly correct. Only wording nit: actual message is 'Missing required \")\" for the end of a procedure call' (claim dropped 'required'); and there is a trailing extra 'Error in expression'. All 2+ argument calls are unparseable. Genuine wrong-behavior."
+  },
+  {
+   "id": "parser-exprs.4",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:2401: the T_MINUS branch checks `T_INTEGER_TYPE || T_FLOAT_TYPE` (token.h: 268/269, the type-keyword constants) not `T_INTEGER_VALUE || T_FLOAT_VALUE` (279/280, literal constants). A minus followed by a numeric literal (type 279) misses this branch and the following T_IDENTIFIER branch, hitting the else at 2423. probes/p4_multminus.src ('x := 3 * -5;') -> 'Unexpected negative factor is not a name or a number / Error in expression'. probes/p4_relminus.src ('if (x > -1) then') -> same error plus cascade 'If statements must resolve to...Bool or Integer / Missing \")\" expected for if statment / Missing expected keyword \"then\"'. probes/p4_topminus.src ('x := -5;') -> 'no errors' (masked because parse_arithOp's T_MINUS branch at 2089 consumes the leading minus first).",
+   "notes": "Core defect and masking both verified. Minor inaccuracy in the claim's aside: the parse_arithOp leading-minus path is live code, not 'dead-code-ish' \u2014 it is exactly what makes top-level -5 work. Does not affect the verdict."
+  },
+  {
+   "id": "parser-exprs.5",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:2347-2373: the T_LPARAM branch copies only expression_parse.valid_parse (2355) and never assigns factor_parse.resolved_token; it falls to the generic return at 2496-2497 with a default-constructed resolved_token (stringValue=\"\", identifier_data_type uninitialized per token.h:126). parse_if_statement (1643-1652) drives check_if_statement off expression_parse.resolved_token. probes/p5_singleparen.src ('if (x > 3) then') -> 'no errors'; probes/p5_dblparen.src ('if ((x > 3)) then') -> 'no errors / Error on line 5: If statements must resolve to either type Bool or Integer'. Extra parens strip the type.",
+   "notes": "Mechanism confirmed by both code reading and the paired single/double-paren experiment. Shares root cause with parser-exprs.13 (resolved_token propagation) and parser-exprs.6."
+  },
+  {
+   "id": "parser-exprs.6",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:2374-2394: the T_IDENTIFIER + Next==T_LPARAM sub-branch calls parse_procedure_call() and assigns only valid_parse (2382); factor_parse.resolved_token is never set (contrast the name sub-branch at 2390). probes/p6_proccall.src (bool-returning 'isPos', 'if (isPos(5)) then') -> 'Error on line 8: If statements must resolve to either type Bool or Integer' (plus a separate return-type error on line 6). The call's bool return type never reaches check_if_statement.",
+   "notes": "Confirmed. Same resolved_token root cause as parser-exprs.5/13. Side note: the run also surfaced 'Procedure is of type \"\" which is not compatible with return type of \"Bool\"' on the return statement \u2014 a separate typechecker defect (see extra_discoveries), not the if-condition bug being claimed."
+  },
+  {
+   "id": "parser-exprs.7",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:2306-2330: after the first factor, parse_term consumes ONE '*'/'/' then calls parse_factor() (2326), never looping or self-recursing; a third operator is left unconsumed. Contrast parse_arithOp self-recursion at 2119. Spec grammar (spec2023.txt:57-76) <term> ::= <term> * <factor> is left-recursive (arbitrary chains). probes/p7_multchain.src ('x := 1 * 2 * 3;') -> 'Error on line 4: Missing \";\" to end program statement'. probes/p7_multmix.src ('2 * 3 * 4 + 1') -> same. Baseline probes/p7_addchain.src ('1 + 2 + 3 + 4') -> 'no errors'.",
+   "notes": "Rejects a grammatically-valid, common construct; effectively wrong-behavior too. Same structural pattern as parser-exprs.14 (missing loop/self-recursion) but a distinct location/function (parse_term vs parse_relation)."
+  },
+  {
+   "id": "parser-exprs.8",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:2003-2017 (leading T_AMPERSAND/T_VERTICAL_BAR branches consume the operator and parse an arithOp with no missing-left-operand check) and 2035-2054 (continuation consumes one &/| then self-recurses into parse_expression, which re-accepts a further leading &/|). Spec grammar (spec2023.txt:82-85) only allows optional 'not' as an expression prefix. probes/p8_leadamp.src ('a := & 5;') -> 'no errors'. probes/p8_dblamp.src ('a := b & & 5;') -> 'no errors'.",
+   "notes": "Confirmed the parser reports SUCCESS on grammatically-invalid input. Branch is unreachable on well-formed input (accurate per claim) but silently accepts malformed input."
+  },
+  {
+   "id": "parser-exprs.9",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:2154-2229: leading T_LESS/T_GREATER/T_ASSIGN/T_EXCLAM branches at top of parse_relation treat a relational operator as a legal entry point. For '< 5': T_LESS branch at 2154 consumes '<', not '=', so else at 2168 parses a term; no missing-left-operand error. probes/p9_leadrel.src ('a := < 5;') -> 'The program parsed successfully with no errors'. Spec grammar (spec2023.txt:61-70): <relation> must begin with <term>.",
+   "notes": "Confirmed. Parser accepts an invalid program with 'no errors'."
+  },
+  {
+   "id": "parser-exprs.10",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:2216-2229: the leading T_EXCLAM branch consumes '!' (2218), and only reports an error when the next token is NOT '=' (2219). For the valid-'!=' shape there is NO else: valid_parse (declared uninitialized at 2152) is never assigned, term_parse and the '=' are left untouched. `g++ -O2 -Wall -Wmaybe-uninitialized -c parser.cpp` emits: 'parser.cpp:2278:32: warning: valid_parse may be used uninitialized ... note: declared here parser.cpp:2152'. probes/p10_leadbang.src ('if (!= x) then a:=true; end if;') -> 4-error garbled cascade: 'If statements must resolve to...Bool or Integer / Missing \")\" expected for if statment / Missing \":\" needed for assignment statement / Missing expected keyword \"then\"'.",
+   "notes": "Both the uninitialized-read (UB) at the exact cited line and the token-stream corruption are confirmed. Scanner tokenizes '!=' as separate '!' and '=' (token.h has no combined token), so this branch is genuinely reachable on malformed input."
+  },
+  {
+   "id": "parser-exprs.11",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read parser.cpp:2192-2201: the leading-'==' branch consumes the first '=' (2195), sees the second '=' (2196), feeds it to the typechecker (2198) but calls parse_term() at 2199 WITHOUT `Current_parse_token = Get_Valid_Token();`. Contrast the correct post-term branch at 2245-2251 which advances past both '=' chars. probes/p11_leadeq.src ('a := == 5;') -> 'Error on line 4: Invalid token for factor discovered / Error in expression' (parse_term entered with '=' still current). Mechanism exactly as claimed.",
+   "notes": "Mechanism 100% correct and the branch IS reachable on malformed input. Severity downgraded from wrong-behavior to code-smell: a leading '==' is always a syntax error, and the code still REJECTS it (just with a confusing downstream message). No valid program is mis-handled, unlike the true-permissiveness bugs 8/9/12. Internal-inconsistency in a malformed-only branch."
+  },
+  {
+   "id": "parser-exprs.12",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:2258-2274: the post-term operator branch handles T_LESS/T_GREATER/T_EXCLAM identically; when the following token is not '=', the else at 2269-2272 calls parse_term() anyway. Correct for '<'/'>' but wrong for a bare '!', which the spec only permits as part of '!='. probes/p12_barebang.src ('a := 5 ! 3;') -> 'The program parsed successfully with no errors'.",
+   "notes": "Confirmed: a bare '!' is silently treated as a valid binary operator; parser reports success on invalid input."
+  },
+  {
+   "id": "parser-exprs.13",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read the four cited lines: parser.cpp:2062 (expression<-arithop.resolved_token), 2139 (arithop<-relation.resolved_token), 2279 (relation<-term.resolved_token), 2332 (term<-factor.resolved_token). Each copies the LAST-parsed sub-call's token; no operator-result type is synthesized (a relational compare has no bool result token \u2014 2279 forwards the right-hand term). Read the caller workaround at parser.cpp:1643-1649 (parse_if_statement re-looks-up resolved_token.stringValue in the scope table). This propagation model is the direct root cause reproduced empirically under parser-exprs.5 and .6.",
+   "notes": "Accurate structural description and root cause. code-smell is right \u2014 by itself it often 'works by luck' (e.g. 'x>3' forwards the integer '3' which check_if_statement accepts), but it is the mechanism behind the confirmed 5/6 mischecks."
+  },
+  {
+   "id": "parser-exprs.14",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:2231-2276: after parsing the sole term, the post-term relational branches (2241-2273) parse at most ONE additional term and never loop/self-recurse for a further relational operator (contrast parse_arithOp:2119 / parse_expression:2052). Spec grammar (spec2023.txt:61-70) <relation> is left-recursive, so '1 < 2 < 3' is grammatically legal. probes/p14_relchain.src ('a := 1 < 2 < 3;') -> 'Error on line 4: Missing \";\" to end program statement'.",
+   "notes": "Confirmed. Same missing-loop pattern as parser-exprs.7 but at the relation level (distinct function). Claim's own caveat (semantically odd, rare) is fair; still a literal-grammar spec-violation since it is rejected at parse time."
+  }
+ ],
+ "extra_discoveries": "Verified extra bug (background item mentioned in batch context, and it is REAL): multi-parameter procedure DECLARATIONS are rejected. parse_parameter_list (parser.cpp:1197-1233) has structure: `if(valid){ if(T_COMMA){Get; recurse;} if(T_RPARAM){Get; valid=true;} else {error \\\"Missing \\\\\\\")\\\\\\\" to close procedure parameter list\\\"; return false;} }`. The recursive call already consumes the closing ')', so when control returns to the OUTER frame, Current is past ')', the second `if (T_RPARAM)` at 1215 is false, and it falls into the else at 1221 and errors. Reproduced: probes/decl2param.src ('procedure foo : integer(variable a : integer, variable b : integer)') -> 'Error on line 2: Missing \\\")\\\" to close procedure parameter list'; probes/decl1param.src (single param) -> 'no errors'. Net effect: NO procedure with 2+ parameters can be declared. This is a major, high-severity wrong-behavior defect distinct from parser-exprs.2 (which is the argument-LIST/call side); the two together mean multi-arg procedures are broken on both the declaration and the call side. It was outside the 12 assigned claim IDs but directly answers the batch-A context question.\n\nSecond: `-Wreturn-type` (real, static): SymbolTable.cpp:172 (create_new_scope_table) falls off a non-void function with no return; Typechecker.cpp:243 (second_relation_token_chains) and Typechecker.cpp:1211 (check_return_statement) likewise reach end of non-void without return -> indeterminate bool return, UB. These are latent robustness/crash-adjacent issues (likely other batches).\n\nThird (seen while probing parser-exprs.6): a bool-returning procedure whose body is `return true;` reports 'Procedure is of type \\\"\\\" which is not compatible with return type of \\\"Bool\\\"'. The literal 'true' return value's type is not being resolved for return-statement checking \u2014 a typechecker defect in the return path, plausibly the same resolved_token-loss family as parser-exprs.13. Flagging for the typechecker batch.\n\nFourth: `-O2 -Wmaybe-uninitialized` also flags valid_parse in parse_factor (2370, via 2346), parse_loop_statement (1784), parse_procedure_body (540), parse_program_body (220), plus new_state in resync_parser (3046) and return_state (3286). Several are guarded-in-practice, but the parse_relation:2278 one (parser-exprs.10) is genuinely reachable.",
+ "overall_notes": "All 12 claims in batch-A CONFIRMED via fresh reads of the cited parser.cpp lines PLUS empirical reproduction with a scratch build at /tmp/claude-1000/-datadrive-data-compiler-course/e0905122-5395-4b36-add9-f6a81e41bd28/scratchpad/verify-A (compiled clean; probe .src files in verify-A/probes/). Line references in every claim are accurate. One severity correction: parser-exprs.11 downgraded from wrong-behavior to code-smell \u2014 its mechanism (second '=' never consumed) is exactly right and the branch IS reachable, but it only fires on already-malformed leading-'==' input which the compiler still rejects, so no valid program misbehaves (contrast the genuine over-permissiveness of 8/9/12 which report SUCCESS on invalid input). Minor non-material inaccuracies noted per-claim: (2) actual message says 'Missing required \\\")\\\"' and has an extra trailing 'Error in expression'; (4) the parse_arithOp leading-minus path is live code, not 'dead-code-ish'. Root-cause clustering: 5, 6, and 13 are one family (resolved_token carries only the last operand, and the LPARAM and procedure-call factor branches never set it at all); 7 and 14 are one family (no loop/self-recursion for chained * / and chained relations); 8, 9, 12 are one family (over-permissive leading/bare relational/logical operators accepted as 'no errors'). The single most impactful newly-surfaced item is the multi-parameter DECLARATION bug in parse_parameter_list (extra_discoveries), which pairs with parser-exprs.2 to fully break multi-argument procedures end to end. Files most relevant: /datadrive/data/compiler-course/parser.cpp (parse_expression 1995, parse_arithOp 2070, parse_relation 2146, parse_term 2285, parse_factor 2338, parse_argument_list 2550, parse_parameter_list 1197, parse_if_statement 1633), /datadrive/data/compiler-course/token.h (constants + uninitialized identifier_data_type at 126)."
+}

@@ -1,0 +1,35 @@
+program sil1_invalid is
+type color is enum{red};
+procedure q : integer(variable first : integer, variable second : float, variable third : bool)
+begin
+    return first;
+end procedure;
+procedure zero : integer()
+begin
+    return 0;
+end procedure;
+procedure unresolved : integer(variable shade : color)
+begin
+    return 0;
+end procedure;
+variable b : bool;
+variable i : integer;
+variable f : float;
+begin
+    i := q(1, 2.0, true, 0);
+    i := q(1);
+    i := zero(1);
+    i := q(1.0, 2.0, true);
+    i := q(1, 2, true);
+    i := q(1, 2.0, 1);
+    i := q(1,
+           true,
+           true);
+    i := unresolved(1);
+    i := getInteger(1);
+    b := putInteger();
+    b := putInteger(1.0);
+    b := putBool(1);
+    f := sqrt(1.0);
+    i := q(1, 2.0, true);
+end program.

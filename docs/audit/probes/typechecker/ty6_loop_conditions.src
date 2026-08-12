@@ -1,0 +1,29 @@
+program ty6_loop_conditions is
+variable i : integer;
+variable f : float;
+variable s : string;
+begin
+    for (i := 0; true)
+        i := i + 1;
+    end for;
+    for (i := 0; i)
+        i := i + 1;
+    end for;
+    for (i := 0; i < 3)
+        i := i + 1;
+    end for;
+    for (i := 0;
+         f)
+        i := i + 1;
+    end for;
+    for (i := "s"; s)
+        i := i + 1;
+    end for;
+    for (i := 0; "s" + 1)
+        i := i + 1;
+    end for;
+    for (i := 0; missing())
+        i := i + 1;
+    end for;
+    i := "after";
+end program.

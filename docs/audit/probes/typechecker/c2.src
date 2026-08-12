@@ -1,0 +1,13 @@
+program p is
+procedure Check : bool(variable p : bool)
+variable a : integer;
+variable b : float;
+variable result : bool;
+begin
+result := (a > b) > p;
+return result;
+end procedure;
+variable z : bool;
+begin
+z := Check(true);
+end program.

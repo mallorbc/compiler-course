@@ -1,0 +1,7 @@
+program p is
+type color is enum{red,green};
+variable c : color;
+variable r : bool;
+begin
+r := c < 1;
+end program.

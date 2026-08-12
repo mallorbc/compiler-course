@@ -1,0 +1,17 @@
+The program parsed successfully with errors
+Error on line 12: Identifier "scalar" is not an array
+
+Error on line 13: Array index must resolve to type integer
+
+Error on line 14: Array index must resolve to type integer
+
+Error on line 15: Array index must resolve to type integer
+
+Error on line 16: Array index must resolve to type integer
+
+Error on line 17: Undeclared identifier "missing"
+
+Error on line 18: Identifier "proc" is not a variable
+
+Error on line 19: Missing closing right bracket to the identifier expression
+

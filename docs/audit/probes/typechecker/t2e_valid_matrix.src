@@ -1,0 +1,28 @@
+program t2e_valid_matrix is
+procedure predicate : bool(variable value : integer)
+begin
+    return value > 0;
+end procedure;
+variable i : integer;
+variable f : float;
+variable b : bool;
+begin
+    i := 7 / 2;
+    f := 1 + 2.0;
+    f := 2.0 + 1;
+    i := (1 + 2) * 3;
+    i := 3 & 5 | 1;
+    b := true & false | true;
+    b := not true & false;
+    i := not 3;
+    f := -1.0;
+    i := -i;
+    b := 1 < 2;
+    b := true <= 2;
+    b := 3 > 2;
+    b := 3 >= 2;
+    b := "a" == "b";
+    b := "a" != "b";
+    b := predicate((1 + 2) * 3);
+    b := predicate(1) & true;
+end program.

@@ -1,0 +1,5 @@
+The program parsed successfully with errors
+Error on line 5: Expected "identifier" not found
+
+Error on line 5: Expected keywords "procedure","variable" "type", or "begin" not found
+

@@ -1,0 +1,5 @@
+program test is
+global variable arr : integer[10];
+begin
+    arr[2] := 5;
+end program.

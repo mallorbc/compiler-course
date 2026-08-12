@@ -1,0 +1,131 @@
+{
+ "findings": [
+  {
+   "title": "Uncaught std::stoi exception crashes the whole compiler on large integer literals",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 410,
+   "severity": "crash",
+   "description": "build_number_token() calls std::stoi(build_string) with no try/catch. For any integer literal that exceeds INT_MAX (e.g. a 40-digit number), stoi throws std::out_of_range, which is never caught anywhere in scanner.cpp/parser.cpp/main.cpp, so the process aborts (SIGABRT). Reproduced directly with a standalone harness linking scanner.cpp: a source file containing only '99999999999999999999999999999999999999999' crashes with 'terminate called after throwing an instance of std::out_of_range; what(): stoi' (exit 134). std::stof at line 402 has the same unguarded-exception exposure for out-of-range floats.",
+   "evidence": "token_int_value = std::stoi(build_string); (scanner.cpp:410) \u2014 no surrounding try/catch in build_number_token or its callers.",
+   "speculative": false
+  },
+  {
+   "title": "comment_handler() runs unconditionally inside // comments, letting a stray /* inside a line comment start real block-comment suppression",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 535,
+   "severity": "wrong-behavior",
+   "description": "The main Get_token() loop (lines 149-217) dispatches every character through what_is_char()/build_char_token() even while is_slash_comment is already true \u2014 it only uses is_slash_comment to discard the resulting tokens, it never skips the char classification itself. build_char_token()'s cases for '/' and '*' (lines 253-264, 311-321) unconditionally call comment_handler(), which has no guard for 'we are already inside a // comment'. So if a '//' comment's text happens to contain '/*', comment_handler() sets is_nested_commented=true for real, and that state persists past the end of the line (end_line_handler() only resets is_slash_comment, not is_nested_commented). Verified directly: the source '// this is a comment /* not really a block start\\nx\\n' produces zero real tokens and goes straight to T_INVALID at EOF with is_nested_commented still 1 \u2014 the identifier 'x' on the next line is silently swallowed.",
+   "evidence": "Harness output for '// ... /* not really a block start\\nx': '0: type=283 (INVALID) line=0 ... is_nested_commented=1 nested_counter=1' \u2014 no IDENTIFIER token for x was ever produced.",
+   "speculative": false
+  },
+  {
+   "title": "nested_comment_counter can be driven negative by a stray '*/' and never resets, causing later legitimate nested comments to close one level early and leak commented-out code as real tokens",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 565,
+   "severity": "wrong-behavior",
+   "description": "In comment_handler(), the close branch does 'nested_comment_counter--;' with no floor check and no verification that a nested comment was actually open. A stray '*/' anywhere in the file (including one leaked from inside a '//' comment per the previous finding, or simply mistyped in code) decrements the counter below zero and it never self-corrects (there is no reset to 0 on file boundaries or on detecting an already-non-open state). Because the open branch (line 552, 'nested_comment_counter++') and close branch use '<= 0' rather than tracking a true open/closed boolean stack, a counter starting at -1 causes a subsequently well-formed two-level nested comment '/* level1 /* level2 */ ... */' to have is_nested_commented flip to false after only the FIRST closing '*/', exposing the remainder of the outer comment's body as real source tokens. Verified: with a preceding '// oops */ stray close' line, the input '/* level1 /* level2 */ leaked_identifier_should_be_hidden */\\nz' produced the token stream IDENTIFIER('leaked_identifier_should_be_hidden'), IDENTIFIER('z') \u2014 the text that should have stayed hidden inside the outer comment leaked out as a real identifier token. A control run without the preceding stray '*/' correctly hides it (only 'z' is emitted).",
+   "evidence": "Harness output difference: with corrupting stray '*/' -> '0: type=278 (IDENTIFIER) ... str=[leaked_identifier_should_be_hidden] ... nested_counter=0' then '1: type=278 (IDENTIFIER) ... str=[z]'; control (no stray '*/') -> only '0: type=278 (IDENTIFIER) ... str=[z]'.",
+   "speculative": false
+  },
+  {
+   "title": "Number literal with a second decimal point silently discards the already-scanned digits with no reported error",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 373,
+   "severity": "wrong-behavior",
+   "description": "build_number_token()'s multi-decimal check sets error_detected=true and does a bare 'return;' (line 373-374) without ever setting Current_token->type/floatValue/intValue/line_found. The characters already appended to build_string (e.g. the '1.2' prefix of '1.2.3') are simply thrown away \u2014 no token is ever produced for that data, and no error message reaches the user (error_detected is never read anywhere, see separate finding). Verified: scanning '12 1.2 1.2.3 100' yields tokens INTEGER(12), FLOAT(1.2), PERIOD, INTEGER(3) \u2014 i.e. the '1.2' portion of the third literal vanished entirely and the second '.' was reinterpreted as an unrelated PERIOD token.",
+   "evidence": "Harness output for '12 1.2 1.2.3 100': '2: type=46 (PERIOD) ... char=[.]' followed by '3: type=279 (INTEGER_VALUE) ... int=3' \u2014 no token at all represents the discarded '1.2' prefix of the third literal.",
+   "speculative": false
+  },
+  {
+   "title": "Numeric literal underscore digit-group separators from the grammar are not tokenized as part of the number",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 363,
+   "severity": "spec-violation",
+   "description": "The spec grammar is <number> ::= [0-9][0-9_]*[.[0-9_]*] (spec2023.txt line 98), i.e. underscores are legal digit-group separators both before and after the decimal point. build_number_token()'s consumption loop only tests 'isdigit(next_char) || next_char == '.'' \u2014 underscore is not accepted, so '1_000' or '3.1_4' are not scanned as single number tokens. Verified: '1_000\\n' produces INTEGER(1), UNDERSCORE, INTEGER(0) (three tokens, and the numeric value is wrong \u2014 '000' parses to 0, not 1000), and '3.1_4\\n' produces FLOAT(3.1), UNDERSCORE, INTEGER(4).",
+   "evidence": "spec2023.txt:98 '<number> ::= [0-9][0-9_]*[.[0-9_]*]'; scanner.cpp:363 'while (isdigit(next_char) || next_char == '.')' has no '_' case. Harness output for '1_000': '0: ...INTEGER_VALUE... int=1', '1: ...UNDERSCORE...', '2: ...INTEGER_VALUE... int=0'.",
+   "speculative": false
+  },
+  {
+   "title": "scanner::error_detected is write-only across the entire codebase \u2014 illegal characters are never reported as errors, contrary to the spec",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 489,
+   "severity": "spec-violation",
+   "description": "The project spec requires: 'Illegal characters should be treated as white-space separators and reported as errors.' invalid_char_test()'s else branch (the only code path that flags a truly illegal/unrecognized character) only sets scanner::error_detected=true and otherwise silently skips the character. A repo-wide grep confirms error_detected is declared in scanner.h:114, assigned in scanner.cpp at lines 373, 489, 520, and never read anywhere else in the codebase (not in parser.cpp, parser.h, main.cpp, or Typechecker.cpp) \u2014 unlike the analogous is_nested_commented/quote_status flags, which the parser does check (parser.cpp:74,99,2444) to report unterminated-comment/unterminated-string errors. So illegal characters are correctly skipped as whitespace but the 'reported as errors' half of the requirement is unimplemented.",
+   "evidence": "grep -rn \"error_detected\" across the repo only shows scanner.h:114 (declaration) and scanner.cpp:373,489,520 (assignments) \u2014 no reads anywhere else, versus is_nested_commented/quote_status which parser.cpp does read for error reporting.",
+   "speculative": false
+  },
+  {
+   "title": "error_detected is spuriously true from the very first call regardless of actual input, due to the char=0 priming character being run through invalid_char_test()",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 161,
+   "severity": "code-smell",
+   "description": "current_char and next_char default-initialize to 0 (scanner.h:100,102). On the very first iteration of Get_token()'s while(true) loop, current_char is set to this 0 and dispatched through what_is_char(0) -> invalid_char_test(), whose else branch (current_char is neither '\\n' nor isspace) sets error_detected=true unconditionally on every run, before a single real character of the file has been examined. Verified: even scanning a fully well-formed file like 'a := 5;' shows error_detected=1 from the very first emitted token onward. This means even if error_detected were wired up for reporting (see previous finding), it would be useless as it's always true.",
+   "evidence": "scanner.h:100 'char next_char = 0;', scanner.h:102 'char current_char = 0;'; harness run on 'a := 5;\\n' (no illegal characters) shows 'error_detected=1' on token 0 already.",
+   "speculative": false
+  },
+  {
+   "title": "Scanner never tokenizes compound operators (:=, ==, !=, <=, >=); whitespace-separated single characters are indistinguishable from adjacent ones",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 234,
+   "severity": "spec-violation",
+   "description": "Unlike comment_handler(), which does source.peek()-based lookahead to combine '/' + '/' or '/' + '*' into comment tokens, build_char_token()'s cases for ':' , '=', '<', '>', '!' (lines 335-345, 248-250, 306-308, 302-304, 331-333) do no lookahead at all \u2014 each becomes its own single-character token, and the parser reconstructs ':=' / '==' / '!=' / '<=' / '>=' from two consecutive raw tokens (parser.cpp Get_Valid_Token / parse_relation). Because the scanner discards whitespace without recording any adjacency/column information (token.column_found is also never populated \u2014 see separate finding), two non-adjacent occurrences of the same character (e.g. 'x = = y' or 'x : = 5;') produce exactly the same token sequence as the real compound operator and get silently accepted downstream as '==' / ':='. Verified: 'x = = y\\n' yields IDENTIFIER, ASSIGN, ASSIGN, IDENTIFIER \u2014 identical in shape to what 'x == y' would produce; likewise 'x : = 5;' yields COLON then ASSIGN just like ':='.",
+   "evidence": "Harness output for 'x = = y': tokens 1 and 2 are both 'type=61 (ASSIGN(=))' with a literal space between the two '=' characters in the source, with no distinguishing information in either token.",
+   "speculative": false
+  },
+  {
+   "title": "token::identifier_data_type has no default member initializer, unlike every sibling field",
+   "file": "/datadrive/data/compiler-course/token.h",
+   "line": 126,
+   "severity": "robustness",
+   "description": "Every other data field in class token has an explicit default (type=0, line_found=0, column_found=0, global_scope=false, scope_id=0, intValue=0, stringValue=\"\", boolValue=false, floatValue=0.0, charValue=0, first_token_on_line=false, identifer_type=I_NONE, is_array=false), but 'data_types identifier_data_type;' (line 126) is left with no initializer. Since token has no user-declared default constructor (the one sketched at lines 87-89 is commented out), every 'new token' / local 'token x;' (used pervasively in scanner.cpp, e.g. Current_token = new token at scanner.cpp:120,147,201,207, and in SymbolTable.cpp's insert_stringValue) leaves identifier_data_type holding indeterminate memory. This is exactly the kind of uninitialized-field pattern that would produce a garbage data_types value read later by the type checker/symbol table for any token whose data type was never explicitly assigned, and because token's destructor (token.h:92-106) resets fields to known values only on destruction (not construction), the stale value persists for the whole lifetime of a freshly-built token until something explicitly assigns identifier_data_type.",
+   "evidence": "token.h:122 'identifier_types identifer_type = I_NONE;' has a default, but token.h:126 'data_types identifier_data_type;' does not \u2014 no '= TYPE_NONE'.",
+   "speculative": false
+  },
+  {
+   "title": "STRING_VALUE token's line_found reflects the closing line (or EOF) rather than the string's starting line",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 531,
+   "severity": "wrong-behavior",
+   "description": "string_value_builder() saves the opening line in quote_opener (line 497, used only by the parser for the 'quotation left open' error), but sets the returned token's own line_found using current_line AFTER the character-consuming loop (line 531) \u2014 i.e. the line where the closing quote (or EOF) was reached, which is incremented during the loop for every embedded newline (lines 510-515). For a string literal that spans multiple physical lines (the grammar's \"[^\"]*\" does not exclude newline, and the scanner does not reject embedded newlines), the token handed to the parser/typechecker for later error messages carries the wrong line number. Verified with an unterminated multi-line string: a string opened on line 1 that runs to EOF on line 4 is reported with line_found=4.",
+   "evidence": "Harness output for a string starting on source line 1 and running (unterminated) through line 4: '3: type=281 (STRING_VALUE) line=4 ...'.",
+   "speculative": false
+  },
+  {
+   "title": "token::column_found is declared but never assigned anywhere in the scanner",
+   "file": "/datadrive/data/compiler-course/token.h",
+   "line": 109,
+   "severity": "code-smell",
+   "description": "column_found (declared at token.h:109, defaulted to 0) is never written to by any function in scanner.cpp \u2014 a repo-wide grep for 'column_found'/'column' outside token.h finds no assignment site. Every token therefore reports column 0 regardless of its actual source position, so this half-implemented feature provides no positional precision beyond the line number, and (combined with the missing operator-adjacency tracking noted separately) leaves the scanner with no way to detect that two tokens were separated by whitespace.",
+   "evidence": "grep -n \"column_found|column\" across scanner.cpp/scanner.h/token.h only shows the token.h declaration and destructor reset \u2014 no scanner.cpp assignment.",
+   "speculative": false
+  },
+  {
+   "title": "boolValue is never populated for T_TRUE/T_FALSE reserved-word tokens",
+   "file": "/datadrive/data/compiler-course/SymbolTable.cpp",
+   "line": 37,
+   "severity": "code-smell",
+   "description": "SymbolTable::insert_stringValue() (used to seed 'true'->T_TRUE and 'false'->T_FALSE in init_reserved_words) only sets new_token->type and new_token->stringValue; boolValue is left at its default (false). build_string_token() in scanner.cpp then simply copies this seeded token via '*Current_token = symbol_table.map[build_string];' (scanner.cpp:444/451), so a scanned 'true' literal ends up with token.type==T_TRUE but token.boolValue==false, and a 'false' literal is likewise indistinguishable from 'true' by boolValue alone. Currently the parser/typechecker appear to branch on token.type (T_TRUE vs T_FALSE) rather than reading boolValue for these tokens (parser.cpp:2462-2481), so the immediate observable impact is limited today, but the field is silently wrong for any future consumer that trusts token.boolValue for a boolean literal.",
+   "evidence": "SymbolTable.cpp:42-43 'new_token->type = type_of_token; new_token->stringValue = stringValue;' \u2014 no boolValue assignment; SymbolTable.cpp:12-32 seeds 'true'/'false' via this function.",
+   "speculative": true
+  },
+  {
+   "title": "ctype.h classification functions are called with a plain (signed) char argument without an unsigned char cast",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 33,
+   "severity": "robustness",
+   "description": "what_is_char() calls isalpha(test_char)/isdigit(test_char) (lines 33,37) and invalid_char_test() calls isspace(current_char) (line 475), and build_number_token()/build_string_token() call isdigit/isalpha on next_char (lines 363, 422) \u2014 all with a bare 'char', which is signed on the target platform (x86-64 Linux/g++). Per the C standard, these functions require an argument representable as unsigned char or EOF; passing a negative char value (e.g. any raw byte >=0x80, such as would appear in a UTF-8-encoded source file or stray binary content) is undefined behavior. On this glibc build a quick test with 0xFF/0xFE bytes in a source file did not crash (glibc's ctype table tolerates the negative range in practice), so the practical impact observed here was limited to those bytes being classified as 'invalid_char' and skipped, but the code relies on non-portable, standard-violating behavior.",
+   "evidence": "scanner.cpp:33 'if (isalpha(test_char))' and :37 'else if (isdigit(test_char))' where test_char is declared 'char' (scanner.h:64 'int what_is_char(char test_char);'); harness test with bytes 0xFF 0xFE embedded in source did not crash but relies on glibc-specific tolerance rather than defined behavior.",
+   "speculative": true
+  },
+  {
+   "title": "T_INVALID/EOF token reports line_found=0 when EOF is reached before any real token was ever returned",
+   "file": "/datadrive/data/compiler-course/scanner.cpp",
+   "line": 156,
+   "severity": "wrong-behavior",
+   "description": "Get_token()'s EOF branch does '*Current_token = last_sent_token; Current_token->type = T_INVALID;' (lines 156-158). If the file never produces a real token before EOF (e.g. a file consisting solely of an unterminated block comment), last_sent_token is still the default-constructed token from scanner.h:140 (line_found=0), so the T_INVALID token returned to the parser reports line 0 instead of a line near the actual end of file, which would produce a misleading location in any downstream 'unexpected EOF' style error message.",
+   "evidence": "Harness output for a file consisting only of '/* start of comment\\nx := 5;\\n' (unterminated comment, no valid token ever emitted): '0: type=283 (INVALID) line=0 ... is_nested_commented=1 nested_counter=1'.",
+   "speculative": false
+  }
+ ],
+ "notes": "Scope covered: scanner.cpp, scanner.h, token.h, and SymbolTable.cpp/.h reserved-word/char seeding (SymbolTable.cpp init_reserved_words/init_reserved_chars, Tolower_string in CustomFunctions.cpp). I built a standalone test harness (scanner.cpp + SymbolTable.cpp + CustomFunctions.cpp + ScopeTable.cpp, no parser needed) at /tmp/claude-1000/-datadrive-data-compiler-course/e0905122-5395-4b36-add9-f6a81e41bd28/scratchpad/scantest/harness.cpp and used it to empirically confirm every finding marked speculative:false against crafted .src inputs (also in that directory) \u2014 these are not repo files and were not committed; no repo files were modified.\n\nThings verified as CORRECT (not bugs), for context: case-insensitive identifier/reserved-word folding to lowercase (spec item 2) works correctly (BEGIN/begin/Begin all normalize to the same T_BEGIN token); whitespace/tab/newline skipping and line counting work correctly for the normal (non-pathological) cases; well-formed non-corrupted nested block comments correctly hide their contents (control test); the unterminated-string and unterminated-block-comment cases ARE eventually reported by the parser via Lexer->quote_status/quote_opener and Lexer->is_nested_commented/nested_comment_line (parser.cpp:74,99,2444-2447) \u2014 so those two specific failure modes are NOT unreported, only the generic 'illegal character' and 'multiple decimal points' failure modes are unreported (both funnel solely through the dead scanner::error_detected flag).\n\nRoot-cause investigation for the parser's 'random junk' defensive loop (parser.cpp:52, 'while (Next_parse_token_type > T_INVALID || Next_parse_token_type < 0)'): I could not find a currently-reachable scanner code path that produces a token.type outside [0, T_INVALID=283] \u2014 all char tokens use named ASCII-range enum constants, all reserved words/identifiers come from the seeded/inserted symbol_table map (always valid enum values), and the one path that leaves Current_token->type at its default 0 (build_number_token's multi-decimal-error early return) is filtered out INSIDE Get_token()'s own retry loop (the `type != 0` check) and never actually returned to the parser \u2014 confirmed by testing '1.2.3' end-to-end through the scanner: no type=0 token is ever emitted externally, the loop just silently discards that partial number and resumes on the next character. So the specific 'garbage token type >283 or <0' scenario the parser comment complains about was not reproducible from the current scanner.cpp/token.h source by static analysis or by direct harness testing; the closest concrete 'uninitialized field' defect I could confirm by inspection is token::identifier_data_type lacking a default initializer (token.h:126), which is a different field from the one the parser's junk-filter checks (token.type), so I flagged it separately and marked the ctype-UB and boolValue findings as speculative on downstream impact since I could not exercise the parser/typechecker to observe consequences from this scanner-only harness.\n\nCLAUDE.md was skimmed only to avoid duplicating its listed known bug (Typechecker::second_relation_token_chains missing return, unrelated to the scanner); none of the findings above overlap with anything mentioned there. All line numbers cited were confirmed by direct reads of the current repo files (not from memory)."
+}

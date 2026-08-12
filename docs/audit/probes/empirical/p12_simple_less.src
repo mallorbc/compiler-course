@@ -1,0 +1,10 @@
+program P12 is
+variable i : integer;
+variable zach : integer;
+begin
+i := 1;
+zach := 5;
+if(i < zach) then
+    i := i + 1;
+end if;
+end program.

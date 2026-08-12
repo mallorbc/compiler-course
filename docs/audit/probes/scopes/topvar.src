@@ -1,0 +1,5 @@
+program test is
+variable topvar : integer;
+begin
+    topvar := 5;
+end program.

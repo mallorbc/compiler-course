@@ -1,0 +1,6 @@
+program P8 is
+variable arr : integer[5];
+begin
+arr[0] := 1;
+arr[10] := 2;
+end program.

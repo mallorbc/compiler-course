@@ -1,0 +1,118 @@
+{
+ "changes": [
+  {
+   "aspect": "Procedure header / return type (procedures become functions)",
+   "in_2013": "<procedure_header> ::= procedure <identifier> ( [<parameter_list>] ) \u2014 no return type; <factor> has no <procedure_call> alternative; <return_statement> ::= return (no value).",
+   "in_2023": "<procedure_header> ::= procedure <identifier> : <type_mark> ( [<parameter_list>] ); <factor> ::= ... | <procedure_call> | ...; <return_statement> ::= return <expression>.",
+   "in_2024": "Identical to 2023 on this point.",
+   "code_side": "2023/2024. parser.cpp:491-500 requires T_COLON then parse_type_mark() right after the procedure name (errors 'Expected \":\" before type mark declaration' if missing); parser.cpp:2378-2382 parses a procedure call inside parse_factor() when an identifier is followed by '('; parser.cpp:1917-1941 parse_return_statement() unconditionally calls parse_expression().",
+   "implication": "A 2013-style bare `procedure foo(...)` with no return type, or a bare `return;`, would be flagged as a parse error by this compiler \u2014 that is correct behavior for the 2023/2024 target, not a bug."
+  },
+  {
+   "aspect": "Parameter passing mode (in/out)",
+   "in_2013": "<parameter> ::= <variable_declaration> (in | out) \u2014 mode keyword mandatory after each parameter's declaration.",
+   "in_2023": "<parameter> ::= <variable_declaration> \u2014 no mode keyword at all.",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. token.h has no T_IN/T_OUT token type; SymbolTable.cpp:9-35 init_reserved_words() never registers \"in\"/\"out\"; parser.cpp:1528-1537 parse_parameter() calls parse_variable_declaration() directly with no mode parsing.",
+   "implication": "\"in\"/\"out\" are ordinary identifiers in this compiler (confirmed: testPgms/custom/custom_math.src declares `variable out : bool;`). A 2013-style parameter list with trailing in/out keywords would misparse. Correct under the 2023/2024 target."
+  },
+  {
+   "aspect": "variable_declaration syntax",
+   "in_2013": "<variable_declaration> ::= <type_mark> <identifier> [ [<array_size>] ] \u2014 no \"variable\" keyword, no colon.",
+   "in_2023": "<variable_declaration> ::= variable <identifier> : <type_mark> [ [<bound>] ] \u2014 \"variable\" keyword + colon-typed.",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. parser.cpp:381,411 gate on T_VARIABLE before calling parse_variable_declaration(); parser.cpp:1245-1282 requires identifier, then T_COLON, then parse_type_mark(); SymbolTable.cpp:18 registers \"variable\" as a reserved word.",
+   "implication": "Consistent with the newer grammar; a 2013-style `integer foo;` declaration would fail to parse here."
+  },
+  {
+   "aspect": "Program terminator",
+   "in_2013": "<program> ::= <program_header> <program_body> \u2014 no trailing period.",
+   "in_2023": "<program> ::= <program_header> <program_body> . \u2014 trailing period is required (spec text even calls out \"Be careful to note the period character at the end of a program\").",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. parser.cpp:136-145 explicitly checks Current_parse_token_type == T_PERIOD after parse_program_body() and reports \"Missing \\\".\\\" to end the program\" otherwise.",
+   "implication": "A syntactically valid 2013-style program lacking the trailing period would be reported as erroneous here \u2014 correct for the 2023/2024 target vintage, would look wrong only if judged against 2013 grammar."
+  },
+  {
+   "aspect": "Comment syntax",
+   "in_2013": "Only C++-style \"//\" line comments.",
+   "in_2023": "Adds block comments \"/* ... */\", explicitly nestable.",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. scanner.cpp:535-579 comment_handler() increments/decrements nested_comment_counter on '/*'/'*/' pairs and tracks is_nested_commented, implementing nesting.",
+   "implication": "Consistent with newer spec; confirmed exercised in testPgms/custom/custom_math.src (`/* block */`)."
+  },
+  {
+   "aspect": "String literal character set",
+   "in_2013": "<string> ::= \"[a-zA-Z0-9 _,;:.']*\" \u2014 restricted charset.",
+   "in_2023": "<string> ::= \"[^\"]*\" \u2014 any character except the closing quote.",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024-permissive. scanner.cpp:494-533 string_value_builder() consumes any character up to the next '\"' with no charset validation at all.",
+   "implication": "Matches (and is even more permissive than) the newer grammar's intent; a 2013-conformant scanner would have rejected characters outside the restricted set, which this scanner does not do."
+  },
+  {
+   "aspect": "Case sensitivity of identifiers/reserved words",
+   "in_2013": "Not addressed anywhere in the 2013 document (silent on the question).",
+   "in_2023": "New semantic item 2: \"Identifiers and reserved words are case insensitive (e.g., tmp, Tmp, TMP all denote the same identifier)... map everything (except strings) into upper or lower case.\"",
+   "in_2024": "Same as 2023 (item 2, unchanged).",
+   "code_side": "2023/2024. scanner.cpp:440 `build_string = Tolower_string(build_string);` inside build_string_token(), applied to every identifier/reserved-word lexeme before symbol-table lookup/insert; CustomFunctions.cpp:3-7 defines Tolower_string via std::transform/::tolower. string_value_builder() (string literal contents) does NOT call Tolower_string, correctly preserving the \"except strings\" carve-out.",
+   "implication": "This is a requirement that literally does not exist in the 2013 document, so its correct implementation is unambiguous, direct evidence the code targets the 2023/2024 vintage on this axis."
+  },
+  {
+   "aspect": "Relational operators over floats",
+   "in_2013": "Semantic item 7: \"Relational operations are defined for integers and booleans\" (floats not listed).",
+   "in_2023": "Semantic item 11: \"Relational operations are defined for integers, floats, and booleans.\"",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. Typechecker.cpp uses is_float_or_int(token_one_type, token_two_type) as the primary acceptance test for T_GREATER/T_LESS (lines ~369-411) and for the two-char forms >=,<=,==,!= (lines ~497-593), i.e. float operands are accepted in relational comparisons.",
+   "implication": "Consistent with the newer spec; would look overly permissive only if strictly judged against the 2013 wording."
+  },
+  {
+   "aspect": "String equality/inequality",
+   "in_2013": "No relational operators on strings mentioned or permitted at all.",
+   "in_2023": "Semantic item 11 explicitly adds: \"Equality/inequality tests between strings are supported, but other relational tests between strings are not legal.\"",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. Typechecker.cpp:556-562 (T_ASSIGN i.e. '==') and Typechecker.cpp:584-590 (T_EXCLAM i.e. '!=') both call both_are_strings(token_one_type, token_two_type) as an accepted case; no other relational-operator case calls both_are_strings.",
+   "implication": "Correctly implements the newer-only feature; a==b for two strings would have been rejected under a strict 2013 reading."
+  },
+  {
+   "aspect": "Whole-array assignment / elementwise array arithmetic",
+   "in_2013": "Not present at all \u2014 no semantic item discusses array-level copy or elementwise operators; only <array_size> ::= <number> exists in the grammar.",
+   "in_2023": "New semantic item 9: whole-array assignment permitted when source/destination lengths match; operators on an unqualified array name apply elementwise (a:=b+c for arrays performs elementwise addition).",
+   "in_2024": "Same as 2023.",
+   "code_side": "Unimplemented (neither vintage). grep of Typechecker.cpp/.h for \"array\" returns no matches; the `is_array` flag set in parser.cpp:1957 (destination) and parser.cpp:2510 is set only when an index-bracket is parsed and is never consulted by is_valid_operation()/token_types_compatible_at_all().",
+   "implication": "A genuine gap versus the (2023/2024) target spec, but since 2013 never required this feature either, this is not a case of \"looks like a bug under 2023 but is fine under 2013\" \u2014 it is simply incomplete under both."
+  },
+  {
+   "aspect": "Array index type checking / bounds checking",
+   "in_2013": "Arrays exist syntactically (<array_size>) but no semantic item states index-type or bounds-checking requirements.",
+   "in_2023": "New semantic item 13: \"Array indexes must be of type integer. Bounds checking to insure that the index is within the upper and lower bound (always 0) is required for all indexed array references.\"",
+   "in_2024": "Same as 2023.",
+   "code_side": "Unimplemented. parser.cpp:1961 (parse_assignment_destination, right where the bracketed index expression is parsed) has a literal TODO: `//COME BACK will need to check that the resolved token is an integer` \u2014 no integer-type check on the index expression exists, and there is no bounds check anywhere (unsurprising given there is no code generation/runtime in this snapshot).",
+   "implication": "Incomplete versus the target (2023/2024) requirement; not a false-positive risk against 2013 since 2013 states no such rule at all."
+  },
+  {
+   "aspect": "Global/local scoping model \u2014 outermost-scope visibility",
+   "in_2013": "Semantic item 2: \"Non-local variables and functions are not visible except for those variables and functions in the outermost scope prefixed with the global reserved word.\" I.e. an outer-scope declaration is visible from a nested procedure only if explicitly marked `global`.",
+   "in_2023": "Semantic items 3-4: \"All variables/procedures defined in the outermost scope (of program) are in the global scope (independent of the presence/absence of the global reserved word)... All variables and procedures declared without the global prefix are local to that procedure and not visible outside of that procedure.\" I.e. program-level declarations are automatically global whether or not `global` is written; only procedure-body-local declarations are actually restricted.",
+   "in_2024": "Same as 2023 item 3-4, plus an added clarifying sentence: \"All global variables are visible in all procedures (but only if they are defined previously in the program).\" (Revision 1 changelog: \"Clarified item 3 of semantics to explicitly address the visibility of global variables.\")",
+   "code_side": "Matches the 2013 rule, not 2023/2024. A token is only ever marked global_scope=true when the `global` keyword was actually consumed in parse_base_declaration (parser.cpp:369-373 sets is_global=true only in that branch; is_global is then threaded into parser.cpp:458-469 for procedures and parser.cpp:1247-1258 for variables, calling Lexer->symbol_table.make_token_global() only in that case). Lookup in parser::update_context_token (parser.cpp:3304-3316) checks scope_table[-1] (the dedicated global pseudo-scope) only when token_to_get_context.global_scope is true, and otherwise looks *only* in scope_table[current_scope_id] \u2014 there is no fallback to scope 0 (the outermost/program scope) for non-`global`-prefixed program-level declarations referenced from inside a procedure.",
+   "implication": "This is the one clear semantic mismatch between the code's evident target vintage (2023/2024, per every other item above) and its actual behavior: a program-level variable declared without the `global` keyword and then referenced inside a nested procedure would not resolve through this lookup path, exactly reproducing the older (2013) restrictive rule rather than the newer 'outermost scope is automatically global' rule. An auditor comparing strictly against the 2023/2024 spec would correctly flag this as a scoping defect against the target \u2014 but it is worth noting explicitly that this specific behavior is not an arbitrary logic error, it verbatim matches the single-clause 2013 rule, which suggests either an incomplete port from an earlier draft or a genuine holdover; origin is speculative, but the code behavior itself (checked at parser.cpp:369-373, 458-469, 1247-1258, 3304-3316) is directly confirmed."
+  },
+  {
+   "aspect": "Minimum statement count in if/loop bodies (+  vs *)",
+   "in_2013": "<if_statement> ::= if (...) then ( <statement> ; )+ [ else ( <statement> ; )+ ] end if \u2014 at least one statement required in each branch (Kleene plus). Loop body uses the same '+' \u2014 actually loop uses '*' already in 2013 grammar text; only if/then/else use '+'.",
+   "in_2023": "<if_statement> ::= if (...) then ( <statement> ; )* [ else ( <statement> ; )* ] end if \u2014 zero or more statements permitted (Kleene star), i.e. empty then/else blocks are legal.",
+   "in_2024": "Same as 2023.",
+   "code_side": "2023/2024. parser.cpp:1686 `while (Current_parse_token_type != T_END) {...}` for the if-statement body loop allows immediately encountering T_END/T_ELSE with zero statements parsed; no minimum-one-statement enforcement exists.",
+   "implication": "Minor: an empty `then`/`else` block, illegal under the stricter 2013 '+' grammar, is silently accepted here \u2014 correct under the 2023/2024 target, would look like an over-permissive parser bug only if judged against the 2013 text."
+  },
+  {
+   "aspect": "Undocumented `type`/`enum` declaration extension",
+   "in_2013": "No <type_declaration> production, no \"enum\" or \"type\" keyword anywhere in the grammar or reserved-word discussion.",
+   "in_2023": "Same absence \u2014 no type/enum construct in the 2023 grammar or semantics.",
+   "in_2024": "Same absence as 2023.",
+   "code_side": "Present but matches none of the three provided specs. parser.cpp:386-390/416-420 dispatch T_TYPE (in parse_base_declaration) to parse_type_declaration(); parser.cpp:1416-1473 implements `type <identifier> is <type_mark>;`; parse_type_mark() (parser.cpp:719-817, and its two overloads) additionally accepts `enum { id, id, ... }` as a type_mark. Exercised by the repo's own tests: testPgms/UnitTests/type_declaration and testPgms/custom/custom_math.src (`type tester5 is enum{one};`).",
+   "implication": "Not itself a vintage-drift item since it's absent from all three docs given, but flagged because it shows the code is not a clean subset of any single provided spec vintage. Speculative as to origin: could reflect a feature present in the actual ~2019 spec that was dropped again before the 2021 'Revision 6' lineage (per docs/assignment/PROVENANCE.md, 2021\u21922023\u21922024 are stable/near-identical, so a 2019-only feature wouldn't be visible in our 2023/2024 snapshot), or could be a student-added/speculative extension beyond the written spec (e.g., from lecture material). Cannot be confirmed either way from the documents available; speculative:true."
+  }
+ ],
+ "target_vintage_verdict": "The code overwhelmingly targets the 2021/2023/2024 vintage of the spec (which docs/assignment/PROVENANCE.md independently argues is the closest recoverable proxy for the actual ~2019 assignment the student used), not the 2013 vintage, and not really a \"mix\" of the two grammars in any ambiguous way \u2014 every syntactic/grammar-level fork checked (procedure return type via `procedure <id> : <type_mark>`, no in/out parameter mode, `variable <id> : <type_mark>` declaration syntax, mandatory trailing `.` after `end program`, nested `/* */` block comments, unrestricted string-literal charset, case-insensitive identifiers, `return <expression>`, procedure calls usable as expression factors) is implemented exactly as the 2023/2024 documents specify and as the 2013 document explicitly does NOT. The 2023-vs-2024 documents are themselves nearly identical (only a one-sentence clarification about global-variable forward-reference visibility was added in 2024), so the code cannot be meaningfully distinguished between those two on grammar alone; it matches both indistinguishably.\n\nThe one clear exception \u2014 and the item most likely to be misjudged \u2014 is scoping semantics for outermost/program-level declarations: the code only ever treats a declaration as globally visible when the literal `global` keyword was present (parser.cpp:369-373, 458-469, 1247-1258), and its lookup path (parser.cpp:3304-3316, `update_context_token`) never falls back to scope 0 for non-`global`-prefixed program-level names referenced from inside a procedure. This is precisely the single-clause 2013 rule (\"non-local variables ... not visible except ... prefixed with global\"), not the 2023/2024 rule (\"all variables/procedures defined in the outermost scope ... are in the global scope ... independent of the presence/absence of the global reserved word\"). Any audit that flags \"top-level variable declared without `global` is invisible inside a procedure\" as a scoping bug is correct relative to the code's overwhelmingly-evident 2023/2024 target \u2014 but graders/auditors should recognize this specific behavior is not a random defect: it verbatim reproduces the 2013 spec's wording, so it may represent an incomplete migration/legacy holdover rather than an arbitrary logic error. It should be reported as a real defect against the target vintage, with this nuance noted rather than treated as either \"clearly fine\" (it is not, per the 2023/2024 target) or \"an unexplained random bug\" (it is not that either \u2014 it matches a real, different vintage's rule).\n\nTwo further items should NOT be misread as vintage-specific bugs: (1) missing whole-array assignment/elementwise-operator semantics and missing array-index-type/bounds checking are both entirely new 2023/2024-only requirements absent from the 2013 document altogether, so their absence in the code is simply an incompleteness against the target vintage, not a false positive that would be \"correct under 2013\" (2013 never required or forbade this behavior, it just never described arrays semantically at all). (2) The `type`/`enum` declaration construct implemented in the code (and exercised by the repo's own test programs) appears in NONE of the three provided spec documents, so it should not be scored as \"wrong\" against any of them, nor treated as evidence for either vintage; its origin is unconfirmed/speculative.\n\nBuiltin function predeclaration (getInteger/putBool/etc., and the 2023/2024-only `sqrt` addition) could not be used as vintage evidence either way, since none of the builtins (from either vintage's list) are predeclared/validated anywhere in this snapshot \u2014 procedure calls generally are never checked against any declared signature, an already-documented, vintage-independent gap.",
+ "notes": "Methodology: spec2013.txt (168 lines), spec2023.txt (187 lines), spec2024.txt (194 lines), project2013.txt, project2023.txt, and project2024.txt were each read in full (no truncation). spec2023.txt and spec2024.txt are nearly identical (only the global-variable-forward-reference clarification differs); project2023.txt and project2024.txt are nearly identical (only cosmetic wording/capitalization differs, e.g. \\\"back-end\\\" hyphenation, \\\"Linux\\\" capitalization). All substantive drift is concentrated between the 2013 document and the 2021/2023/2024 lineage, consistent with docs/assignment/PROVENANCE.md's own note that a 2013-era reference implementation \\\"has a genuinely different grammar (procedures had no return type), which does not match this repo's parser.\\\"\n\nCaveat honored per task instructions: project2013.txt's reserved-word table (lines ~79-90) lists \\\"case\\\", \\\"and\\\", \\\"or\\\" alongside the expected words, which is NOT reflected in spec2013.txt's own grammar (no case-statement production; spec2013 uses `&`/`|`/`not` as operator tokens, not textual \\\"and\\\"/\\\"or\\\" keywords). Given the task's explicit warning about column-interleaving artifacts in the 2013 text extraction, and that the reserved-word list contradicts the authoritative spec2013.txt grammar it accompanies, this discrepancy is treated as extraction noise / stale-draft leftover rather than a genuine 2013 language requirement, and is not counted as a drift item. The code does not implement T_CASE/T_LOOP/T_AND/T_OR tokens at all (only T_FOR and the `&`/`|` operator characters exist in token.h), which is consistent with spec2013.txt's actual grammar as well as with 2023/2024, so there is no code-vs-spec mismatch to report on this specific point either way.\n\nAlso noted but not elevated to a \\\"change\\\" entry: project2013.txt's runtime-function table (Section 6) shows `getFloat()` returning \\\"string\\\" rather than \\\"float\\\" \u2014 almost certainly a transcription/typo in that particular document rather than a genuine 2013 requirement (spec2013.txt's own type system has no notion of implicitly converting float-returning functions to string). This is moot for the code regardless, since none of the get*/put*/sqrt builtins are predeclared in this compiler snapshot at all (an existing, already-documented, vintage-independent gap \u2014 procedure calls are never checked against any declared signature).\n\nAll file/line citations reference /datadrive/data/compiler-course/{parser.cpp,scanner.cpp,Typechecker.cpp,SymbolTable.cpp,SymbolTable.h,token.h,CustomFunctions.cpp}, and /datadrive/data/compiler-course/docs/assignment/PROVENANCE.md, plus the test fixtures /datadrive/data/compiler-course/testPgms/custom/custom_math.src and /datadrive/data/compiler-course/testPgms/UnitTests/type_declaration used to corroborate the enum/type-declaration and \\\"out\\\"-as-identifier findings."
+}

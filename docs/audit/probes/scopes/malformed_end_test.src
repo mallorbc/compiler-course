@@ -1,0 +1,9 @@
+program test is
+procedure foo : integer ()
+    variable y : integer;
+begin
+    y := 5;
+    return 0;
+begin
+    y := 1;
+end program.

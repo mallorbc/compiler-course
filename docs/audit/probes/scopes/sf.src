@@ -1,0 +1,6 @@
+program test is
+    variable b : bool;
+    variable s : string;
+begin
+    s := b;
+end program.

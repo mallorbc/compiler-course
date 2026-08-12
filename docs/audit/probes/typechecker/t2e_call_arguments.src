@@ -1,0 +1,9 @@
+program t2e_call_arguments is
+procedure select : bool(variable first : integer, variable second : float, variable third : bool)
+begin
+    return third;
+end procedure;
+variable answer : bool;
+begin
+    answer := select(1 + 2, (1 + 2.0), not false);
+end program.

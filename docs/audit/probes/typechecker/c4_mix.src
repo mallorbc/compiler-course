@@ -1,0 +1,8 @@
+program p is
+variable bl : bool;
+variable it : integer;
+variable st : string;
+variable r : integer;
+begin
+r := bl & it & st;
+end program.

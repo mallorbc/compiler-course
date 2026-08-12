@@ -1,0 +1,11 @@
+The program had parsing errors
+Error on line 1: Expected keyword "Program" not found
+
+Error on line 1: Invalid statement; Not an assignment, if, loop, or return
+
+Error on line 1: Invalid statement; Not an assignment, if, loop, or return
+
+Error on line 2: Invalid statement; Not an assignment, if, loop, or return
+
+Error on line 1: Missing "." to end the program
+

@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 4: Assignment target type "bool" is not compatible with expression type "float"
+

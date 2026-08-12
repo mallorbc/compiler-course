@@ -1,0 +1,17 @@
+program Stage2FInvalidReturns is
+procedure badBool : bool()
+begin
+    return 1.0;
+end procedure;
+procedure badString : string()
+begin
+    return 1;
+end procedure;
+procedure arrayReturn : integer()
+variable values : integer[2];
+begin
+    return values;
+end procedure;
+begin
+    return 1;
+end program.

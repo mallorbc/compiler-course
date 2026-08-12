@@ -1,0 +1,9 @@
+program P11 is
+variable result : integer;
+procedure GetFive : integer()
+begin
+return 5;
+end procedure;
+begin
+result := GetFive();
+end program.

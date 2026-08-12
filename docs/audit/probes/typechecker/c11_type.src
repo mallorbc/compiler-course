@@ -1,0 +1,6 @@
+program p is
+type mt is integer;
+variable r : integer;
+begin
+r := mt + 1;
+end program.

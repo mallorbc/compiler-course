@@ -1,0 +1,13 @@
+The program parsed successfully with errors
+Error on line 16: Loop statements must resolve to either type Bool or Integer
+
+Error on line 19: Assignment target type "integer" is not compatible with expression type "string"
+
+Error on line 19: Loop statements must resolve to either type Bool or Integer
+
+Error on line 22: Arithmetic operations must be between floats and integers
+
+Error on line 25: Undeclared procedure "missing"
+
+Error on line 28: Assignment target type "integer" is not compatible with expression type "string"
+

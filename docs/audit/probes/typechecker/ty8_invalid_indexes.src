@@ -1,0 +1,20 @@
+program Ty8InvalidIndexes is
+variable scalar : integer;
+variable a : integer[5];
+variable b : integer[5];
+variable f : float;
+variable flag : bool;
+procedure proc : integer()
+begin
+    return 0;
+end procedure;
+begin
+    scalar[0] := 1;
+    a[f] := 1;
+    a[flag] := 1;
+    a["x"] := 1;
+    a[b] := 1;
+    a[missing + 1] := 1;
+    a[proc] := 1;
+    a[1 := 1;
+end program.

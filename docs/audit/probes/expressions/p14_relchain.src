@@ -1,0 +1,5 @@
+program p is
+    variable a : bool;
+begin
+    a := 1 < 2 < 3;
+end program.

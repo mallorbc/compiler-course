@@ -1,0 +1,5 @@
+program P5B is
+variable a : integer;
+begin
+a := "hello";
+end program.

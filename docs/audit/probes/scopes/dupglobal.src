@@ -1,0 +1,6 @@
+program test is
+global variable x : integer;
+global variable x : float;
+begin
+    x := 314.0;
+end program.

@@ -1,27 +1,87 @@
-compiler: main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o
-	g++ main.o scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o -o compiler -g
+CXX = g++
+#-MMD -MP writes a .d file per object with its real header dependencies, so
+#editing any header rebuilds every translation unit that includes it (the
+#hand-listed prerequisites below are incomplete, e.g. parser.h pulls in
+#scanner.h and Typechecker.h)
+CXXFLAGS = -std=c++17 -g -Wall -Wextra -Werror=return-type -MMD -MP
+
+#everything except main.o, so the unit test binary can supply its own main
+CORE_OBJS = scanner.o parser.o SymbolTable.o CustomFunctions.o ScopeTable.o Typechecker.o BuiltinCatalog.o IR.o IRBuilder.o IRPrinter.o RestrictedCEmitter.o NativeToolchain.o
+UNIT_SRCS = $(wildcard tests/unit/*.cpp)
+UNIT_BIN = tests/unit_tests
+
+compiler: main.o $(CORE_OBJS)
+	$(CXX) main.o $(CORE_OBJS) -o compiler $(CXXFLAGS)
 
 main.o: main.cpp token.h
-	g++ -c main.cpp -g
+	$(CXX) -c main.cpp $(CXXFLAGS)
 
 scanner.o: scanner.cpp scanner.h token.h
-	g++ -c scanner.cpp -g
+	$(CXX) -c scanner.cpp $(CXXFLAGS)
 
 parser.o: parser.cpp parser.h token.h
-	g++ -c parser.cpp -g
+	$(CXX) -c parser.cpp $(CXXFLAGS)
 
 SymbolTable.o: SymbolTable.cpp SymbolTable.h token.h
-	g++ -c SymbolTable.cpp -g
+	$(CXX) -c SymbolTable.cpp $(CXXFLAGS)
+
+BuiltinCatalog.o: BuiltinCatalog.cpp BuiltinCatalog.h SemanticTypes.h
+	$(CXX) -c BuiltinCatalog.cpp $(CXXFLAGS)
+
+IR.o: IR.cpp IR.h SemanticTypes.h BuiltinCatalog.h
+	$(CXX) -c IR.cpp $(CXXFLAGS)
+
+IRBuilder.o: IRBuilder.cpp IRBuilder.h IR.h BuiltinCatalog.h SemanticTypes.h
+	$(CXX) -c IRBuilder.cpp $(CXXFLAGS)
+
+IRPrinter.o: IRPrinter.cpp IRPrinter.h IR.h SemanticTypes.h
+	$(CXX) -c IRPrinter.cpp $(CXXFLAGS)
+
+RestrictedCEmitter.o: RestrictedCEmitter.cpp RestrictedCEmitter.h IR.h SemanticTypes.h BuiltinCatalog.h
+	$(CXX) -c RestrictedCEmitter.cpp $(CXXFLAGS)
+
+NativeToolchain.o: NativeToolchain.cpp NativeToolchain.h RestrictedCEmitter.h
+	$(CXX) -c NativeToolchain.cpp $(CXXFLAGS)
 
 
 CustomFunctions.o: CustomFunctions.cpp CustomFunctions.h token.h
-	g++ -c CustomFunctions.cpp -g
+	$(CXX) -c CustomFunctions.cpp $(CXXFLAGS)
 
 ScopeTable.o: ScopeTable.h ScopeTable.cpp token.h
-	g++ -c ScopeTable.cpp -g
+	$(CXX) -c ScopeTable.cpp $(CXXFLAGS)
 
 Typechecker.o: Typechecker.h Typechecker.cpp token.h
-	g++ -c Typechecker.cpp -g
+	$(CXX) -c Typechecker.cpp $(CXXFLAGS)
+
+$(UNIT_BIN): $(UNIT_SRCS) $(CORE_OBJS) tests/vendor/doctest.h
+	$(CXX) $(UNIT_SRCS) $(CORE_OBJS) -o $(UNIT_BIN) $(CXXFLAGS)
+
+#builds and runs the doctest unit tests
+unit: $(UNIT_BIN)
+	./$(UNIT_BIN)
+
+#checks process-level CLI behavior with only the Python standard library
+cli: compiler
+	python3 tests/test_cli.py
+
+#runs the golden output tests over the programs in testPgms/
+check: compiler
+	python3 tests/run_golden.py
+
+codegen: compiler
+	python3 tests/test_generated_c.py
+
+ir: compiler
+	python3 tests/test_ir_output.py
+
+native: compiler
+	python3 tests/test_native.py
+
+test: unit cli check ir codegen native
 
 clean:
-	rm *.o compiler
+	rm -f *.o *.d compiler $(UNIT_BIN) $(UNIT_BIN).d
+
+.PHONY: clean unit cli check ir codegen native test
+
+-include $(wildcard *.d)

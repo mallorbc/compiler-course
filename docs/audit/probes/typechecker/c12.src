@@ -1,0 +1,7 @@
+program p is
+variable x : integer;
+begin
+if (!= 5) then
+x := 1;
+end if;
+end program.

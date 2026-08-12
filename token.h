@@ -1,5 +1,6 @@
 #ifndef TOKEN_H
 #define TOKEN_H
+#include "SemanticTypes.h"
 #include <string>
 #include <vector>
 
@@ -72,15 +73,6 @@ enum identifier_types
     I_PROGRAM_NAME = 4
 };
 
-enum data_types
-{
-    TYPE_NONE = 0,
-    TYPE_INT = 1,
-    TYPE_FLOAT = 2,
-    TYPE_STRING = 3,
-    TYPE_BOOL = 4
-};
-
 class token
 {
 public:
@@ -103,6 +95,7 @@ public:
         this->charValue = '\0';
         this->boolValue = false;
         this->first_token_on_line = false;
+        this->array_upper_bound = -1;
     };
     int type = 0;
     int line_found = 0;
@@ -120,12 +113,17 @@ public:
 
     //an identifer can be either associated with procedure(1), variable(2), type(3), or program name(4)
     identifier_types identifer_type = I_NONE;
-    //this will need to be added to the procedure identifiers
-    std::vector<data_types> procedure_params;
+    //Procedure signatures use full value shapes.  Parameter names remain in
+    //the procedure body scope; a call only needs ordered type/array/bound
+    //information.
+    std::vector<value_shape> procedure_params;
     //a variable can be of type string, bool, int, float, or none
-    data_types identifier_data_type;
+    data_types identifier_data_type = TYPE_NONE;
 
     bool is_array = false;
+    //Inclusive upper bound for a declared or synthesized array; -1 for a
+    //scalar or an otherwise unresolved shape.
+    int array_upper_bound = -1;
     // union value{
     //     int intValue;
     //     std::string stringValue;
@@ -135,9 +133,61 @@ public:
     // };
 };
 
+inline value_shape shape_of(const token &value)
+{
+    value_shape shape;
+    shape.element_type = value.identifier_data_type;
+    shape.is_array = value.is_array;
+    shape.array_upper_bound = value.is_array ? value.array_upper_bound : -1;
+    return shape;
+}
+
+inline void apply_shape(token &value, const value_shape &shape)
+{
+    value.identifier_data_type = shape.element_type;
+    value.is_array = shape.is_array;
+    value.array_upper_bound = shape.is_array ? shape.array_upper_bound : -1;
+}
+
+inline bool same_shape(const value_shape &left, const value_shape &right)
+{
+    return left == right;
+}
+
+inline std::string shape_name(const value_shape &shape)
+{
+    std::string element_name = "unknown";
+    switch (shape.element_type)
+    {
+    case TYPE_INT:
+        element_name = "integer";
+        break;
+    case TYPE_FLOAT:
+        element_name = "float";
+        break;
+    case TYPE_STRING:
+        element_name = "string";
+        break;
+    case TYPE_BOOL:
+        element_name = "bool";
+        break;
+    case TYPE_NONE:
+        break;
+    }
+    if (!shape.is_array)
+    {
+        return element_name;
+    }
+    return element_name + "[" + std::to_string(shape.array_upper_bound) + "]";
+}
+
 struct token_and_status
 {
     bool valid_parse = true;
+    //Parsing and semantic analysis deliberately have separate outcomes.  A
+    //well-formed expression can be semantically invalid, and callers must
+    //still consume the rest of its grammar production for recovery.
+    bool semantic_valid = false;
     token resolved_token;
 };
 #endif // !TOKEN_H

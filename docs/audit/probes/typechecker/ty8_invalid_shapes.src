@@ -1,0 +1,36 @@
+program Ty8InvalidShapes is
+variable a : integer[5];
+variable b : integer[2];
+variable scalar : integer;
+variable floats : float[5];
+variable flags : bool[5];
+variable text : string[5];
+variable result : bool;
+procedure takesArray : integer(variable values : integer[5])
+begin
+    return values[0];
+end procedure;
+procedure badReturn : integer(variable values : integer[5])
+begin
+    return values;
+end procedure;
+begin
+    scalar := a;
+    a := scalar;
+    a := b;
+    a := a + b;
+    a := a & text;
+    flags := floats;
+    floats := flags;
+    text := a;
+    a := text;
+    result := putInteger(a);
+    scalar := takesArray(scalar);
+    scalar := takesArray(b);
+    if (a) then
+        scalar := scalar;
+    end if;
+    for (scalar := 0; a)
+        scalar := scalar + 1;
+    end for;
+end program.

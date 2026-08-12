@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 8: Procedure "foo" expects 1 argument(s), got 3
+

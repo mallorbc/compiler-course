@@ -1,0 +1,32 @@
+program sil1_valid is
+type count is integer;
+procedure recurse : integer(variable value : count)
+begin
+    return recurse(value);
+end procedure;
+procedure choose : bool(variable value : count, variable ratio : float, variable flag : bool)
+begin
+    return flag;
+end procedure;
+procedure accept : integer(variable value : integer)
+begin
+    return value;
+end procedure;
+variable b : bool;
+variable i : integer;
+variable f : float;
+variable s : string;
+begin
+    i := recurse(1 + 2);
+    b := choose((1 + 2) * 3, 1 + 2.0, not false);
+    i := accept(recurse(1));
+    b := getBool();
+    i := getInteger();
+    f := getFloat();
+    s := getString();
+    b := putBool(b);
+    b := putInteger(i);
+    b := putFloat(f);
+    b := putString(s);
+    f := sqrt(i);
+end program.

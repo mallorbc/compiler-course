@@ -1,0 +1,7 @@
+program t2e_enum_type_none is
+type color is enum{red, green};
+variable c : color;
+variable b : bool;
+begin
+    b := c == c;
+end program.

@@ -1,0 +1,8 @@
+program test is
+procedure foo : integer ()
+  type t1 is integer
+  type t2 is integer;
+begin
+end procedure;
+begin
+end program.

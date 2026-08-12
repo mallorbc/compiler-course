@@ -1,0 +1,111 @@
+{
+ "verdicts": [
+  {
+   "id": "symtab.0",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:889-905: the T_BOOL_TYPE branch's context==2 case calls update_identifier_data_type(identifier_name, TYPE_INT, ...) at line 901, whereas contexts 0/1 correctly pass TYPE_BOOL (893/897) and the int/float/string branches pass their own matching TYPE_* (847/865/883). Runtime confirm: probe t/bool.src (`variable b : bool; variable i : integer;`) -> instrumented dump printed `name=b identifer_type=2 data_type=1` i.e. bool b recorded with data_type=1 (TYPE_INT), identical to integer i, instead of 4 (TYPE_BOOL).",
+   "notes": "CONFIRMED at symbol-table level (wrong type stored). DUPLICATE of parser-decls.5 (same line 901). Downstream harm is largely masked: (a) the Typechecker's compatibility matrix treats INT and BOOL as interchangeable, and (b) assignment type-check verdicts are discarded (parser.cpp:1611 stores result in types_match but never uses it; even `i := s` int:=string is accepted with no error). A/B builds (bool fixed vs buggy) produced identical accept results for `f:=b`, `b:=3.14`, `s:=b`."
+  },
+  {
+   "id": "symtab.1",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read token.h:107-128: every member has an in-class initializer (type=0, is_array=false, identifer_type=I_NONE, etc.) EXCEPT `data_types identifier_data_type;` at line 126, and the user-provided destructor (lines 92-106) resets other fields but not this one. `new token` (scanner.cpp insert paths, SymbolTable.cpp:40-41) is default-initialization, leaving the field indeterminate. Demonstrated with a placement-new over 0x7F-filled memory using the real token.h: initialized members printed 0 but `identifier_data_type` printed 2139062143 (0x7F7F7F7F). Typechecker.cpp switches on it (e.g. lines 645, 755, 865, 1256).",
+   "notes": "Genuine uninitialized-member UB, but LATENT: on fresh heap the field reads 0 (all runtime dumps showed data_type=0 for un-set tokens), and unordered_map::operator[]-created tokens are value-initialized (zeroed). So the 'nondeterministic control flow' is real UB but was not observed to misbehave. Downgraded from wrong-behavior to robustness."
+  },
+  {
+   "id": "symtab.2",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read SymbolTable.cpp:136-144: token_is_in_global_scope ignores its scope_id parameter and checks only scope_table[-1]. It is the FIRST branch in update_identifier_type (265), update_identifier_data_type (349), add_procedure_valid_inputs (304), update_procedure_return_type (392); when a name exists globally the caller's local token is replaced by get_globabl_token(...) with only scope_id patched. Runtime: t/shadow.src (`global variable x:float;` then nested `procedure foo(...) variable x:integer;`) -> scope -1 x.data_type became 1(INT); control t/noshadow.src left it 2(FLOAT). So the local declaration mutated the global instead of creating an independent shadow. Spec2023 section 4 (lines 127-137) requires local references to denote the local name, not the global.",
+   "notes": "CONFIRMED spec-violation. SAME ROOT CAUSE as parser-decls.3 (data-type corruption demo) and parser-decls.2 (attribute loss). The scope_id parameter being ignored plus get_globabl_token discarding the caller token is the shared defect."
+  },
+  {
+   "id": "symtab.3",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:362-431: is_global_declaration is set true only inside the T_GLOBAL branch (369-372); the else branch (402-431) always parses with is_global=false regardless of current_scope_id, and grep confirms no `current_scope_id == 0` special-case. Runtime: t/topvar.src (`variable topvar : integer;` at outermost scope, no global keyword) -> scope -1 is EMPTY; topvar only in scope 0 with global=0. Spec2023 section 3 (lines 115-125): 'All variables/procedures defined in the outermost scope ... are in the global scope (independent of the presence/absence of the global reserved word).'",
+   "notes": "CONFIRMED spec-violation vs spec2023. Claim cites 'spec 1.3' but the matching text is section 3; content matches. Additional nuance from t/topvar_in_proc.src: referencing top-level `topvar` inside a procedure does NOT raise an error (it auto-vivifies a blank scope entry, see symtab.6), so the code implements neither the 2023 rule (make it global/visible-with-type) nor a clean 2013 'invisible->error' rule."
+  },
+  {
+   "id": "symtab.4",
+   "verdict": "PARTIAL",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read SymbolTable.cpp:192-229: the early `return true;` at line 208 (inside the `if (!is_in_table)` branch of the for-loop) does exist and exits before later scopes and before the `if (token_to_sync.global_scope)` block at 223-226. HOWEVER the claimed concrete harm (a fresh procedure only landing in its child scope, not the parent) does NOT occur in the normal non-global flow: update_identifier_type's else branch (277-278) pre-seeds the child scope via insert_string_token BEFORE calling resync, so resync's i=0 (child) finds it present (else branch, no return) and i=1 (parent) does insert-then-return. Runtime confirms procedures reach the parent scope: t/topvar_in_proc.src and t/malformedend.src both show `foo` present in the parent scope 0.",
+   "notes": "Mechanism (early return) is real but the described wrong outcome is not demonstrable in mainline flow; the claim itself admits 'this is masked.' Downgraded to code-smell. (The one path that DOES skip the child pre-seed is the global-scope branch of update_identifier_type, but that path crashes in create_new_scope_table before resync matters - see extra_discoveries.)"
+  },
+  {
+   "id": "symtab.5",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read scanner.cpp:442-453 (flat map last-write-wins), parser.cpp:472-476 (identifer_type set but procedure_params never cleared) and SymbolTable.cpp:311-324 (add_procedure_valid_inputs else-branch grabs the existing scope token and push_backs without clearing). Runtime: t/sibling2.src declares `procedure foo(variable a:integer)` then a second `procedure foo(variable a:float)` -> dump shows foo `nparams=2 params=[1,2]` (INT then FLOAT): the second foo's signature retained the leftover INT from the first foo instead of being just [FLOAT]. Also t/sibling.src (foo(int) then foo(float,float)) yielded params=[1,2,2].",
+   "notes": "CONFIRMED corruption of a reused procedure name's recorded parameter signature via the scope-unaware flat map. Practical reachability note: reusing a procedure name at the outermost scope is itself a duplicate global (undetected per parser-decls.4); truly spec-legal sibling reuse would be inside distinct parent procedures, but the same flat-map/stale-params mechanism applies."
+  },
+  {
+   "id": "symtab.6",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:1484-1490 (update_context_token called unguarded) and 3304-3316 (uses unordered_map::operator[] which auto-creates a default entry). Runtime: t/undeclared.src (`undeclared_var := 5;` with no declaration) -> 'The program parsed successfully with no errors'; dump shows a fresh blank `name=undeclared_var identifer_type=0 data_type=0` auto-created in scope 0. grep confirms no 'undeclared'/'not defined' diagnostic anywhere.",
+   "notes": "CONFIRMED robustness gap: no undeclared-identifier detection; assignment to an undeclared name silently manufactures a blank entry. Compounded by the fact (extra discovery) that assignment type-checking results are discarded entirely, so nothing downstream catches it either."
+  },
+  {
+   "id": "symtab.7",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read ScopeTable.cpp:23-33: insert_string_token only writes to scope_map when new_token.type == T_IDENTIFIER, else it is a silent no-op that still returns 1. Read SymbolTable.cpp:365-371 (update_identifier_data_type else) and 405-410 (update_procedure_return_type else): both build `token token_to_update;` (default type=0 per token.h:107) and pass it to insert_string_token without ever setting .type -> would be silently dropped. Confirmed statically that mainline flow seeds the name via update_identifier_type first (so these else branches are normally unreachable); an error path exists at parser.cpp:3122 (parse_parameter_list(\"ERROR\") in resync S_PARAMETER_LIST).",
+   "notes": "CONFIRMED as a real latent defect (guard + un-typed default tokens), but I did not demonstrate a reachable mainline trigger. Severity robustness/code-smell (masked in normal parsing)."
+  },
+  {
+   "id": "symtab.8",
+   "verdict": "PARTIAL",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:3289-3302: update_scopes(false) unconditionally does remove_scope(current_scope_id); current_scope_id--; number_of_scopes-- with no guard against current_scope_id==0. The 'no bounds check' fact is TRUE. However I could not reach a decrement-to--1: update_scopes(false) is only called in parse_procedure_body (line 667) and is balanced 1:1 with update_scopes(true) per procedure. Probe t/strayend.src (`end procedure;` at outer scope) drove current_scope_id UP to 1 (via an errant update_scopes(true)), not down. The malformed-end case (parser-decls.7) SKIPS update_scopes(false), leaking upward, never below 0.",
+   "notes": "PARTIAL: the missing bounds-check is real (robustness), but the specific harmful scenario (current_scope_id reaching -1 and colliding with the global pseudo-scope) is unproven and my attempts drove the counter the opposite direction. The claim itself hedged this as a 'design gap'."
+  },
+  {
+   "id": "parser-decls.2",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read SymbolTable.cpp:265-269 (update_identifier_type global branch): token_to_update = get_globabl_token(...); token_to_update.scope_id = scope_id; -> the caller's freshly-mutated token (identifer_type=I_VARIABLE set at parser.cpp:1261, or is_array=true set at 1958/2512) is thrown away and replaced by the previously-stored global token. Runtime: t/globalvar.src -> scope -1 `myglobal identifer_type=0` (should be 2/I_VARIABLE). t/globalarr.src -> scope -1 `arr is_array=0` while control t/localarr.src -> scope 0 `localarr is_array=1`. Both losses confirmed for the global short-circuit branch.",
+   "notes": "CONFIRMED for global variables (identifer_type lost) and global arrays (is_array lost). IMPORTANT: the claim's 'global procedure myproc identifer_type=0' DEBUG line cannot come from a clean run - `global procedure` CRASHES with SIGILL before parsing completes (see extra_discoveries); with the crash patched (verify-C2) I confirmed the global proc also loses identifer_type (=0). Same root cause as symtab.2/parser-decls.3. Downstream impact limited (identifer_type/is_array are rarely consumed and assignment type-checks are discarded)."
+  },
+  {
+   "id": "parser-decls.3",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read SymbolTable.cpp:349-355 (fetch global token, set identifier_data_type=data_type, global_scope=true) then resync_tables at 373 which (global_scope==true) writes back to scope_table[-1] at 225. Runtime: t/shadow.src (`global variable x:float;` + nested `procedure foo(...) variable x:integer;`) -> after parse, scope -1 `x data_type=1` (INT); control t/noshadow.src (no shadow) -> scope -1 `x data_type=2` (FLOAT). The local shadow corrupted the global's recorded type. Spec2023 section 4 (lines 127-137).",
+   "notes": "CONFIRMED spec-violation, empirically reproduced. Same root cause as symtab.2 (global-first lookup + get_globabl_token). A local shadow should create an independent local entry, not mutate the global."
+  },
+  {
+   "id": "parser-decls.4",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:461-469, 1250-1258, 1330-1338, 1429-1437: all four declaration paths have `if(!is_global_token) make_token_global(); else { }` with the comment 'can we redefine global?' - an empty branch, no diagnostic. grep confirms no 'duplicate'/'already declared'/'redeclaration' diagnostic. Runtime: t/dupglobal.src (`global variable x:integer; global variable x:float;`) -> 'The program parsed successfully with no errors'; dump shows x final data_type=2 (float) - the second silently overwrote the first. Spec2023 section 4 line 127: 'Global names must be unique.'",
+   "notes": "CONFIRMED spec-violation: no duplicate/re-declaration detection; second declaration silently wins."
+  },
+  {
+   "id": "parser-decls.5",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Identical to symtab.0: parser.cpp:901 passes TYPE_INT (not TYPE_BOOL) in the context==2 case of the T_BOOL_TYPE branch, contrasted with the correct TYPE_* in the int/float/string branches (847/865/883) and the correct TYPE_BOOL in contexts 0/1 (893/897) and the 3-arg parameter overload. Runtime t/bool.src dump: bool var b recorded with data_type=1 (INT).",
+   "notes": "CONFIRMED. EXACT DUPLICATE of symtab.0 (same file:line, same root cause). See symtab.0 notes re: masked downstream impact (int/bool leniency + discarded assignment type-check verdict at parser.cpp:1611)."
+  },
+  {
+   "id": "parser-decls.6",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "spec-violation",
+   "repro_or_refutation": "Read parser.cpp:1286-1301 & 1364-1381 (both variable-decl overloads): the optional `[ bound ]` calls parse_bound()->parse_number() (1399-1411, 1541-1569) which only consumes the number token; token.h has no bound/size field and no is_array assignment occurs in either declaration path. is_array is set only at USE sites, unconditionally: parse_assignment_destination:1957 and parse_name:2510. Runtime: t/localarr.src -> localarr.is_array became 1 only because it was indexed at use (`localarr[2]`); t/globalarr.src -> global arr.is_array stayed 0 (use-site marking lost via the global short-circuit). A declared-but-never-indexed array would keep is_array=false.",
+   "notes": "CONFIRMED: array bound is discarded and array-ness is not recorded at declaration; scalars indexed with [...] are marked arrays just as readily as real arrays. This blocks spec2023 section 9 (array-length-matched assignment). More precisely an incomplete-implementation/robustness gap than an active mis-output, but it is spec-relevant; kept as spec-violation."
+  },
+  {
+   "id": "parser-decls.7",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:654-677: update_scopes(false) is only called inside the `if (Current_parse_token_type == T_PROCEDURE)` branch (664-668) after consuming end; the else branch (670-675) only reports an error + resync, no update_scopes(false). Runtime: t/malformedend.src (`end program.` where `end procedure` was expected to close a procedure) -> final dump `current_scope_id=1 number_of_scopes=1` (should be 0), and scope 1 (foo's scope) was never removed.",
+   "notes": "CONFIRMED robustness: malformed procedure-close leaks the incremented scope id for the rest of the parse, so subsequent scope-based lookups would use the wrong (leaked) scope. Note this leaks the counter UP, which is the opposite direction from symtab.8's -1 concern."
+  }
+ ],
+ "extra_discoveries": "CRASH (new, not in batch): Any `global procedure` declaration crashes the compiler with SIGILL. Reproduced on BOTH the shipped /datadrive/data/compiler-course/compiler and a clean scratch rebuild: `program test is global procedure p:integer(variable a:integer) begin return 0; end procedure; begin end program.` -> core dump, exit 132. gdb backtrace: SIGILL at SymbolTable.cpp:171 in create_new_scope_table, called from resync_tables:200 <- update_identifier_type:292 <- parse_procedure_header <- parse_procedure_declaration(is_global=true). ROOT CAUSE: SymbolTable::create_new_scope_table (SymbolTable.cpp:166-172) is declared to return bool but has NO return statement (the -Wreturn-type warning emitted at build); g++ compiles the fall-off-end UB into a ud2 trap. It only crashes on the global-procedure path because the global-scope short-circuit branch of update_identifier_type (SymbolTable.cpp:265-269) skips the `scope_table[scope_id]` operator[] auto-creation that every non-global path performs, so resync_tables hits scope_map_exists(child)==false and calls create_new_scope_table. PROOF: adding `return true;` to create_new_scope_table (scratch build verify-C2) makes the identical program parse cleanly. This means parser-decls.2's cited 'DEBUG global myproc' evidence could not have come from a clean run.\n\nDISCARDED ASSIGNMENT TYPE-CHECK (new): parser.cpp:1611 computes `types_match = type_checker->check_assignment_statement(...)` but the value is never used - parse_assignment_statement returns the syntactic valid_parse instead. Consequence: NO assignment type mismatch is ever reported. Verified: t/is.src (`i := s;` int:=string and `s := i;`) -> 'parsed successfully with no errors'. This is why the data-type bugs (symtab.0/parser-decls.5, parser-decls.3) have little observable effect on assignment checking (return-statement type-checking, by contrast, does emit errors, e.g. 'Procedure is of type Integer which is not compatible with return type').\n\nBuild warnings on a faithful scratch copy: SymbolTable.cpp:172 'no return statement in function returning non-void' (the crash cause above); Typechecker.cpp:243, 1211 'control reaches end of non-void function' (second_relation_token_chains, check_return_statement) - additional missing-return UB not in this batch.",
+ "overall_notes": "Method: built a faithful scratch copy at scratchpad/verify-C (plus instrumented symbol-table dump), and A/B scratch copies verify-C2 (create_new_scope_table return fix) and verify-C3 (bool-bug fix), then ran minimal .src probes. All static claims were re-read from source; all runtime claims were reproduced. 12 of 15 CONFIRMED, 2 PARTIAL (symtab.4 mechanism-real-but-masked, symtab.8 missing-check-real-but-harm-unreachable-in-my-probes). Duplicate root causes to be aware of when de-duping: (a) parser.cpp:901 bool->TYPE_INT is claimed twice (symtab.0 == parser-decls.5); (b) the global-scope short-circuit in the four SymbolTable update_* functions (token_is_in_global_scope ignoring scope_id + get_globabl_token discarding the caller's token) is the single shared cause behind symtab.2, parser-decls.2, and parser-decls.3. Two of the confirmed data-type bugs (bool->INT, global type corruption) are largely inert in practice because assignment type-check verdicts are discarded (parser.cpp:1611) and the typechecker treats INT/BOOL as compatible - I could not exhibit a divergent accept/reject for them, so I flagged that masking in each note rather than overclaiming downstream breakage. The most severe issue found is NOT in the batch: a hard SIGILL crash on every `global procedure` declaration, rooted in the missing return in create_new_scope_table."
+}

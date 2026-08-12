@@ -1,0 +1,15 @@
+program Stage2FValidIfBranches is
+variable i : integer;
+begin
+    if (true) then
+    else
+    end if;
+    if (i) then
+        if (false) then
+        else
+            i := 1;
+        end if;
+    else
+        i := 2;
+    end if;
+end program.

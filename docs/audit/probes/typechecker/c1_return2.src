@@ -1,0 +1,11 @@
+program p is
+procedure Comp : bool()
+variable a : float;
+variable b : float;
+begin
+return a > b;
+end procedure;
+variable x : bool;
+begin
+x := Comp();
+end program.

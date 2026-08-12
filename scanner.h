@@ -24,6 +24,12 @@ enum char_type
     invalid_char = 4
 };
 
+struct scanner_diagnostic
+{
+    int line_found;
+    std::string message;
+};
+
 class scanner
 {
 public:
@@ -69,6 +75,9 @@ public:
     //builds floats and integer tokens
     void build_number_token();
 
+    //returns lexical diagnostics collected since the previous call
+    std::vector<scanner_diagnostic> take_diagnostics();
+
     //builds indentifiers and reserved words
     void build_string_token();
 
@@ -80,6 +89,10 @@ public:
 
     //function used for handling comments
     void comment_handler();
+
+    //Consumes one raw source character while a comment is active. Comments
+    //must be handled before ordinary token builders see their contents.
+    void consume_comment_character();
 
     //will handle things relating to end lines
     void end_line_handler();
@@ -98,6 +111,9 @@ public:
     std::ifstream source;
     //used to check the next char; so to make sure that it isn't the end of the line, a space, of the EOF
     char next_char = 0;
+    //The first pass through Get_token advances from this sentinel before any
+    //source character has been read.  It must not become a lexical error.
+    bool input_has_been_primed = false;
     //used to store the current character
     char current_char = 0;
     //used to build a string from the characters after checking them.  Ease of use
@@ -112,6 +128,9 @@ public:
     int quote_opener = 0;
     //tracks whether an error has occured
     bool error_detected = false;
+
+    //lexical errors are collected here so the parser can report and count them
+    std::vector<scanner_diagnostic> diagnostics;
 
     //used to trigger debug statements
     bool debug = false;

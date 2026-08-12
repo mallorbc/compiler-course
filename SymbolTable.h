@@ -1,50 +1,56 @@
 #ifndef SYMBOLTABLE_H
 #define SYMBOLTABLE_H
-#include "token.h"
+
 #include "ScopeTable.h"
-#include <unordered_map>
+
 #include <string>
+#include <unordered_map>
 #include <vector>
-#include <utility>
 
 class SymbolTable
 {
 public:
-    std::unordered_map<int, ScopeTable> scope_table;
-    //hash map with a integer key and a string combo
-    //std::unordered_map<int,std::string> map;
-
-    //hash map with an integer key and a token for the data
+    //This remains the scanner's lexical interning cache for compatibility with
+    //the original scanner tests.  It is intentionally not declaration state.
     std::unordered_map<std::string, token> map;
     std::unordered_map<char, int> reserved_chars;
-    bool insert_stringValue(std::string stringValue, token_type type_of_token);
-    bool init_reserved_words();
-    bool init_reserved_chars();
-    bool insert_string_token(token new_token);
-    bool insert_char_table(char reserved_char, token_type type_of_token);
-    bool is_in_table(std::string test_string);
-    bool is_reserved_char(char test_char);
-    //std::vector<std::string> Reserved_Words;
+
+    //Retained, stable scope graph.  Scope 0 is the canonical global scope.
+    std::unordered_map<int, ScopeTable> scope_table;
+
     SymbolTable();
 
-    bool make_token_global(token global_token);
-    bool is_global_token(token global_token);
+    bool insert_stringValue(const std::string &stringValue, token_type type_of_token);
+    bool insert_string_token(const token &new_token);
+    bool is_in_table(const std::string &test_string) const;
+    bool lookup_lexeme(const std::string &lexeme, token &out) const;
+    bool insert_char_table(char reserved_char, token_type type_of_token);
+    bool is_reserved_char(char test_char) const;
 
-    bool scope_map_exists(int scope_id);
-    bool create_new_scope_table(int scope_id);
-    bool resync_tables(int scope_id, token token_to_sync);
-    bool remove_scope(int scope_id);
+    bool create_scope(int scope_id, int parent_scope_id, bool has_parent);
+    bool has_scope(int scope_id) const;
+    bool set_scope_owner(int scope_id, const SymbolRef &owner);
+    bool lookup_scope_owner(int scope_id, token &out) const;
 
-    bool add_procedure_valid_inputs(std::string procedure_name, data_types input_data_type, int scope_id);
-    bool update_token_scope_id(token token_to_update, int scope_id);
-    bool update_identifier_type(token token_to_update, int scope_id);
-    bool update_identifier_data_type(std::string identifier_name, data_types data_type, int scope_id);
-    bool update_procedure_return_type(std::string procedure_name, data_types return_type, int scope_id);
+    bool declare_symbol(int scope_id, const token &new_token);
+    bool can_declare_all(int scope_id, const std::vector<token> &symbols) const;
+    bool declare_all(int scope_id, const std::vector<token> &symbols);
+    bool lookup_declared(const SymbolRef &reference, token &out) const;
+    bool replace_declared(const SymbolRef &reference, const token &replacement);
+    bool append_procedure_parameter(const SymbolRef &reference, const value_shape &parameter_type);
+    bool has_declared(int scope_id, const std::string &name) const;
 
-    bool token_is_in_scope_table(std::string token_string, int scope_id);
-    bool token_is_in_global_scope(token token_to_test, int scope_id);
-    token get_globabl_token(token token_to_get);
-    //bool update_variable_data_type(std::string var_name, data_types data_type, int scope_id)
+    //Resolution deliberately does not walk parent scopes.  2024 course rules
+    //guarantee current-local shadowing, self recursion, and source-ordered
+    //globals; enclosing-procedure capture remains an explicit later decision.
+    bool resolve_name(const std::string &name, int current_scope_id, token &out) const;
+    bool resolve_procedure(const std::string &name, int current_scope_id, token &out) const;
+
+private:
+    bool init_reserved_words();
+    bool init_reserved_chars();
+    const ScopeTable *find_scope(int scope_id) const;
+    ScopeTable *find_scope_mut(int scope_id);
 };
 
-#endif // !SYMBOLTABLE_H
+#endif // SYMBOLTABLE_H

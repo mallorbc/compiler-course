@@ -1,0 +1,16 @@
+program P10 is
+variable result : integer;
+procedure ProcA : integer()
+    global variable sharedVal : integer;
+    begin
+        sharedVal := 42;
+        return sharedVal;
+    end procedure;
+procedure ProcB : integer()
+    begin
+        return sharedVal + 1;
+    end procedure;
+begin
+result := ProcA();
+result := ProcB();
+end program.

@@ -1,0 +1,7 @@
+program p is
+variable a : float;
+variable b : float;
+variable c : float;
+begin
+c := a & b;
+end program.

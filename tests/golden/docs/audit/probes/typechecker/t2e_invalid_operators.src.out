@@ -1,0 +1,13 @@
+The program parsed successfully with errors
+Error on line 5: Arithmetic operations must be between floats and integers
+
+Error on line 6: Bitwise and logical "&" operations require two integers or two bools
+
+Error on line 7: Ordering relations require compatible integers, floats, or bools
+
+Error on line 8: Bitwise and logical "not" operations require an integer or bool
+
+Error on line 9: Unexpected negative factor is not a name or a number
+
+Error on line 9: Error in expression
+

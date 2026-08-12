@@ -1,0 +1,29 @@
+The program parsed successfully with errors
+Error on line 7: Missing ")" to close procedure parameter list
+
+Error on line 12: Undeclared identifier "val"
+
+Error on line 16: Undeclared identifier "val"
+
+Error on line 20: Undeclared identifier "val"
+
+Error on line 20: Undeclared identifier "val"
+
+Error on line 21: Undeclared procedure "fib"
+
+Error on line 21: Undeclared identifier "val"
+
+Error on line 22: Undeclared identifier "val"
+
+Error on line 22: Undeclared identifier "val"
+
+Error on line 23: Undeclared procedure "fib"
+
+Error on line 23: Undeclared identifier "val"
+
+Error on line 23: Missing ";" to end program statement
+
+Error on line 24: Missing ";" to end program statement
+
+Error on line 30: Undeclared procedure "fib"
+

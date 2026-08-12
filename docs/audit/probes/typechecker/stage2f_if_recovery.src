@@ -1,0 +1,16 @@
+program Stage2FIfRecovery is
+variable i : integer;
+begin
+    if (true then
+        i := 1
+    else
+        i := 2;
+    end if;
+    if (true) then
+        i := 3;
+    else
+        i := 4
+    else
+        i := 5;
+    end if;
+end program.

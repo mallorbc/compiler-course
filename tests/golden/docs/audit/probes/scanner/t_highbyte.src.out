@@ -1,0 +1,19 @@
+The program had parsing errors
+Error on line 1: Expected keyword "Program" not found
+
+Error on line 1: Expected keywords "procedure","variable" "type", or "begin" not found
+
+Error on line 1: Undeclared identifier "x"
+
+Error on line 2: Illegal character: 0xFF
+
+Error on line 2: Illegal character: 0xFE
+
+Error on line 1: Missing keyword "begin" to begin program statements
+
+Error on line 3: Undeclared identifier "eof"
+
+Error on line 3: Missing ":" needed for assignment statement
+
+Error on line 3: Missing "." to end the program
+

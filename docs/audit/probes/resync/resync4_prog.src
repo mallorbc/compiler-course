@@ -1,0 +1,5 @@
+program test is
+  type t1 : integer
+  type t2 : integer;
+begin
+end program.

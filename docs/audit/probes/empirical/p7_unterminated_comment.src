@@ -1,0 +1,7 @@
+program P7 is
+/* outer comment
+   /* inner comment */
+variable a : integer;
+begin
+a := 1;
+end program.

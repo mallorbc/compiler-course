@@ -1,0 +1,97 @@
+{
+ "verdicts": [
+  {
+   "id": "parser-resync.0",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Freshly read parser.cpp:2916-2953 (S_IF_STATEMENT) and 2956-2991 (S_LOOP_STATEMENT): both contain `else if (Current_parse_token_type == T_END){ return true; }` at lines 2942 and 2976, executed while resync_status is still true (set at 2623). `grep -n 'resync_status = false'` -> ONLY lines 3044 and 3285, both bypassed by the early return. Reproduced with buggy vs control: probes/resync0_buggy.src (if-body missing ';' before `end if`, then `x := 2` missing ';' before `end program`) -> output shows ONLY 'Error on line 6: Missing \";\" to end statement in if statement'; the `x := 2` error is SILENTLY DROPPED. probes/resync0_control.src (identical but if-body has ';') -> 'Error on line 8: Missing \";\" to end program statement' IS reported. The only difference is whether the if-body resync hit the T_END return-true path, proving resync_status stays true and gates out generate_error_report (both overloads check `if(!resync_status)` at 72/97).",
+   "notes": "Genuine, cleanly demonstrated bug: legitimate diagnostics after a missing-';'-before-'end if/loop' are silently suppressed. Root fix would be `break;` instead of `return true;` at 2942/2976. Highest-impact finding in this batch."
+  },
+  {
+   "id": "parser-resync.1",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:2441-2448: on T_STRING_VALUE with Lexer->quote_status true it calls clear_error_reports() (impl at 112-115 = error_reports.clear()) then adds one 'quotation left open'. Reproduced with MULTIPLE prior errors: probes/resync1_multi.src has `x := 2` and `x := 3` each missing ';' then an unterminated string `s := \"hello` running to EOF. Buggy output = only 'Error on line 9: quotation left open' (+ post-EOF noise); BOTH earlier missing-';' errors are gone. Control probes/resync1_multi_ctrl.src (same but string closed `\"hello\";`) reports BOTH 'Error on line 6' and 'Error on line 8: Missing \";\"...'. So every accumulated diagnostic is wiped when an unterminated string is hit.",
+   "notes": "Confirmed. Contradicts the handout's meaningful-errors requirement. clear_error_reports() is called nowhere else, so this is the sole (mis)use."
+  },
+  {
+   "id": "parser-resync.2",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:2625 `bool return_state;` (no init) and 3132-3136: `case S_PROCEDURE_BODY: break;` is empty and never assigns return_state; function ends `return return_state;` at 3286. The first-switch S_PROCEDURE_BODY loop sets new_state=original_state (=S_PROCEDURE_BODY) and breaks on T_BEGIN/T_END/T_PROCEDURE (2775-2789) or semicolon (2864-2868) \u2014 the common exits \u2014 so the empty second-switch case is reached with return_state never set. Corroborated: `g++ -O2 -Wall -Wextra -c parser.cpp` -> `parser.cpp:3286:12: warning: 'return_state' may be used uninitialized [-Wmaybe-uninitialized]` (declared at 2625). Reading an uninitialized bool and returning it into caller `valid_parse` (parse_procedure_body branches on it) is UB.",
+   "notes": "Same root cause as parser-decls.1 (missing initializers at 2625/2627 + incomplete case coverage). Marked robustness rather than the claim's wrong-behavior because I could not deterministically pin a specific wrong output to this path alone, but the uninitialized read IS reached on common inputs and drives control flow."
+  },
+  {
+   "id": "parser-resync.3",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read the full resync_parser (2620-3287). Confirmed only 5 first-switch cases assign new_state (S_PROGRAM_BODY 2646-, S_PROCEDURE_HEADER 2756, S_PROCEDURE_BODY 2771-, S_IF_STATEMENT 2916-, S_LOOP_STATEMENT 2956-); the other 23 are literal `case X: break;` (e.g. S_FACTOR 3018-3021). new_state declared uninitialized at 2627. Verified every call site passes only S_PROGRAM_BODY/S_PROCEDURE_BODY/S_IF_STATEMENT/S_LOOP_STATEMENT (via local `state`) and recursion passes original_state (still one of those), so the 23 states are NOT currently reachable \u2014 no live UB from this specifically.",
+   "notes": "Accurate observation but latent, as the claim itself concedes (SPECULATIVE). Downgraded to code-smell: the 23 empty cases are dead/placeholder and would be UB only if a future call site passed one of those states. Shares root cause with resync.2/decls.1."
+  },
+  {
+   "id": "parser-resync.4",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read parser.cpp:2703-2706 (S_PROGRAM_BODY): `else if (Current_parse_token_type == T_TYPE){ new_state = S_BASE_DECLARATION; }` with NO break, vs the sibling S_PROCEDURE_BODY at 2832-2836 which has `break;`. Confirmed the fall-through reaches the STATEMENTS checks (2708-2730) then unconditionally `Current = Get_Valid_Token();` at 2733, consuming the `type` token, and can overwrite new_state on the next loop iteration. Mechanism (silently discarded/overwritten new_state + extra token consumed) is exactly as claimed. Tried to observe behavioral divergence: probes/resync4b_prog.src (program-body, missing break) vs probes/resync4b_proc.src (procedure-body, has break), both `type t1 is integer`(missing ';') + `type t2 is integer;` -> BOTH produce a single identical 'Missing \";\" to complete declaration' error. No divergence.",
+   "notes": "The missing break is a real, objective inconsistency, but its wrong-behavior impact is masked in common cases because the very next loop iteration re-derives new_state via the prev_token_type==T_TYPE branch (2682) and parse_type_declaration works with the `type` keyword already consumed. Downgraded from wrong-behavior to code-smell: real defect, no demonstrable wrong output."
+  },
+  {
+   "id": "parser-resync.5",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "Read parser.cpp:76-83: generate_error_report(string) unconditionally reports prev_token.line_found when Current_parse_token.first_token_on_line, else Current_parse_token.line_found. This is used for wrong-token diagnostics (e.g. 187 'Expected \"identifier\" not found') where Current IS the offending token. Reproduced: probes/resync5_buggy.src puts the bad token `5` (where an identifier is expected) as the first token on line 5 (four blank lines after `program`) -> 'Error on line 1: Expected \"identifier\" not found' \u2014 off by FOUR lines. Control probes/resync5_ctrl.src with `5` on line 1 (`program 5 is`) -> correctly 'Error on line 1'.",
+   "notes": "Confirmed real misattribution of the reported line for wrong-token diagnostics (message text is correct, only the line number is wrong). Same family as resync.7."
+  },
+  {
+   "id": "parser-resync.7",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:35-41: the first-token branch (Current_parse_token.type==9999) never assigns prev_token; prev_token is default-constructed (token.h:108 line_found=0). scanner.cpp:191 sets first_token_on_line=true for token #1 (real line != last_sent_token default 0). So generate_error_report at 76-78 takes the first_token_on_line branch and prints prev_token.line_found==0. Reproduced: probes/resync7.src ('badstart is\\nbegin\\nend program.') -> 'Error on line 0: Expected keyword \"Program\" not found' (badstart is actually on line 1). Also probes/resync7b.src ('5\\n') -> same 'Error on line 0'.",
+   "notes": "Confirmed off-by-one/line-0 for the first token of a file. Diagnostic-quality edge case; robustness is the right severity."
+  },
+  {
+   "id": "parser-resync.8",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "`sed -n '3080p;3102p;3150p;3172p;3204p'` confirms: line 3080 (S_BASE_DECLARATION) and 3102 (S_PROCEDURE_DECLARATION) are bare `resync_parser(original_state);` with the return value discarded, while 3150 (S_VARIABLE_DECLARATION), 3172 (S_TYPE_DECLARATION), 3204 (S_BASE_STATEMENT) are `return_state = resync_parser(original_state);`. So for base/procedure declarations return_state keeps its earlier (typically true) value regardless of the nested recursive resync outcome.",
+   "notes": "Real, objective inconsistency (static). Practical impact is muddied because the returned bool is itself often uninitialized/garbage (see resync.2/decls.1), but the discarded-return asymmetry is exactly as described. Robustness."
+  },
+  {
+   "id": "parser-resync.10",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "code-smell",
+   "repro_or_refutation": "Read parser.cpp:49-56: `while (Next_parse_token_type > T_INVALID || Next_parse_token_type < 0){ Next_parse_token = Lexer->Get_token(); ... }` silently re-fetches with no diagnostic (comment 'for some reason random junk sometimes appears'); the initial fetches at 37-38 are unfiltered. Both facts verified. Checked whether the scanner can actually emit such junk: `grep '->type =' scanner.cpp` shows only named token_type constants plus T_INVALID(283); EOF sets T_INVALID (scanner.cpp:158). T_INVALID=283, so `>T_INVALID` never fires at EOF (no hang), and I found no scanner path emitting a type >283 or <0, so the filter is effectively dormant.",
+   "notes": "Accurate code description but low/no practical impact (the discard loop appears never to fire given the current scanner; type-0 tokens are handled by the scanner's own loop at scanner.cpp:189). Downgraded to code-smell; matches the SPECULATIVE tag."
+  },
+  {
+   "id": "parser-resync.12",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:1660-1684: after `valid_parse = resync_parser(state);` (1668, missing ')') control falls straight into `if (Current_parse_token_type == T_THEN)` (1671) with no check of where resync landed; a mismatch issues a second error at 1677 and re-resyncs at 1679. Reproduced: probes/resync12.src (`if (true then` \u2014 only the ')' is missing, `then` IS present) -> TWO errors: 'Error on line 4: Missing \")\" expected for if statment' AND 'Error on line 5: Missing expected keyword \"then\" for if statements' (spurious \u2014 the resync consumed the present `then`). Control probes/resync12_ctrl.src (well-formed `if (true) then`) -> no errors.",
+   "notes": "Confirmed cascade: one mistake yields two diagnostics, the second spurious. This is the mild/expected downside of panic-mode recovery, hence robustness rather than the claim's wrong-behavior."
+  },
+  {
+   "id": "parser-decls.0",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "crash",
+   "repro_or_refutation": "Read parser.cpp:609 (`while (Current_parse_token_type != T_END)` in parse_procedure_body), resync first-switch S_PROCEDURE_BODY 2775-2779 (`if T_BEGIN: new_state=original_state; break;` \u2014 no token consumed) and empty second-switch case 3132-3136 (no consume). A T_BEGIN statement makes parse_base_statement fail, resync returns with the token stream unchanged, and the while-loop re-processes the same T_BEGIN forever. Reproduced: `printf 'program test is\\nprocedure foo : integer ()\\nbegin\\n    return 0;\\nbegin\\n    y := 1;\\nend program.\\n' > probes/hang.src; timeout 5 ./compiler probes/hang.src` -> exit code 124 (timeout = infinite loop confirmed).",
+   "notes": "Confirmed hard hang (crash-class: DoS on malformed input). A procedure missing its `end procedure;` before the enclosing `begin` spins the parser forever."
+  },
+  {
+   "id": "parser-decls.1",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "wrong-behavior",
+   "repro_or_refutation": "parser.cpp:2625/2627 declare return_state/new_state with no initializer; the first-switch loops can exit without assigning new_state, and `switch(new_state)` at 3046 / `return return_state` at 3286 then read garbage. `g++ -O2 -Wall -Wextra -c parser.cpp` emits `3046:5: 'new_state' may be used uninitialized` and `3286:12: 'return_state' may be used uninitialized`. Reproduced default-branch hit: probes/decls1.src ('procedure foo... begin return 0; end program.' with no `end procedure`) -> stdout printed 'Error in resync start state' TWICE. That message is only reachable via the SECOND switch's default: (3282); since call sites always pass a valid `state`, the first switch's default (3040) is unreachable, so this proves new_state held a value outside 1..28 (uninitialized) on two resync calls.",
+   "notes": "Confirmed genuine UB (uninitialized enum + bool read), observable as spurious 'Error in resync start state' output and a garbage return bool. Corrected from the claim's 'crash' to wrong-behavior: it does not crash/segfault in practice, it misbehaves. Same root cause as resync.2/resync.3."
+  },
+  {
+   "id": "parser-decls.10",
+   "verdict": "CONFIRMED",
+   "corrected_severity": "robustness",
+   "repro_or_refutation": "Read parser.cpp:479-490: the missing-identifier else-branch does `generate_error_report(...); errors_occured=true; Current = Get_Valid_Token();` with `//valid_parse = resync_parser(state); //return false;` BOTH commented out, so it falls through with procedure_name==\"\" into the T_COLON check (491) and parse_type_mark(procedure_name,1) at 500. Reproduced: probes/decls10.src ('procedure : integer ()' with no name) -> 'Error on line 2: Procedure must be named a valid identifier' followed by 'Error on line 2: Expected \":\" before type mark declaration', then parsing continues ('parsed successfully with errors'), confirming no early return.",
+   "notes": "Confirmed control-flow: parser continues with empty procedure name instead of returning, so subsequent parse_type_mark/parse_parameter_list run keyed on \"\". Symbol-table pollution/collision under map[\"\"] is plausible (consistent with the code) but I did not instrument the symbol table to observe an actual collision, so that specific consequence is inferred, not directly demonstrated. Robustness."
+  }
+ ],
+ "extra_discoveries": "While building the scratch copy at /tmp/claude-1000/-datadrive-data-compiler-course/e0905122-5395-4b36-add9-f6a81e41bd28/scratchpad/verify-B and probing, I found additional issues beyond this batch: (1) `g++ -O2 -Wall -Wextra -c parser.cpp` flags FIVE more 'valid_parse may be used uninitialized' warnings independent of resync_parser: parser.cpp:220 (parse_program_body), 540 (parse_procedure_body), 1784 (parse_loop_statement), 2278, 2370. These functions can `return valid_parse;` on early-error paths before valid_parse is assigned \u2014 a broader uninitialized-return pattern (same class as resync.2/decls.1) affecting the parser's success/failure reporting. (2) Missing-return / control-reaches-end-of-non-void-function warnings elsewhere: SymbolTable.cpp:172 (`create_new_scope_table` returns non-void with no return statement -> UB return value), Typechecker.cpp:243 (`second_relation_token_chains`) and Typechecker.cpp:1211 (`check_return_statement`) both 'control reaches end of non-void function'. These return garbage bools that feed type-checking decisions. (3) SymbolTable.cpp:115 and :246 have unused `return_value` locals (dead code). (4) In the parser-resync.1 repro, post-EOF diagnostics are emitted with nonsensical line numbers (e.g. 'Error on line 12' for an 8-line file) because the EOF T_INVALID token retains stale line info from last_sent_token \u2014 a separate line-attribution artifact worth a look.",
+ "overall_notes": "All 13 claims in batch B-resync are CONFIRMED as real code issues \u2014 none refuted. I freshly read every cited line in the copied source (identical to the repo) and reproduced all runtime-observable claims in the scratch build (never built/wrote in /datadrive/data/compiler-course). Severity corrections: parser-decls.1 is UB/wrong-behavior, NOT a crash (it does not segfault; it prints spurious 'Error in resync start state' and returns garbage); parser-resync.2/.3/.4/.10 are lower-severity than claimed (robustness/code-smell) \u2014 .3 and .4 are latent/masked (no demonstrable wrong output), .10 is dormant (scanner emits no junk tokens), .2 is reached-but-hard-to-attribute UB. The three cleanest, highest-value confirmations are: parser-decls.0 (reproducible infinite-loop hang, `timeout 5` -> exit 124), parser-resync.0 (resync_status stuck true silently suppresses all later diagnostics \u2014 demonstrated with buggy/control pair), and parser-resync.1 (clear_error_reports wipes ALL prior errors on an unterminated string \u2014 demonstrated with a multi-error probe). Cluster note: resync.2, resync.3, and decls.1 share ONE root cause: `bool return_state;` / `parser_state new_state;` declared without initializers at parser.cpp:2625/2627 combined with 23 empty switch cases; -Wmaybe-uninitialized flags 3046 and 3286. All probe files are under scratchpad/verify-B/probes/. Build command: `cd scratchpad/verify-B && make` (succeeds with pre-existing -Wreturn-type warnings)."
+}

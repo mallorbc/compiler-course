@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 3: Undeclared identifier "undeclared_var"
+

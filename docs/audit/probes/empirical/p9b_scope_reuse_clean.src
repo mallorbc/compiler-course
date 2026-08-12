@@ -1,0 +1,19 @@
+program P9B is
+variable result : integer;
+procedure Outer : integer()
+    procedure Inner : integer()
+        variable innerVal : integer;
+        begin
+            innerVal := 1;
+            result := innerVal;
+        end procedure;
+    begin
+        result := 1;
+    end procedure;
+procedure Sibling : integer()
+    begin
+        result := innerVal;
+    end procedure;
+begin
+result := 1;
+end program.

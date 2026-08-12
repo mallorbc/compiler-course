@@ -1,0 +1,8 @@
+program P6 is
+variable s : string;
+begin
+s := "hello";
+if(s) then
+    s := "world";
+end if;
+end program.

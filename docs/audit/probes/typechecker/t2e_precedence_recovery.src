@@ -1,0 +1,7 @@
+program t2e_precedence_recovery is
+variable i : integer;
+variable b : bool;
+begin
+    i := 1 + 2 < 3;
+    b := 1 < 2 < 3.0;
+end program.

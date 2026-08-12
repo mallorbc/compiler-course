@@ -1,0 +1,7 @@
+program p is
+variable a : integer;
+variable s : string;
+variable r : integer;
+begin
+r := s + a;
+end program.

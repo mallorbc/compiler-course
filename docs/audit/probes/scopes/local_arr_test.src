@@ -1,0 +1,5 @@
+program test is
+variable localarr : integer[10];
+begin
+    localarr[2] := 5;
+end program.

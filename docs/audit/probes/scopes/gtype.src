@@ -1,0 +1,4 @@
+program test is
+global type mytype : integer;
+begin
+end program.

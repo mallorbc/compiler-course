@@ -1,0 +1,22 @@
+program P13 is
+global variable jake : integer;
+global variable zach : integer;
+global variable ryan : integer[3];
+variable tmp : integer;
+procedure if_proc : integer()
+    begin
+        if(true) then jake := jake + 1;
+        else zach := zach + ryan[2];
+        end if;
+    end procedure;
+procedure for_proc : integer()
+    variable i : integer;
+    begin
+        for(i := 0; i < zach)
+            ryan[0] := zach + i;
+        end for;
+    end procedure;
+begin
+tmp := if_proc();
+tmp := for_proc();
+end program.

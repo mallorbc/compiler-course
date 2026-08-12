@@ -1,0 +1,7 @@
+program test is
+    variable b : bool;
+    variable f : float;
+begin
+    b := true;
+    f := b;
+end program.

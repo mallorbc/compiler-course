@@ -1,0 +1,5 @@
+The program parsed successfully with errors
+Error on line 6: Undeclared identifier "captured"
+
+Error on line 9: Undeclared procedure "later"
+

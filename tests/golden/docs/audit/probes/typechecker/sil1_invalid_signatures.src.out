@@ -1,0 +1,27 @@
+The program parsed successfully with errors
+Error on line 19: Procedure "q" expects 3 argument(s), got 4
+
+Error on line 20: Procedure "q" expects 3 argument(s), got 1
+
+Error on line 21: Procedure "zero" expects 0 argument(s), got 1
+
+Error on line 22: Argument 1 to procedure "q" has type "float"; expected "integer"
+
+Error on line 23: Argument 2 to procedure "q" has type "integer"; expected "float"
+
+Error on line 24: Argument 3 to procedure "q" has type "integer"; expected "bool"
+
+Error on line 26: Argument 2 to procedure "q" has type "bool"; expected "float"
+
+Error on line 28: Procedure "unresolved" parameter 1 has an unsupported unresolved type
+
+Error on line 29: Procedure "getinteger" expects 0 argument(s), got 1
+
+Error on line 30: Procedure "putinteger" expects 1 argument(s), got 0
+
+Error on line 31: Argument 1 to procedure "putinteger" has type "float"; expected "integer"
+
+Error on line 32: Argument 1 to procedure "putbool" has type "integer"; expected "bool"
+
+Error on line 33: Argument 1 to procedure "sqrt" has type "float"; expected "integer"
+

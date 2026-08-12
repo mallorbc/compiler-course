@@ -1,5 +1,73 @@
 #include "scanner.h"
 
+#include <stdexcept>
+
+namespace
+{
+
+bool is_number_character(char character)
+{
+    return isdigit(static_cast<unsigned char>(character)) ||
+           character == '_' || character == '.';
+}
+
+bool is_valid_number_literal(const std::string &literal)
+{
+    //The recovered grammar is [0-9][0-9_]*[.[0-9_]*].  In particular, it
+    //allows underscores in both the integer and fractional portions; this
+    //check keeps conversion from accepting only a prefix of a scanned run.
+    if (literal.empty() || !isdigit(static_cast<unsigned char>(literal[0])))
+    {
+        return false;
+    }
+
+    bool has_decimal_point = false;
+    for (size_t index = 1; index < literal.size(); index++)
+    {
+        const char character = literal[index];
+        if (isdigit(static_cast<unsigned char>(character)) || character == '_')
+        {
+            continue;
+        }
+        if (character == '.' && !has_decimal_point)
+        {
+            has_decimal_point = true;
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+std::string remove_number_separators(const std::string &literal)
+{
+    std::string normalized;
+    normalized.reserve(literal.size());
+    for (size_t index = 0; index < literal.size(); index++)
+    {
+        if (literal[index] != '_')
+        {
+            normalized += literal[index];
+        }
+    }
+    return normalized;
+}
+
+std::string describe_illegal_character(char character)
+{
+    const unsigned char byte = static_cast<unsigned char>(character);
+    if (byte >= 32 && byte <= 126)
+    {
+        return "'" + std::string(1, character) + "'";
+    }
+
+    const char hex_digits[] = "0123456789ABCDEF";
+    return "0x" + std::string(1, hex_digits[byte >> 4]) +
+           std::string(1, hex_digits[byte & 0x0f]);
+}
+
+} // namespace
+
 scanner::scanner()
 {
 }
@@ -30,11 +98,11 @@ void scanner::test()
 
 int scanner::what_is_char(char test_char)
 {
-    if (isalpha(test_char))
+    if (isalpha(static_cast<unsigned char>(test_char)))
     {
         return alpha_char;
     }
-    else if (isdigit(test_char))
+    else if (isdigit(static_cast<unsigned char>(test_char)))
     {
         return number_char;
     }
@@ -156,10 +224,17 @@ token scanner::Get_token()
             *Current_token = last_sent_token;
             //sets this token type to an invalid token type
             Current_token->type = T_INVALID;
+            //ensures the EOF token carries the current line rather than 0
+            Current_token->line_found = current_line;
             break;
         }
         previous_char = current_char;
         current_char = next_char;
+        if (is_slash_comment || is_nested_commented)
+        {
+            consume_comment_character();
+            continue;
+        }
         if (is_first_char())
         {
             char_status = what_is_char(current_char);
@@ -194,25 +269,12 @@ token scanner::Get_token()
             }
             break;
         }
-        //tests if is a comment
-        else if (is_slash_comment || is_nested_commented)
-        {
-            delete Current_token;
-            Current_token = new token;
-        }
-        //else the token is invalid and a new one is needed
+        //The current source character did not produce a token, so keep
+        //scanning with a fresh token object.
         else
         {
             delete Current_token;
             Current_token = new token;
-        }
-        //handles checking to see if the comment line has changed
-        if (is_slash_comment)
-        {
-            if ((slash_comment_line != current_line) && (next_char == '\n' || current_char == '\n'))
-            {
-                end_line_handler();
-            }
         }
     }
     return_token = *Current_token;
@@ -251,7 +313,10 @@ void scanner::build_char_token()
 
         //potentially part of a comment indicator
         case '/':
-            comment_handler();
+            if (!is_slash_comment)
+            {
+                comment_handler();
+            }
             if (nested_comment_stat_change)
             {
                 nested_comment_stat_change = false;
@@ -309,7 +374,10 @@ void scanner::build_char_token()
 
         //pontentially part of a comment indicator
         case '*':
-            comment_handler();
+            if (!is_slash_comment)
+            {
+                comment_handler();
+            }
             if (nested_comment_stat_change)
             {
                 nested_comment_stat_change = false;
@@ -355,30 +423,14 @@ void scanner::build_char_token()
 
 void scanner::build_number_token()
 {
-    int token_int_value;
-    float token_float_value;
-    bool is_float = false;
-    bool one_decimal = true;
-    //numbers are valid until a non numbber character is used, or multiple decimals are used
-    while (isdigit(next_char) || next_char == '.')
+    int token_int_value = 0;
+    float token_float_value = 0.0f;
+    const int literal_line = current_line;
+    //Consume the whole run even when it is malformed.  Returning before the
+    //second decimal used to discard a prefix and could leave the parser without
+    //a useful token with which to make progress.
+    while (is_number_character(next_char))
     {
-        if (current_char == '.' && !one_decimal)
-        {
-            if (debug)
-            {
-                std::cout << "ERROR: The number has more than one decimal" << std::endl;
-            }
-
-            //throw error
-            error_detected = true;
-            return;
-            //break;
-        }
-        if (current_char == '.')
-        {
-            one_decimal = false;
-            is_float = true;
-        }
         build_string = build_string + current_char;
         source.get(next_char);
         previous_char = current_char;
@@ -389,37 +441,84 @@ void scanner::build_number_token()
             end_of_file = true;
             break;
         }
-        //increments line counter if end of the line
-        if (current_char == '\n')
-        {
-            prev_line = current_line;
-            current_line++;
-            //is_slash_comment = false;
-        }
+        //Leave the terminating delimiter for the next scan pass.  Counting a
+        //newline here and again in invalid_char_test advanced the cursor twice.
     }
-    if (is_float)
+
+    const bool is_float = build_string.find('.') != std::string::npos;
+    if (!is_valid_number_literal(build_string))
     {
-        token_float_value = std::stof(build_string);
+        const size_t first_decimal = build_string.find('.');
+        const bool multiple_decimals =
+            first_decimal != std::string::npos &&
+            build_string.find('.', first_decimal + 1) != std::string::npos;
+        diagnostics.push_back(scanner_diagnostic{
+            literal_line,
+            multiple_decimals ? "Malformed numeric literal: multiple decimal points"
+                              : "Malformed numeric literal"});
+        error_detected = true;
+        Current_token->type = is_float ? T_FLOAT_VALUE : T_INTEGER_VALUE;
+    }
+    else if (is_float)
+    {
+        try
+        {
+            token_float_value = std::stof(remove_number_separators(build_string));
+        }
+        catch (const std::out_of_range &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Numeric literal is out of range"});
+            error_detected = true;
+        }
+        catch (const std::invalid_argument &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Malformed numeric literal"});
+            error_detected = true;
+        }
         //assign token type and value here
         Current_token->floatValue = token_float_value;
         Current_token->type = T_FLOAT_VALUE;
-        Current_token->line_found = current_line;
     }
     else
     {
-        token_int_value = std::stoi(build_string);
+        try
+        {
+            token_int_value = std::stoi(remove_number_separators(build_string));
+        }
+        catch (const std::out_of_range &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Numeric literal is out of range"});
+            error_detected = true;
+        }
+        catch (const std::invalid_argument &)
+        {
+            diagnostics.push_back(scanner_diagnostic{
+                literal_line, "Malformed numeric literal"});
+            error_detected = true;
+        }
         //assign token type and value here
         Current_token->intValue = token_int_value;
         Current_token->type = T_INTEGER_VALUE;
-        Current_token->line_found = current_line;
     }
+    Current_token->line_found = literal_line;
+}
+
+std::vector<scanner_diagnostic> scanner::take_diagnostics()
+{
+    std::vector<scanner_diagnostic> collected;
+    collected.swap(diagnostics);
+    return collected;
 }
 
 //should probably return a string so that later checks on it can be done for reserved words
 void scanner::build_string_token()
 {
     //token is valid until a non letter or number is displayed
-    while (isdigit(next_char) || isalpha(next_char) || next_char == '_')
+    while (isdigit(static_cast<unsigned char>(next_char)) ||
+           isalpha(static_cast<unsigned char>(next_char)) || next_char == '_')
     {
         build_string = build_string + current_char;
         source.get(next_char);
@@ -441,14 +540,14 @@ void scanner::build_string_token()
     //checks to see whether the built string is either a reserved word or already in the symbol table
     if (symbol_table.is_in_table(build_string))
     {
-        *Current_token = symbol_table.map[build_string];
+        symbol_table.lookup_lexeme(build_string, *Current_token);
         Current_token->line_found = current_line;
     }
     //if not in the symbol table it inserts the indentifier
     else
     {
         symbol_table.insert_stringValue(build_string, T_IDENTIFIER);
-        *Current_token = symbol_table.map[build_string];
+        symbol_table.lookup_lexeme(build_string, *Current_token);
         Current_token->line_found = current_line;
     }
     if (debug)
@@ -461,7 +560,13 @@ void scanner::build_string_token()
 
 void scanner::invalid_char_test()
 {
-    if (current_char == '\n')
+    if (!input_has_been_primed && current_char == '\0')
+    {
+        //Get_token starts with a sentinel value before the first source
+        //character is loaded.  Do not flag that implementation detail as an
+        //illegal NUL byte.
+    }
+    else if (current_char == '\n')
     {
         if (debug)
         {
@@ -472,7 +577,7 @@ void scanner::invalid_char_test()
         //is_slash_comment = false;
         last_char_was_end_line = true;
     }
-    else if (isspace(current_char))
+    else if (isspace(static_cast<unsigned char>(current_char)))
     {
         if (debug)
         {
@@ -486,9 +591,17 @@ void scanner::invalid_char_test()
             std::cout << "DEBUG: Invalid character detected" << std::endl;
         }
 
-        error_detected = true;
+        //Comments are skipped as raw source text, so an otherwise-illegal
+        //byte inside one must not become a program diagnostic.
+        if (!is_slash_comment && !is_nested_commented)
+        {
+            error_detected = true;
+            diagnostics.push_back(scanner_diagnostic{
+                current_line, "Illegal character: " + describe_illegal_character(current_char)});
+        }
     }
     source.get(next_char);
+    input_has_been_primed = true;
 }
 
 void scanner::string_value_builder()
@@ -498,7 +611,15 @@ void scanner::string_value_builder()
     while (true)
     {
         build_string = build_string + current_char;
-        source.get(next_char);
+        if (!source.get(next_char))
+        {
+            //Do not process a stale value from the failed read.  In
+            //particular, an unterminated string ending in a newline used to
+            //re-apply that newline and advance the reported line once more.
+            end_of_file = true;
+            error_detected = true;
+            break;
+        }
         if (next_char == '"')
         {
             build_string = build_string + next_char;
@@ -513,13 +634,6 @@ void scanner::string_value_builder()
             current_line++;
             //is_slash_comment = false;
         }
-        if (source.eof() && quote_status)
-        {
-            //no closing quotation mark;
-            end_of_file = true;
-            error_detected = true;
-            break;
-        }
     }
     if (debug)
     {
@@ -528,7 +642,7 @@ void scanner::string_value_builder()
 
     Current_token->charValue = '\0';
     Current_token->stringValue = build_string;
-    Current_token->line_found = current_line;
+    Current_token->line_found = quote_opener;
     Current_token->type = T_STRING_VALUE;
 }
 
@@ -538,7 +652,7 @@ void scanner::comment_handler()
     peek_char = source.peek();
     if (current_char == '/')
     {
-        if (peek_char == '/')
+        if (peek_char == '/' && !is_nested_commented)
         {
             //will be a comment until the next line
             is_slash_comment = true;
@@ -547,7 +661,7 @@ void scanner::comment_handler()
             //source.get(next_char);
         }
         //enter block comment stack by one
-        else if (peek_char == '*')
+        else if (peek_char == '*' && !is_slash_comment)
         {
             nested_comment_counter++;
             nested_comment_line = current_line;
@@ -562,13 +676,24 @@ void scanner::comment_handler()
         //exit block comment by one
         if (peek_char == '/')
         {
-            nested_comment_counter--;
             //skips the next char since it is part of the block comment indicator
             source.get(next_char);
-            if (nested_comment_counter <= 0)
+            if (nested_comment_counter == 0)
             {
-                is_nested_commented = false;
+                diagnostics.push_back(scanner_diagnostic{
+                    current_line, "Stray block comment terminator detected"});
+                error_detected = true;
+                //The complete marker was consumed, so do not emit a '*' token.
                 nested_comment_stat_change = true;
+            }
+            else
+            {
+                nested_comment_counter--;
+                if (nested_comment_counter == 0)
+                {
+                    is_nested_commented = false;
+                    nested_comment_stat_change = true;
+                }
             }
         }
         //do nothing
@@ -576,6 +701,52 @@ void scanner::comment_handler()
         {
         }
     }
+}
+
+void scanner::consume_comment_character()
+{
+    if (is_slash_comment)
+    {
+        //A line comment is raw text through its newline. Do not let quoted
+        //strings, numbers, comment markers, or invalid bytes enter builders.
+        if (current_char == '\n')
+        {
+            prev_line = current_line;
+            current_line++;
+            end_line_handler();
+        }
+        source.get(next_char);
+        return;
+    }
+
+    //A block comment recognizes only its own nested delimiters and line
+    //breaks. Every other byte is inert until the outermost */ is reached.
+    const char peek_char = source.peek();
+    if (current_char == '/' && peek_char == '*')
+    {
+        nested_comment_counter++;
+        nested_comment_line = current_line;
+        source.get(next_char);
+        source.get(next_char);
+        return;
+    }
+    if (current_char == '*' && peek_char == '/')
+    {
+        nested_comment_counter--;
+        source.get(next_char);
+        source.get(next_char);
+        if (nested_comment_counter == 0)
+        {
+            is_nested_commented = false;
+        }
+        return;
+    }
+    if (current_char == '\n')
+    {
+        prev_line = current_line;
+        current_line++;
+    }
+    source.get(next_char);
 }
 
 void scanner::end_line_handler()

@@ -1,0 +1,10 @@
+program test is
+variable topvar : integer;
+procedure foo : integer(variable a : integer)
+begin
+    topvar := 5;
+    return 0;
+end procedure;
+begin
+    topvar := 3;
+end program.

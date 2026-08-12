@@ -1,0 +1,10 @@
+program p is
+variable a : integer;
+variable b : integer;
+variable c : integer;
+variable integer_result : integer;
+variable bool_result : bool;
+begin
+integer_result := a | b | c;
+bool_result := true | false | true;
+end program.

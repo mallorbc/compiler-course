@@ -1,0 +1,9 @@
+program P4C is
+variable a : integer;
+procedure addTwo : integer(variable x : integer, variable y : integer)
+begin
+return x + y;
+end procedure;
+begin
+a := addTwo(1);
+end program.

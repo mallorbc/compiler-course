@@ -1,0 +1,18 @@
+program p is
+    procedure foo : integer(variable a : integer, variable b : integer, variable c : integer)
+    begin
+        return a;
+    end procedure;
+    variable x : integer;
+    variable result : bool;
+begin
+    x := 8 / 2 * 3 / 2;
+    result := 1 < 2 < 3;
+    result := 3 <= 4 <= 5;
+    result := 5 > 4 > 3;
+    result := 5 >= 4 >= 3;
+    result := 1 == 1 == 1;
+    result := 1 != 2 != 3;
+    result := 1 < 2 >= 0 == 0 != 1;
+    x := foo(1, 2, 3);
+end program.

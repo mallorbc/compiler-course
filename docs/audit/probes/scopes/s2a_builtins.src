@@ -1,0 +1,16 @@
+program s2a_builtins is
+variable b : bool;
+variable i : integer;
+variable f : float;
+variable s : string;
+begin
+b := getBool();
+i := getInteger();
+f := getFloat();
+s := getString();
+b := putBool(b);
+b := putInteger(i);
+b := putFloat(f);
+b := putString(s);
+f := sqrt(i);
+end program.

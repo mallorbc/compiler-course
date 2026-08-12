@@ -1,0 +1,21 @@
+The program had parsing errors
+Error on line 1: Expected keyword "Program" not found
+
+Error on line 1: Expected keywords "procedure","variable" "type", or "begin" not found
+
+Error on line 1: Undeclared identifier "a"
+
+Error on line 1: Missing ":" needed for assignment statement
+
+Error on line 1: Undeclared identifier "b"
+
+Error on line 1: Missing ":" needed for assignment statement
+
+Error on line 2: Expected keywords "procedure","variable" "type", or "begin" not found
+
+Error on line 2: Undeclared identifier "c"
+
+Error on line 2: Missing ":" needed for assignment statement
+
+Error on line 2: Missing "." to end the program
+

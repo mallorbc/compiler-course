@@ -1,0 +1,11 @@
+program p is
+procedure F : float(variable dummy : integer)
+variable n : integer;
+begin
+n := 5;
+return n;
+end procedure;
+variable r : float;
+begin
+r := F(1);
+end program.

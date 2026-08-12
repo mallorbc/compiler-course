@@ -1,0 +1,38 @@
+program Ty8ValidArrays is
+type whole is integer;
+variable a : integer[5];
+variable b : whole[5];
+variable flags : bool[5];
+variable floats : float[5];
+variable index : integer;
+variable scalar : integer;
+procedure element : integer(variable values : integer[5], variable position : integer)
+begin
+    return values[position];
+end procedure;
+begin
+    a[0] := 1;
+    a[index] := b[1] + 1;
+    a[element(a, index)] := a[(index + 1)];
+    a := b + scalar;
+    a := -a;
+    a := b * scalar;
+    a := scalar / b;
+    a := b & scalar;
+    a := scalar | b;
+    floats := a;
+    a := floats;
+    flags := a;
+    a := flags;
+    flags := not flags;
+    flags := (a < b);
+    flags := (a <= b);
+    flags := (a > b);
+    flags := (a >= b);
+    flags := (a == b);
+    flags := (a != b);
+    scalar := element(a, index);
+    if (a[0] < b[0]) then
+        scalar := scalar;
+    end if;
+end program.

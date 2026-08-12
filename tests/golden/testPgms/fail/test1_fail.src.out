@@ -1,0 +1,9 @@
+The program parsed successfully with errors
+Error on line 6: Missing ";" to complete declaration
+
+Error on line 14: Missing ";" to end statement in if statement
+
+Error on line 23: Assignment target shape "integer[3]" is not compatible with expression shape "integer"
+
+Error on line 23: Missing ";" to end statement in loop statement
+

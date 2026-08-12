@@ -1,0 +1,7 @@
+program p is
+variable arr : integer[5];
+variable f : float;
+variable x : integer;
+begin
+arr[f] := 1;
+end program.

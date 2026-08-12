@@ -1,0 +1,6 @@
+program t2e_multiline_operator is
+variable i : integer;
+begin
+    i := 1
+        & true;
+end program.

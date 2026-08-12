@@ -1,0 +1,9 @@
+program P12B is
+variable i : integer;
+variable zach : integer;
+begin
+zach := 5;
+for(i := 0; i < zach)
+    i := i + 1;
+end for;
+end program.

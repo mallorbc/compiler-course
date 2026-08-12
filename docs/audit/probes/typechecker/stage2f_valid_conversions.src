@@ -1,0 +1,37 @@
+program Stage2FValidConversions is
+variable i : integer;
+variable f : float;
+variable b : bool;
+variable ai : integer[2];
+variable af : float[2];
+variable ab : bool[2];
+procedure integerFromFloat : integer()
+begin
+    return 1.0;
+end procedure;
+procedure floatFromInteger : float()
+begin
+    return 1;
+end procedure;
+procedure integerFromBool : integer()
+begin
+    return true;
+end procedure;
+procedure boolFromInteger : bool()
+begin
+    return 1;
+end procedure;
+begin
+    i := f;
+    f := i;
+    i := b;
+    b := i;
+    af := ai;
+    ai := af;
+    ai := ab;
+    ab := ai;
+    i := integerFromFloat();
+    f := floatFromInteger();
+    i := integerFromBool();
+    b := boolFromInteger();
+end program.

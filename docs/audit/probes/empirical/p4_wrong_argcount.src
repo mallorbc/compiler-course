@@ -1,0 +1,9 @@
+program P4 is
+variable a : integer;
+procedure addOne : integer(variable val : integer)
+begin
+return val + 1;
+end procedure;
+begin
+a := addOne(1, 2);
+end program.

@@ -1,0 +1,5 @@
+The program parsed successfully with errors
+Error on line 5: Arithmetic operations must be between floats and integers
+
+Error on line 6: Ordering relations require compatible integers, floats, or bools
+

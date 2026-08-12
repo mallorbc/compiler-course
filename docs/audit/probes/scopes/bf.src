@@ -1,0 +1,5 @@
+program test is
+    variable b : bool;
+begin
+    b := 3.14;
+end program.

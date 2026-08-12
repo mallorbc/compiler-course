@@ -1,0 +1,7 @@
+program P5A is
+variable a : integer;
+variable f : float;
+begin
+f := 3.5;
+a := f;
+end program.

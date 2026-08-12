@@ -1,0 +1,3 @@
+The program parsed successfully with errors
+Error on line 4: Assignment target type "integer" is not compatible with expression type "string"
+
