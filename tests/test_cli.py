@@ -56,6 +56,17 @@ def main() -> int:
     )
     check(incomplete_emit.stderr == "", f"unexpected incomplete-emit stderr: {incomplete_emit.stderr!r}")
 
+    incomplete_ir = run_compiler("--emit-ir", "output.ir")
+    check(
+        incomplete_ir.returncode == 1,
+        f"incomplete IR exit was {incomplete_ir.returncode}, expected 1",
+    )
+    check(
+        incomplete_ir.stdout == f"Error!\nUsage: {COMPILER} <file to compile>\n",
+        f"unexpected incomplete-IR stdout: {incomplete_ir.stdout!r}",
+    )
+    check(incomplete_ir.stderr == "", f"unexpected incomplete-IR stderr: {incomplete_ir.stderr!r}")
+
     extra_args = run_compiler("one.src", "two.src")
     check(
         extra_args.returncode == 1,

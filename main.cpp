@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <system_error>
 #include <cstdlib>
+#include "IRPrinter.h"
 #include "NativeToolchain.h"
 #include "RestrictedCEmitter.h"
 #include "scanner.h"
@@ -59,33 +60,46 @@ const char *native_status_name(NativeToolchainStatus status)
     return "invalid-input";
 }
 
+const char *ir_print_status_name(IRPrintStatus status)
+{
+    switch (status)
+    {
+    case IRPrintStatus::Success: return "success";
+    case IRPrintStatus::InvalidIR: return "invalid-ir";
+    case IRPrintStatus::IoError: return "io-error";
+    }
+    return "invalid-ir";
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
 {
     const std::string first_argument = argc > 1 ? argv[1] : std::string();
-    const bool reserved_option = first_argument == "--emit-c" ||
+    const bool reserved_option = first_argument == "--emit-ir" ||
+        first_argument == "--emit-c" ||
         first_argument == "-o" || first_argument == "--output" ||
         first_argument == "--native";
     const bool normal_check_only = argc == 2 && !reserved_option;
+    const bool emit_ir = argc == 4 && first_argument == "--emit-ir";
     const bool emit_c = argc == 4 && first_argument == "--emit-c";
     const bool emit_native = argc == 4 &&
         (first_argument == "-o" || first_argument == "--output" ||
          first_argument == "--native");
     //The legacy one-argument form is intentionally byte-for-byte unchanged.
-    if (!normal_check_only && !emit_c && !emit_native)
+    if (!normal_check_only && !emit_ir && !emit_c && !emit_native)
     {
         std::cout << "Error!\nUsage: " << argv[0] << " <file to compile>\n";
         return 1;
     }
 
-    const std::string source_arg = (emit_c || emit_native) ? argv[3] : argv[1];
+    const std::string source_arg = (emit_ir || emit_c || emit_native) ? argv[3] : argv[1];
     const std::filesystem::path source_path(source_arg);
-    const std::filesystem::path output_path = (emit_c || emit_native) ?
+    const std::filesystem::path output_path = (emit_ir || emit_c || emit_native) ?
         std::filesystem::path(argv[2]) : std::filesystem::path();
-    if ((emit_c || emit_native) && paths_alias(source_path, output_path))
+    if ((emit_ir || emit_c || emit_native) && paths_alias(source_path, output_path))
     {
-        std::cerr << (emit_native ? "native" : "codegen")
+        std::cerr << (emit_native ? "native" : emit_ir ? "ir" : "codegen")
                   << ": io-error: output aliases source\n";
         return 1;
     }
@@ -112,14 +126,14 @@ int main(int argc, char *argv[])
     //first_scan->test();
     if (file_parser.error_count() > 0)
     {
-        if (emit_c || emit_native)
+        if (emit_ir || emit_c || emit_native)
         {
-            std::cerr << (emit_native ? "native" : "codegen")
+            std::cerr << (emit_native ? "native" : emit_ir ? "ir" : "codegen")
                       << ": frontend-error\n";
         }
         return 1;
     }
-    if (!emit_c && !emit_native)
+    if (!emit_ir && !emit_c && !emit_native)
     {
         return 0;
     }
@@ -127,13 +141,30 @@ int main(int argc, char *argv[])
     {
         const char *status = file_parser.ir_status() == ir::ModuleStatus::Unsupported ?
                                  "unsupported" : "invalid-ir";
-        std::cerr << (emit_native ? "native" : "codegen") << ": " << status;
+        std::cerr << (emit_native ? "native" : emit_ir ? "ir" : "codegen")
+                  << ": " << status;
         if (!file_parser.ir_reason().empty())
         {
             std::cerr << ": " << file_parser.ir_reason();
         }
         std::cerr << "\n";
         return 1;
+    }
+    if (emit_ir)
+    {
+        IRPrinter printer;
+        const IRPrintResult printed = printer.print_to_file(file_parser.ir_module(), output_path);
+        if (!printed.succeeded())
+        {
+            std::cerr << "ir: " << ir_print_status_name(printed.status);
+            if (!printed.diagnostic.empty())
+            {
+                std::cerr << ": " << printed.diagnostic;
+            }
+            std::cerr << "\n";
+            return 1;
+        }
+        return 0;
     }
     RestrictedCEmitter emitter;
     const RestrictedCResult emitted = emit_native ? emitter.emit(file_parser.ir_module()) :

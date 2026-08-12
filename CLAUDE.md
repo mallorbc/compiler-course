@@ -23,11 +23,13 @@ make clean                    # remove build products
 make unit                     # doctest unit suite
 make cli                      # process-level frontend/CLI checks
 make check                    # 210-program byte-exact golden corpus
+make ir                       # textual typed-IR publication checks
 make codegen                  # strict generated-C compile/runtime checks
 make native                   # host-toolchain and native runtime checks
-make test                     # all five layers above
+make test                     # all six layers above
 
 ./compiler SOURCE             # check only; no artifact
+./compiler --emit-ir OUT.ir SOURCE
 ./compiler --emit-c OUT.c SOURCE
 ./compiler -o OUT SOURCE      # native executable
 ```

@@ -151,7 +151,10 @@ preservation, aliases/symlinks, runtime I/O and traps, recursive procedures,
 all 11 professor `correct/` sources with their publish/reject and representative
 runtime behavior, trailing-input rejection before launch, and 32 concurrent
 atomic publishers. `make native` runs that process layer;
-`make test` runs the unit, CLI, golden, generated-C, and native layers.
+`make test` runs the unit, CLI, textual-IR, golden, generated-C, and native
+layers. `make ir` runs `test_ir_output.py`, which pins deterministic typed IR,
+instruction/block structure, invalid/unsupported atomicity, aliases, and safe
+file publication.
 
 Conventions for adding unit tests:
 

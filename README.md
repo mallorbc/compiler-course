@@ -39,6 +39,12 @@ The legacy one-argument form checks a source file and writes no artifact:
 ./compiler program.src
 ```
 
+The verified typed IR can be inspected in a deterministic textual form:
+
+```sh
+./compiler --emit-ir program.ir program.src
+```
+
 Restricted C can be inspected directly:
 
 ```sh
@@ -88,13 +94,17 @@ runtime output success, despite contradictory prose elsewhere in the handout.
 ```text
 scanner -> recursive-descent parser + symbol/type semantics
         -> verified typed IR
-        -> pure restricted-C emitter
-        -> isolated native toolchain adapter -> executable
+             |-> deterministic textual IR
+             `-> pure restricted-C emitter
+                    -> isolated native toolchain adapter -> executable
 ```
 
 `SemanticTypes`, `BuiltinCatalog`, `IR`, and `IRBuilder` form a frontend-
-independent contract. `RestrictedCEmitter` is one consumer; a future LLVM
-backend can consume the same verified IR without replacing the frontend.
+independent contract. `IRPrinter` and `RestrictedCEmitter` are independent
+consumers; a future LLVM backend can consume the same verified IR without
+replacing the frontend. The textual IR shows canonical storages, typed values,
+basic blocks, instructions, and terminators, making lowering and verifier
+behavior observable without exposing provisional or invalid modules.
 
 Generated C deliberately resembles the course target: one `main`, a fixed
 64 MiB `int32_t` memory, numeric registers and labels, explicit gotos, manual
@@ -109,10 +119,10 @@ Run the complete gate with:
 make test
 ```
 
-It runs the doctest unit suite, CLI tests, all 210 byte-exact golden programs,
-strict generated-C compilation/runtime tests, and native toolchain/runtime
-tests. The current golden split is 98 successful frontend programs and 112
-expected-error programs, with no crash or timeout entries. See
+It runs the doctest unit suite, CLI and textual-IR tests, all 210 byte-exact
+golden programs, strict generated-C compilation/runtime tests, and native
+toolchain/runtime tests. The current golden split is 98 successful frontend
+programs and 112 expected-error programs, with no crash or timeout entries. See
 [tests/README.md](tests/README.md) for focused commands and baseline rules.
 
 The legacy `test_all.sh` runner remains for historical/manual use; it is not the
